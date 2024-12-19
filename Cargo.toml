@@ -1,0 +1,31 @@
+[package]
+edition = "2021"
+name = "rp2040-embassy"
+version = "0.1.0"
+resolver = "2"
+
+[dependencies]
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+
+embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
+embedded-io = "0.6.1"
+embedded-io-async = "0.6.1"
+embedded-storage = "0.3.1"
+
+cortex-m-rt = "0.7.3"
+
+embassy-executor = { version = "0.6", features = ["task-arena-size-4096", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers", "executor-interrupt"] }
+embassy-sync = { version = "0.6" }
+embassy-time = { version = "0.3", features = ["defmt", "defmt-timestamp-uptime"] }
+
+cortex-m = { version = "0.7.6" }
+assign-resources = "0.4.1"
+embassy-rp = { version = "0.2", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl"] }
+
+embedded-graphics = "0.8.1"
+sh1106 = "0.5.0"
+heapless = "0.8.0"
+embassy-futures = "0.1.1"

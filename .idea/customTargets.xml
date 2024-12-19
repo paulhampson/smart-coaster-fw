@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CLionExternalBuildManager">
+    <target id="7023b499-f217-479b-9417-5074d1637c95" name="Cargo Debug" defaultType="TOOL">
+      <configuration id="44e1c550-6bd3-499c-bde7-cdd1fa28b032" name="Cargo Debug" toolchainName="Rust Embedded">
+        <build type="TOOL">
+          <tool actionId="Tool_Rust Embedded_Cargo Build Debug" />
+        </build>
+        <clean type="TOOL">
+          <tool actionId="Tool_Rust Embedded_Cargo Clean" />
+        </clean>
+      </configuration>
+    </target>
+    <target id="1b5be3ca-f609-4b5c-a03e-0ae898bf138b" name="Cargo Release" defaultType="TOOL">
+      <configuration id="afdc79b4-0e8b-409c-b250-d5467f47bb38" name="Cargo Release" toolchainName="Rust Embedded">
+        <build type="TOOL">
+          <tool actionId="Tool_Rust Embedded_Cargo Build Release" />
+        </build>
+        <clean type="TOOL">
+          <tool actionId="Tool_Rust Embedded_Cargo Clean" />
+        </clean>
+      </configuration>
+    </target>
+  </component>
+</project>
