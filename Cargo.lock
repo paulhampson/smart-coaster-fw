@@ -304,8 +304,7 @@ checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 [[package]]
 name = "embassy-embedded-hal"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5794414bc20e0d750f145bc0e82366b19dd078e9e075e8331fb8dd069a1cb6a2"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "embassy-futures",
  "embassy-sync",
@@ -321,23 +320,19 @@ dependencies = [
 [[package]]
 name = "embassy-executor"
 version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f64f84599b0f4296b92a4b6ac2109bc02340094bda47b9766c5f9ec6a318ebf8"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "cortex-m",
  "critical-section",
  "defmt",
  "document-features",
  "embassy-executor-macros",
- "embassy-time-driver",
- "embassy-time-queue-driver",
 ]
 
 [[package]]
 name = "embassy-executor-macros"
 version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3577b1e9446f61381179a330fc5324b01d511624c55f25e3c66c9e3c626dbecf"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -348,14 +343,12 @@ dependencies = [
 [[package]]
 name = "embassy-futures"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f878075b9794c1e4ac788c95b728f26aa6366d32eeb10c7051389f898f7d067"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 
 [[package]]
 name = "embassy-hal-internal"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ef3bac31ec146321248a169e9c7b5799f1e0b3829c7a9b324cb4600a7438f59"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -366,8 +359,7 @@ dependencies = [
 [[package]]
 name = "embassy-rp"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c5d0300b0ed5229bf1c25488c64c1ce55024c5153c246f378b1f2e353d5ec9a"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "atomic-polyfill",
  "cfg-if",
@@ -382,6 +374,7 @@ dependencies = [
  "embassy-sync",
  "embassy-time",
  "embassy-time-driver",
+ "embassy-time-queue-driver",
  "embassy-usb-driver",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0",
@@ -398,13 +391,14 @@ dependencies = [
  "rand_core",
  "rp-pac",
  "rp2040-boot2",
+ "sha2-const-stable",
+ "smart-leds",
 ]
 
 [[package]]
 name = "embassy-sync"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3899a6e39fa3f54bf8aaf00979f9f9c0145a522f7244810533abbb748be6ce82"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -417,27 +411,23 @@ dependencies = [
 [[package]]
 name = "embassy-time"
 version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "158080d48f824fad101d7b2fae2d83ac39e3f7a6fa01811034f7ab8ffc6e7309"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "cfg-if",
  "critical-section",
  "defmt",
  "document-features",
  "embassy-time-driver",
- "embassy-time-queue-driver",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "futures-util",
- "heapless",
 ]
 
 [[package]]
 name = "embassy-time-driver"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e0c214077aaa9206958b16411c157961fb7990d4ea628120a78d1a5a28aed24"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "document-features",
 ]
@@ -445,14 +435,16 @@ dependencies = [
 [[package]]
 name = "embassy-time-queue-driver"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1177859559ebf42cd24ae7ba8fe6ee707489b01d0bf471f8827b7b12dcb0bc0"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
+dependencies = [
+ "embassy-executor",
+ "heapless",
+]
 
 [[package]]
 name = "embassy-usb-driver"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fc247028eae04174b6635104a35b1ed336aabef4654f5e87a8f32327d231970"
+source = "git+https://github.com/embassy-rs/embassy.git?rev=2ba7fafa#2ba7fafa680b3080775e5bd34695f18d153f98e6"
 dependencies = [
  "defmt",
 ]
@@ -1090,10 +1082,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
+name = "rgb"
+version = "0.8.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "rp-pac"
 version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f30f6c4c846269293db805e9c77864ff7b923395b480550df44f0868e3765337"
+source = "git+https://github.com/embassy-rs/rp-pac.git?rev=a7f42d25517f7124ad3b4ed492dec8b0f50a0e6c#a7f42d25517f7124ad3b4ed492dec8b0f50a0e6c"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -1131,6 +1131,7 @@ dependencies = [
  "heapless",
  "panic-probe",
  "sh1106",
+ "smart-leds",
 ]
 
 [[package]]
@@ -1180,6 +1181,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha2-const-stable"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f179d4e11094a893b82fff208f74d448a7512f99f5a0acbd5c679b705f83ed9"
+
+[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1190,6 +1197,24 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+
+[[package]]
+name = "smart-leds"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66df34e571fa9993fa6f99131a374d58ca3d694b75f9baac93458fe0d6057bf0"
+dependencies = [
+ "smart-leds-trait",
+]
+
+[[package]]
+name = "smart-leds-trait"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bc64ee02bbbf469603016df746c0ed224f263280b6ebb49b7ebadbff375c572"
+dependencies = [
+ "rgb",
+]
 
 [[package]]
 name = "stable_deref_trait"

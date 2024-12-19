@@ -3,6 +3,7 @@
 
 mod rotary_encoder;
 mod debouncer;
+mod led_control;
 
 use core::fmt::Write;
 use heapless::String;
@@ -16,7 +17,10 @@ use assign_resources::assign_resources;
 use embassy_futures::select::{select, Either};
 use embassy_rp as hal;
 use embassy_rp::gpio::{Input, Level, Pull};
-use embassy_rp::peripherals;
+use embassy_rp::{bind_interrupts, peripherals};
+use embassy_rp::peripherals::PIO0;
+use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use hal::i2c::{self, Config};
@@ -31,6 +35,7 @@ use embedded_graphics::{
 use crate::debouncer::Debouncer;
 use crate::rotary_encoder::{Direction, RotaryEncoder};
 use sh1106::{prelude::*, Builder};
+use crate::led_control::*;
 
 enum HmiEvents {
     EncoderUpdate(Direction),
@@ -39,6 +44,9 @@ enum HmiEvents {
 type HmiEventChannel = Channel<CriticalSectionRawMutex, HmiEvents, 5>;
 type HmiEventChannelReceiver = Receiver<'static, CriticalSectionRawMutex, HmiEvents, 5>;
 type HmiEventChannelSender = Sender<'static, CriticalSectionRawMutex, HmiEvents, 5>;
+static HMI_EVENT_CHANNEL: HmiEventChannel = Channel::new();
+
+const LED_COUNT: usize = 8;
 
 assign_resources! {
     display_i2c: DisplayI2cPins{
@@ -51,9 +59,16 @@ assign_resources! {
         rotary_clk_pin: PIN_8,
         push_btn_pin: PIN_6,
     },
+    led_control: LedControlResources {
+        pio: PIO0,
+        dma_channel: DMA_CH0,
+        data_pin: PIN_16,
+    }
 }
 
-static HMI_EVENT_CHANNEL: HmiEventChannel = Channel::new();
+bind_interrupts!(struct Irqs {
+    PIO0_IRQ_0 => InterruptHandler<PIO0>;
+});
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -62,6 +77,7 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_EVENT_CHANNEL.sender())).unwrap();
     spawner.spawn(display_task(resources.display_i2c, HMI_EVENT_CHANNEL.receiver())).unwrap();
+    spawner.spawn(led_task(resources.led_control)).unwrap();
 
 }
 
@@ -149,4 +165,15 @@ async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEv
 
         display.flush().unwrap();
     }
+}
+
+#[embassy_executor::task]
+async fn led_task(led_pio_resources: LedControlResources)
+{
+    let Pio { mut common, sm0, .. } = Pio::new(led_pio_resources.pio, Irqs);
+    let program = PioWs2812Program::new(&mut common);
+    let pio_ws2812: PioWs2812<'_, PIO0, 0, LED_COUNT> = PioWs2812::new(&mut common, sm0, led_pio_resources.dma_channel, led_pio_resources.data_pin, &program);
+
+    let mut led_control = LedControl::new(pio_ws2812);
+    led_control.led_control_update().await;
 }
