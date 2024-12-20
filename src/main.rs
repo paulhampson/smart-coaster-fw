@@ -108,9 +108,13 @@ async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiEven
 #[embassy_executor::task]
 async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEventChannelReceiver)
 {
-    let i2c = i2c::I2c::new_blocking(display_i2c_pins.i2c_peripheral,
+    // let i2c = i2c::I2c::new_blocking(display_i2c_pins.i2c_peripheral,
+    //                                  display_i2c_pins.scl_pin, display_i2c_pins.sda_pin,
+    //                                  Config::default());
+    let i2c = i2c::I2c::new_async(display_i2c_pins.i2c_peripheral,
                                      display_i2c_pins.scl_pin, display_i2c_pins.sda_pin,
                                      Config::default());
+    let
     let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
     display.init().unwrap();
     display.flush().unwrap();
