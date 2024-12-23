@@ -4,7 +4,7 @@
 mod led;
 mod hmi;
 
-use embassy_executor::Spawner;
+use embassy_executor::{Executor, Spawner};
 use embassy_time::Duration;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
@@ -16,6 +16,7 @@ use embassy_rp::peripherals::{I2C0, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use embassy_rp::{bind_interrupts, peripherals, pio};
+use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_sync::channel::Channel;
 
 use hmi::debouncer::Debouncer;
@@ -23,6 +24,7 @@ use hmi::display::display_update_handler;
 use hmi::rotary_encoder::RotaryEncoder;
 use led::led_control::LedControl;
 use sh1106::{prelude::*, Builder};
+use static_cell::StaticCell;
 use crate::hmi::event_channels::{HmiEventChannel, HmiEventChannelReceiver, HmiEventChannelSender};
 use crate::hmi::inputs::hmi_input_handler;
 
@@ -48,6 +50,15 @@ assign_resources! {
     }
 }
 
+struct Core0Resources {
+    hmi_inputs: HmiInputPins,
+    led_control: LedControlResources,
+}
+
+struct Core1Resources {
+    display_i2c: DisplayI2cPins,
+}
+
 bind_interrupts!(struct PioIrqs {
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
 });
@@ -56,17 +67,41 @@ bind_interrupts!(struct I2cIrqs {
     I2C0_IRQ => i2c::InterruptHandler<I2C0>;
 });
 
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
+static mut CORE1_STACK: Stack<4096> = Stack::new();
+static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
+static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+
+#[cortex_m_rt::entry]
+fn main() -> ! {
     let p = embassy_rp::init(Default::default());
     let resources = split_resources!{p};
 
-    spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_EVENT_CHANNEL.sender())).unwrap();
-    spawner.spawn(display_task(resources.display_i2c, HMI_EVENT_CHANNEL.receiver())).unwrap();
-    spawner.spawn(led_task(resources.led_control)).unwrap();
+    let core0_resources = Core0Resources { hmi_inputs: resources.hmi_inputs, led_control: resources.led_control };
+    let core1_resources = Core1Resources { display_i2c: resources.display_i2c };
 
+    spawn_core1(
+        p.CORE1,
+        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+        move || {
+            let executor1 = EXECUTOR1.init(Executor::new());
+            executor1.run(|spawner| core1_main(spawner, core1_resources));
+        },
+    );
+
+    let executor0 = EXECUTOR0.init(Executor::new());
+    executor0.run(|spawner| core0_main(spawner, core0_resources));
 }
 
+fn core0_main(spawner: Spawner, resources: Core0Resources)
+{
+    spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_EVENT_CHANNEL.sender())).unwrap();
+    spawner.spawn(led_task(resources.led_control)).unwrap();
+}
+
+fn core1_main(spawner: Spawner, resources: Core1Resources)
+{
+    spawner.spawn(display_task(resources.display_i2c, HMI_EVENT_CHANNEL.receiver())).unwrap();
+}
 
 #[embassy_executor::task]
 async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiEventChannelSender)
@@ -84,8 +119,6 @@ async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiEven
 
 }
 
-
-
 #[embassy_executor::task]
 async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEventChannelReceiver)
 {
@@ -97,7 +130,6 @@ async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEv
 
     display_update_handler(hmi_event_channel, &mut display).await;
 }
-
 
 
 #[embassy_executor::task]

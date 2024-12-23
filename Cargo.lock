@@ -951,6 +951,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "portable-atomic"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "280dc24453071f1b63954171985a0b0d30058d287960968b9b2aca264c8d4ee6"
+dependencies = [
+ "critical-section",
+]
+
+[[package]]
 name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1130,8 +1139,10 @@ dependencies = [
  "embedded-storage",
  "heapless",
  "panic-probe",
+ "portable-atomic",
  "sh1106",
  "smart-leds",
+ "static_cell",
 ]
 
 [[package]]
@@ -1173,11 +1184,11 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "sh1106"
 version = "0.5.0"
-source = "git+https://github.com/paulhampson/sh1106.git?rev=ff61855#ff6185564ad37a7253798f5ae234bbaf0aa19f54"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc12a0563ec9b3b1f99b1f64613581ebbade1347416a34766564f406c15d1bf3"
 dependencies = [
  "embedded-graphics-core",
  "embedded-hal 0.2.7",
- "embedded-hal-async",
 ]
 
 [[package]]
@@ -1221,6 +1232,15 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "static_cell"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89b0684884a883431282db1e4343f34afc2ff6996fe1f4a1664519b66e14c1e"
+dependencies = [
+ "portable-atomic",
+]
 
 [[package]]
 name = "string_cache"
