@@ -1,3 +1,4 @@
+use embassy_futures::join::join;
 use crate::hmi::debouncer::Debouncer;
 use embassy_futures::select::{select, Either};
 use embassy_rp::gpio::{Input, Level};
@@ -20,24 +21,71 @@ impl From<u8> for Direction {
     }
 }
 
-pub struct RotaryEncoder<'a> {
+/// Rotary encoder interface
+pub trait RotaryEncoder {
+    /// Wait for a state change
+    async fn state_change(&mut self) -> Direction;
+}
+
+pub struct DebouncedRotaryEncoder<'a> {
     debounced_dt: Debouncer<'a>,
     debounced_clk: Debouncer<'a>
 }
 
-impl<'a> RotaryEncoder<'a>
+impl<'a> DebouncedRotaryEncoder<'a>
 {
-    pub fn new(pin_dt: Input<'a>, pin_clk: Input<'a>) -> Self {
+    pub fn new(pin_dt: Input<'a>, pin_clk: Input<'a>, debounce_duration: Duration) -> Self {
         Self {
-            debounced_dt:  Debouncer::new(pin_dt, Duration::from_micros(500)),
-            debounced_clk:  Debouncer::new(pin_clk, Duration::from_micros(500)),
+            debounced_dt:  Debouncer::new(pin_dt, debounce_duration),
+            debounced_clk:  Debouncer::new(pin_clk, debounce_duration),
+        }
+    }
+}
+
+
+impl RotaryEncoder for DebouncedRotaryEncoder<'_> {
+
+    async fn state_change(&mut self) -> Direction {
+        join(self.debounced_clk.wait_until_stable(Level::High),  self.debounced_dt.wait_until_stable(Level::High)).await;
+
+        let io_changes = select(self.debounced_dt.wait_for_first_falling_edge(), self.debounced_clk.wait_for_first_falling_edge()).await;
+
+        join(self.debounced_dt.wait_until_stable(Level::Low), self.debounced_clk.wait_until_stable(Level::Low)).await;
+        join(self.debounced_dt.wait_until_stable(Level::High), self.debounced_clk.wait_until_stable(Level::High)).await;
+
+        match io_changes {
+            Either::First(_) => {
+                // DT changed first
+                Direction::CounterClockwise
+            }
+            Either::Second(_) => {
+                // CLK changed first
+                Direction::Clockwise
+            }
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub struct RawRotaryEncoder<'a> {
+    dt: Input<'a>,
+    clk: Input<'a>
+}
+
+#[allow(dead_code)]
+impl<'a> RawRotaryEncoder<'a>
+{
+    fn new(pin_dt: Input<'a>, pin_clk: Input<'a>) -> Self {
+        Self {
+            dt:  pin_dt,
+            clk: pin_clk,
         }
     }
 
-    async fn get_current_state(&mut self) -> u8 {
+    fn get_current_state(&mut self) -> u8 {
         let mut s = 0u8;
-        let dt_level = self.debounced_dt.get_debounced_level().await;
-        let clk_level = self.debounced_clk.get_debounced_level().await;
+        let dt_level = self.dt.get_level();
+        let clk_level = self.clk.get_level();
         if dt_level == Level::High {
             s |= 0b01;
         }
@@ -46,26 +94,36 @@ impl<'a> RotaryEncoder<'a>
         }
         s
     }
+}
 
-    pub async fn state_change(&mut self) -> Direction {
-        let mut s = self.get_current_state().await;
+#[allow(dead_code)]
+impl<'a> RotaryEncoder for RawRotaryEncoder<'a>
+{
+    async fn state_change(&mut self) -> Direction {
+        let mut s = self.get_current_state();
         s |= s << 2;
 
-        let io_changes = select(self.debounced_dt.debounce(), self.debounced_clk.debounce()).await;
+        let io_changes = select(self.dt.wait_for_any_edge(), self.clk.wait_for_any_edge()).await;
 
         match io_changes {
-            Either::First(dt_level) => {
+            Either::First(_) => {
+                let dt_level = self.dt.get_level();
                 if dt_level == Level::High {
                     s |= 0b0100;
+                    self.clk.wait_for_high().await;
                 } else {
                     s &= 0b1011;
+                    self.clk.wait_for_low().await;
                 }
             }
-            Either::Second(clk_level) => {
+            Either::Second(_) => {
+                let clk_level = self.clk.get_level();
                 if clk_level == Level::High {
                     s |= 0b1000;
+                    self.dt.wait_for_high().await;
                 } else {
                     s &= 0b0111;
+                    self.dt.wait_for_low().await;
                 }
             }
         }

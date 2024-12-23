@@ -12,21 +12,21 @@ use {defmt_rtt as _, panic_probe as _};
 use assign_resources::assign_resources;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::i2c::{self, Config};
+use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{I2C0, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use embassy_rp::{bind_interrupts, peripherals, pio};
-use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_sync::channel::Channel;
 
+use crate::hmi::event_channels::{HmiEventChannel, HmiEventChannelReceiver, HmiEventChannelSender};
+use crate::hmi::inputs::hmi_input_handler;
+use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use hmi::debouncer::Debouncer;
 use hmi::display::display_update_handler;
-use hmi::rotary_encoder::RotaryEncoder;
 use led::led_control::LedControl;
 use sh1106::{prelude::*, Builder};
 use static_cell::StaticCell;
-use crate::hmi::event_channels::{HmiEventChannel, HmiEventChannelReceiver, HmiEventChannelSender};
-use crate::hmi::inputs::hmi_input_handler;
 
 static HMI_EVENT_CHANNEL: HmiEventChannel = Channel::new();
 
@@ -110,12 +110,13 @@ async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiEven
     let rotary_clk = hmi_input_pins.rotary_clk_pin;
     let debounced_btn = Debouncer::new(Input::new(hmi_input_pins.push_btn_pin, Pull::Up), Duration::from_millis(20));
 
-    let rotary_encoder = RotaryEncoder::new(
+    let mut rotary_encoder = DebouncedRotaryEncoder::new(
         Input::new(rotary_dt, Pull::Up),
-        Input::new(rotary_clk, Pull::Up)
+        Input::new(rotary_clk, Pull::Up),
+        Duration::from_millis(6),
     );
 
-    hmi_input_handler(hmi_event_channel, debounced_btn, rotary_encoder).await;
+    hmi_input_handler(hmi_event_channel, debounced_btn, &mut rotary_encoder).await;
 
 }
 

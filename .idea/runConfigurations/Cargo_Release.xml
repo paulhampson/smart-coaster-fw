@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Cargo Release" type="com.jetbrains.cidr.embedded.customgdbserver.type" factoryName="com.jetbrains.cidr.embedded.customgdbserver.factory" PROGRAM_PARAMS="-if swd -device RP2040_M0_0 " REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" WORKING_DIR="file://$ProjectFileDir$" PASS_PARENT_ENVS_2="true" PROJECT_NAME="rp2040-embassy-exploration" TARGET_NAME="Cargo Release" CONFIG_NAME="Cargo Release" version="1" RUN_PATH="$PROJECT_DIR$/target/thumbv6m-none-eabi/release/rp2040-embassy">
-    <custom-gdb-server version="1" gdb-connect="tcp:localhost:2331" executable="/usr/bin/JLinkGDBServer" warmup-ms="0" download-type="ALWAYS" reset-cmd="monitor reset" reset-type="AFTER_DOWNLOAD">
-      <debugger kind="GDB" isBundled="true" />
+    <custom-gdb-server version="1" gdb-connect="tcp:localhost:2331" executable="/opt/SEGGER/JLink_V810i/JLinkGDBServer" warmup-ms="0" download-type="ALWAYS" reset-cmd="monitor reset" reset-type="AFTER_DOWNLOAD">
+      <debugger toolchainName="Rust Embedded" />
     </custom-gdb-server>
     <method v="2">
       <option name="CLION.COMPOUND.BUILD" enabled="true" />

@@ -2,6 +2,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use crate::hmi::rotary_encoder::Direction;
 
+#[derive(Debug)]
 pub enum HmiEvents {
     EncoderUpdate(Direction),
     PushButtonPressed(bool)
