@@ -1,6 +1,7 @@
 use core::fmt::Write;
 use embassy_rp::i2c::{Async, I2c};
 use embassy_rp::peripherals::I2C0;
+use embassy_time::Instant;
 use embedded_graphics::Drawable;
 use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
@@ -13,6 +14,8 @@ use sh1106::mode::GraphicsMode;
 use crate::{HmiEventChannelReceiver};
 use crate::hmi::event_channels::HmiEvents;
 use crate::hmi::rotary_encoder::Direction;
+
+const FRAME_TIMING_MS:u64 = 1000 / 30;
 
 pub async fn display_update_handler(hmi_event_channel: HmiEventChannelReceiver, display: &mut GraphicsMode<I2cInterface<I2c<'_, I2C0, Async>>>) {
     display.init().unwrap();
@@ -29,22 +32,6 @@ pub async fn display_update_handler(hmi_event_channel: HmiEventChannelReceiver, 
     let mut count_string = String::<32>::new();
 
     loop {
-        let event = hmi_event_channel.receive().await;
-        match event {
-            HmiEvents::EncoderUpdate(direction) => {
-                if direction == Direction::Clockwise {
-                    cw_count += 1;
-                }
-                if direction == Direction::CounterClockwise {
-                    ccw_count += 1;
-                }
-            }
-            HmiEvents::PushButtonPressed(is_pressed) => {
-                if is_pressed {
-                    btn_press_count += 1;
-                }
-            }
-        }
 
         display.clear();
 
@@ -67,5 +54,29 @@ pub async fn display_update_handler(hmi_event_channel: HmiEventChannelReceiver, 
             .unwrap();
 
         display.flush().unwrap();
+        let last_update = Instant::now();
+
+        loop {
+            let event = hmi_event_channel.receive().await;
+            match event {
+                HmiEvents::EncoderUpdate(direction) => {
+                    if direction == Direction::Clockwise {
+                        cw_count += 1;
+                    }
+                    if direction == Direction::CounterClockwise {
+                        ccw_count += 1;
+                    }
+                }
+                HmiEvents::PushButtonPressed(is_pressed) => {
+                    if is_pressed {
+                        btn_press_count += 1;
+                    }
+                }
+            }
+
+            if last_update.elapsed().as_millis() > FRAME_TIMING_MS {
+                break;
+            }
+        }
     }
 }
