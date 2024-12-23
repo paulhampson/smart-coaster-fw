@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Cargo Debug" type="com.jetbrains.cidr.embedded.customgdbserver.type" factoryName="com.jetbrains.cidr.embedded.customgdbserver.factory" nameIsGenerated="true" PROGRAM_PARAMS="-if swd -device RP2040_M0_0 " REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" WORKING_DIR="file://$ProjectFileDir$" PASS_PARENT_ENVS_2="true" PROJECT_NAME="rp2040-embassy-exploration" TARGET_NAME="Cargo Debug" CONFIG_NAME="Cargo Debug" version="1" RUN_PATH="$PROJECT_DIR$/target/thumbv6m-none-eabi/debug/rp2040-embassy">
-    <custom-gdb-server version="1" gdb-connect="tcp:localhost:2331" executable="/usr/bin/JLinkGDBServer" warmup-ms="0" download-type="UPDATED_ONLY" reset-cmd="monitor reset" reset-type="AFTER_DOWNLOAD">
+    <custom-gdb-server version="1" gdb-connect="tcp:localhost:2331" executable="/usr/bin/JLinkGDBServer" warmup-ms="0" download-type="ALWAYS" reset-cmd="monitor reset" reset-type="AFTER_DOWNLOAD">
       <debugger kind="GDB" isBundled="true" />
     </custom-gdb-server>
     <method v="2">
