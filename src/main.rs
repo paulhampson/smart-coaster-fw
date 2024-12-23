@@ -15,15 +15,14 @@ use {defmt_rtt as _, panic_probe as _};
 
 use assign_resources::assign_resources;
 use embassy_futures::select::{select, Either};
-use embassy_rp as hal;
 use embassy_rp::gpio::{Input, Level, Pull};
-use embassy_rp::{bind_interrupts, peripherals};
-use embassy_rp::peripherals::PIO0;
-use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_rp::i2c::{self, Config};
+use embassy_rp::peripherals::{I2C0, PIO0};
+use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
+use embassy_rp::{bind_interrupts, peripherals, pio};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use hal::i2c::{self, Config};
 
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
@@ -33,9 +32,9 @@ use embedded_graphics::{
 };
 
 use crate::debouncer::Debouncer;
+use crate::led_control::*;
 use crate::rotary_encoder::{Direction, RotaryEncoder};
 use sh1106::{prelude::*, Builder};
-use crate::led_control::*;
 
 enum HmiEvents {
     EncoderUpdate(Direction),
@@ -66,8 +65,12 @@ assign_resources! {
     }
 }
 
-bind_interrupts!(struct Irqs {
-    PIO0_IRQ_0 => InterruptHandler<PIO0>;
+bind_interrupts!(struct PioIrqs {
+    PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
+});
+
+bind_interrupts!(struct I2cIrqs {
+    I2C0_IRQ => i2c::InterruptHandler<I2C0>;
 });
 
 #[embassy_executor::main]
@@ -113,8 +116,8 @@ async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEv
     //                                  Config::default());
     let i2c = i2c::I2c::new_async(display_i2c_pins.i2c_peripheral,
                                      display_i2c_pins.scl_pin, display_i2c_pins.sda_pin,
-                                     Config::default());
-    let
+                                     I2cIrqs, Config::default());
+
     let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
     display.init().unwrap();
     display.flush().unwrap();
@@ -174,7 +177,7 @@ async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEv
 #[embassy_executor::task]
 async fn led_task(led_pio_resources: LedControlResources)
 {
-    let Pio { mut common, sm0, .. } = Pio::new(led_pio_resources.pio, Irqs);
+    let Pio { mut common, sm0, .. } = Pio::new(led_pio_resources.pio, PioIrqs);
     let program = PioWs2812Program::new(&mut common);
     let pio_ws2812: PioWs2812<'_, PIO0, 0, LED_COUNT> = PioWs2812::new(&mut common, sm0, led_pio_resources.dma_channel, led_pio_resources.data_pin, &program);
 
