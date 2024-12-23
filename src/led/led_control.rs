@@ -19,7 +19,7 @@ fn colour_wheel(mut wheel_pos: u8) -> RGB8 {
     (wheel_pos * 3, 255 - wheel_pos * 3, 0).into()
 }
 
-pub struct LedControl<'a, const LED_COUNT: usize, P: embassy_rp::pio::Instance, const S: usize> {
+pub struct LedControl<'a, const LED_COUNT: usize, P: Instance, const S: usize> {
     ws2812pio: PioWs2812<'a, P, S, LED_COUNT>,
     led_count: usize,
     led_state: [RGB8; LED_COUNT],
@@ -38,7 +38,7 @@ where
     }
 
     pub async fn led_control_update(&mut self) {
-        let mut ticker = Ticker::every(Duration::from_millis(50));
+        let mut ticker = Ticker::every(Duration::from_millis(10));
         loop {
             for j in 0..(256 * 5) {
                 for i in 0..self.led_count {

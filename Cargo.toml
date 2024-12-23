@@ -33,9 +33,9 @@ embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7f
 embassy-futures = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7fafa", subdir = "embassy-futures"}
 
 embedded-graphics = "0.8.1"
-sh1106 = "0.5.0"
+sh1106 = { git = "https://github.com/paulhampson/sh1106.git", rev = "ff61855", features = ["graphics"] }
 heapless = "0.8.0"
 smart-leds = "0.4.0"
 
-[patch.crates-io]
-sh1106 = { path = "./sh1106" }
+#[patch.crates-io]
+#sh1106 = { path = "./sh1106" }

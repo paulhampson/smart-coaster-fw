@@ -1,4 +1,4 @@
-use crate::debouncer::Debouncer;
+use crate::hmi::debouncer::Debouncer;
 use embassy_futures::select::{select, Either};
 use embassy_rp::gpio::{Input, Level};
 use embassy_time::Duration;
