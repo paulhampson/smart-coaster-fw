@@ -30,6 +30,7 @@ pub async fn display_update_handler(hmi_event_channel: HmiEventChannelReceiver, 
     let mut ccw_count = 0;
     let mut btn_press_count = 0;
     let mut count_string = String::<32>::new();
+    let mut last_weight = 0u32;
 
     loop {
 
@@ -53,6 +54,12 @@ pub async fn display_update_handler(hmi_event_channel: HmiEventChannelReceiver, 
             .draw(display)
             .unwrap();
 
+        count_string.clear();
+        write!(&mut count_string, "Weight = {}", last_weight).unwrap();
+        Text::with_baseline(count_string.as_str(), Point::new(0, 48), text_style, Baseline::Top)
+            .draw(display)
+            .unwrap();
+
         display.flush().unwrap();
         let last_update = Instant::now();
 
@@ -71,6 +78,9 @@ pub async fn display_update_handler(hmi_event_channel: HmiEventChannelReceiver, 
                     if is_pressed {
                         btn_press_count += 1;
                     }
+                }
+                HmiEvents::WeightUpdate(weight) => {
+                    last_weight = weight;
                 }
             }
 

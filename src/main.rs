@@ -3,14 +3,16 @@
 
 mod led;
 mod hmi;
+mod weight;
 
 use embassy_executor::{Executor, Spawner};
 use embassy_time::Duration;
+use heapless::Deque;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
 use assign_resources::assign_resources;
-use embassy_rp::gpio::{Input, Pull};
+use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{I2C0, PIO0};
@@ -19,13 +21,16 @@ use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use embassy_rp::{bind_interrupts, peripherals, pio};
 use embassy_sync::channel::Channel;
 
-use crate::hmi::event_channels::{HmiEventChannel, HmiEventChannelReceiver, HmiEventChannelSender};
+use crate::hmi::event_channels::{HmiEventChannel, HmiEventChannelReceiver, HmiEventChannelSender, HmiEvents};
 use crate::hmi::inputs::hmi_input_handler;
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
+use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use hmi::debouncer::Debouncer;
 use hmi::display::display_update_handler;
 use led::led_control::LedControl;
 use sh1106::{prelude::*, Builder};
+
+use crate::weight::interface::AsyncStrainGaugeInterface;
 use static_cell::StaticCell;
 
 static HMI_EVENT_CHANNEL: HmiEventChannel = Channel::new();
@@ -48,11 +53,16 @@ assign_resources! {
         dma_channel: DMA_CH0,
         data_pin: PIN_16,
     }
+    strain_gauge_io: StrainGaugeResources {
+        clk_pin: PIN_14,
+        data_pin: PIN_15,
+    }
 }
 
 struct Core0Resources {
     hmi_inputs: HmiInputPins,
     led_control: LedControlResources,
+    strain_gauge_io: StrainGaugeResources,
 }
 
 struct Core1Resources {
@@ -76,7 +86,7 @@ fn main() -> ! {
     let p = embassy_rp::init(Default::default());
     let resources = split_resources!{p};
 
-    let core0_resources = Core0Resources { hmi_inputs: resources.hmi_inputs, led_control: resources.led_control };
+    let core0_resources = Core0Resources { hmi_inputs: resources.hmi_inputs, led_control: resources.led_control, strain_gauge_io: resources.strain_gauge_io };
     let core1_resources = Core1Resources { display_i2c: resources.display_i2c };
 
     spawn_core1(
@@ -96,6 +106,7 @@ fn core0_main(spawner: Spawner, resources: Core0Resources)
 {
     spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_EVENT_CHANNEL.sender())).unwrap();
     spawner.spawn(led_task(resources.led_control)).unwrap();
+    spawner.spawn(weighing_task(resources.strain_gauge_io, HMI_EVENT_CHANNEL.sender())).unwrap()
 }
 
 fn core1_main(spawner: Spawner, resources: Core1Resources)
@@ -134,7 +145,7 @@ async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEv
 
 
 #[embassy_executor::task]
-pub async fn led_task(led_pio_resources: LedControlResources)
+async fn led_task(led_pio_resources: LedControlResources)
 {
     let Pio { mut common, sm0, .. } = Pio::new(led_pio_resources.pio, PioIrqs);
     let program = PioWs2812Program::new(&mut common);
@@ -142,4 +153,25 @@ pub async fn led_task(led_pio_resources: LedControlResources)
 
     let mut led_control = LedControl::new(pio_ws2812);
     led_control.led_control_update().await;
+}
+
+#[embassy_executor::task]
+async fn weighing_task(strain_gauge_resources: StrainGaugeResources, hmi_event_channel: HmiEventChannelSender)
+{
+    let clk_pin_out = Output::new(strain_gauge_resources.clk_pin, Level::Low);
+    let data_pin = Input::new(strain_gauge_resources.data_pin, Pull::Up);
+    let mut strain_gauge = Hx711Async::new(clk_pin_out, data_pin, Hx711Gain::Gain128);
+
+    strain_gauge.initialize().await.unwrap();
+
+    let mut measurements = Deque::<_, 10>::new();
+    loop {
+        let reading = strain_gauge.get_next_reading().await.unwrap();
+        measurements.push_back(reading).unwrap();
+        if measurements.is_full() {
+            let result = measurements.clone().into_iter().sum::<u32>() / measurements.len() as u32;
+            hmi_event_channel.try_send(HmiEvents::WeightUpdate(result)).unwrap();
+            measurements.pop_front().unwrap();
+        }
+    }
 }

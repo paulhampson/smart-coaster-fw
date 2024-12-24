@@ -5,7 +5,8 @@ use crate::hmi::rotary_encoder::Direction;
 #[derive(Debug)]
 pub enum HmiEvents {
     EncoderUpdate(Direction),
-    PushButtonPressed(bool)
+    PushButtonPressed(bool),
+    WeightUpdate(u32),
 }
 
 pub type HmiEventChannel = Channel<CriticalSectionRawMutex, HmiEvents, 5>;
