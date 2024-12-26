@@ -15,6 +15,6 @@ const CHANNEL_DEPTH: usize = 10;
 const CHANNEL_SUBS: usize = 4;
 const CHANNEL_PUBS: usize = 2;
 
-pub type HmiEventChannel = PubSubChannel<CriticalSectionRawMutex, HmiEvents, CHANNEL_DEPTH, 4, CHANNEL_PUBS>;
+pub type HmiEventChannel = PubSubChannel<CriticalSectionRawMutex, HmiEvents, CHANNEL_DEPTH, CHANNEL_SUBS, CHANNEL_PUBS>;
 pub type HmiEventChannelReceiver<'a> = Subscriber<'a, CriticalSectionRawMutex, HmiEvents, CHANNEL_DEPTH, CHANNEL_SUBS, CHANNEL_PUBS>;
 pub type HmiEventChannelSender<'a> = Publisher<'a, CriticalSectionRawMutex, HmiEvents, CHANNEL_DEPTH, CHANNEL_SUBS, CHANNEL_PUBS>;
