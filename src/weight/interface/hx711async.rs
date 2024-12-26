@@ -66,7 +66,7 @@ where
         self.power_up().await
     }
     
-    async fn get_next_reading(&mut self) -> Result<u32, Self::Error> {
+    async fn get_next_reading(&mut self) -> Result<i32, Self::Error> {
         let mut clock_ticker = Ticker::every(CLK_HALF_PERIOD);
 
         if !self.powered_up {
@@ -74,7 +74,7 @@ where
         }
 
         self.data_pin.wait_for_low().await.map_err(Error::InPin)?; // DOUT goes low when conversion is ready
-        let mut data:u32 = 0;
+        let mut data:i32 = 0;
 
         clock_ticker.next().await;
         for _ in 0..self.gain_clocks {
@@ -93,6 +93,10 @@ where
         data = data >> data_bits_to_discard;
         let data_mask = (1 << VALID_DATA_BITS) - 1;
         data = data & data_mask;
+        // extend sign if bit 24 is 1
+        if (data >> 23) & 0x1 == 0x1 {
+            data |= 0xFF000000u32 as i32;
+        }
         Ok(data)
     }
 

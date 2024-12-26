@@ -169,7 +169,7 @@ async fn weighing_task(strain_gauge_resources: StrainGaugeResources, hmi_event_c
         let reading = strain_gauge.get_next_reading().await.unwrap();
         measurements.push_back(reading).unwrap();
         if measurements.is_full() {
-            let result = measurements.clone().into_iter().sum::<u32>() / measurements.len() as u32;
+            let result = measurements.clone().into_iter().sum::<i32>() / measurements.len() as i32;
             hmi_event_channel.try_send(HmiEvents::WeightUpdate(result)).unwrap();
             measurements.pop_front().unwrap();
         }

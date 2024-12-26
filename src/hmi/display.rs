@@ -30,7 +30,7 @@ pub async fn display_update_handler(hmi_event_channel: HmiEventChannelReceiver, 
     let mut ccw_count = 0;
     let mut btn_press_count = 0;
     let mut count_string = String::<32>::new();
-    let mut last_weight = 0u32;
+    let mut last_weight = 0i32;
 
     loop {
 
