@@ -17,4 +17,7 @@ pub trait AsyncStrainGaugeInterface {
 
     /// Power up the strain gauge
     async fn power_up(&mut self) -> Result<(), Self::Error>;
+
+    /// Return the number of bits supported by the ADC
+    fn get_adc_bit_count(&self) -> usize;
 }

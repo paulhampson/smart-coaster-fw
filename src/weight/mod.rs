@@ -1,3 +1,2 @@
-mod weight;
-mod strain_gauge;
+pub(crate) mod weight;
 pub(crate) mod interface;

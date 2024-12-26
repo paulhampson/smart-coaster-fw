@@ -1138,6 +1138,7 @@ dependencies = [
  "embedded-io-async",
  "embedded-storage",
  "heapless",
+ "micromath",
  "panic-probe",
  "portable-atomic",
  "sh1106",

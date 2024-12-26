@@ -113,4 +113,8 @@ where
         self.powered_up = true;
         Ok(())
     }
+
+    fn get_adc_bit_count(&self) -> usize {
+        VALID_DATA_BITS
+    }
 }
