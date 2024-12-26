@@ -24,6 +24,7 @@ pub enum DisplayState {
     Tare,
     Calibration(u32),
     CalibrationDone,
+    Wait,
 }
 
 struct DisplayManager<'a, DI: sh1106::interface::DisplayInterface> {
@@ -104,6 +105,7 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
                     .expect("String too long");
                 self.draw_message_screen(&message_string);}
             DisplayState::CalibrationDone => {self.draw_message_screen("Calibration complete")}
+            DisplayState::Wait => {self.draw_wait_screen()}
         }
 
         let _ = self.display.flush().map_err(|_| error!("Display flush failed"));
@@ -151,8 +153,10 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
         Text::with_baseline(count_string.as_str(), Point::new(0, 48), self.text_style, Baseline::Top)
             .draw(self.display)
             .unwrap();
+    }
 
-
+    fn draw_wait_screen(&mut self) {
+        self.draw_message_screen("Please wait...");
     }
 }
 

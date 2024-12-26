@@ -6,7 +6,7 @@ use micromath::statistics::{Mean, StdDev};
 use micromath::F32Ext;
 
 const BITS_TO_DISCARD_BEFORE_STABILISATION: usize = 0;
-const STABILISATION_MEASUREMENTS: usize = 10;
+const STABILISATION_MEASUREMENTS: usize = 20;
 
 #[derive(Debug)]
 pub enum Error<StrainGaugeE> {
@@ -18,6 +18,7 @@ pub struct WeightScale<StrainGauge> {
     tare_offset: f32,
     bits_to_discard: usize,
     calibration_gradient: f32,
+    is_stabilized: bool,
 }
 
 impl<StrainGauge, StrainGaugeE> WeightScale<StrainGauge>
@@ -32,6 +33,7 @@ where
             tare_offset: 0.0,
             bits_to_discard: BITS_TO_DISCARD_BEFORE_STABILISATION,
             calibration_gradient: 0.0,
+            is_stabilized: false,
         })
     }
 
@@ -47,8 +49,6 @@ where
     }
 
     pub async fn tare(&mut self) -> Result<(), Error<StrainGaugeE>> {
-        self.stabilize_measurements().await?;
-
         let mut measurement_buffer = Vec::<f32, STABILISATION_MEASUREMENTS>::new();
 
         for _ in 0..STABILISATION_MEASUREMENTS {
@@ -63,8 +63,6 @@ where
     }
 
     pub async fn calibrate(&mut self, calibration_mass: f32) -> Result<(), Error<StrainGaugeE>> {
-        self.stabilize_measurements().await?;
-
         let mut measurement_buffer = Vec::<f32, STABILISATION_MEASUREMENTS>::new();
 
         for _ in 0..STABILISATION_MEASUREMENTS {
@@ -108,8 +106,12 @@ where
         self.bits_to_discard = max(new_bits_to_discard, self.bits_to_discard);
 
         trace!("Stabilize measurements calculated {} bits to discard", self.bits_to_discard);
-
+        self.is_stabilized = true;
         Ok(())
+    }
+
+    pub fn is_stabilized(&self) -> bool {
+        self.is_stabilized
     }
 
 }

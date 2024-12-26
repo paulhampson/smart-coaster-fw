@@ -168,11 +168,14 @@ async fn weighing_task(strain_gauge_resources: StrainGaugeResources, hmi_event_c
 
     hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Tare));
     while hmi_event_channel_receiver.next_message_pure().await != PushButtonPressed(true) {}
+    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Wait));
+    weight_scale.stabilize_measurements().await.unwrap();
     weight_scale.tare().await.unwrap();
     // TODO Handle tare failure
     let calibration_mass = 250;
     hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Calibration(calibration_mass)));
     while hmi_event_channel_receiver.next_message_pure().await != PushButtonPressed(true) {}
+    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Wait));
     weight_scale.calibrate(calibration_mass as f32).await.unwrap();
     // TODO Handle calibration failure
     hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::CalibrationDone));
