@@ -1,6 +1,6 @@
 use crate::weight::interface::AsyncStrainGaugeInterface;
 use core::cmp::max;
-use defmt::debug;
+use defmt::trace;
 use heapless::Vec;
 use micromath::statistics::{Mean, StdDev};
 use micromath::F32Ext;
@@ -47,7 +47,6 @@ where
     }
 
     pub async fn tare(&mut self) -> Result<(), Error<StrainGaugeE>> {
-
         self.stabilize_measurements().await?;
 
         let mut measurement_buffer = Vec::<f32, STABILISATION_MEASUREMENTS>::new();
@@ -58,7 +57,7 @@ where
         }
 
         self.tare_offset = measurement_buffer.into_iter().mean();
-        debug!("Tare offset = {} ", self.tare_offset);
+        trace!("Tare offset = {} ", self.tare_offset);
 
         Ok(())
     }
@@ -73,18 +72,18 @@ where
             measurement_buffer.push(reading).expect("Too many readings taken by calibration function");
         }
 
-        let tared_mean_measurement = measurement_buffer.into_iter().mean() - self.tare_offset as f32;
+        let tared_mean_measurement = measurement_buffer.into_iter().mean() - self.tare_offset;
         let grams_per_count = calibration_mass / tared_mean_measurement;
         self.calibration_gradient = grams_per_count;
-        debug!("Calibration mass per count = {}", grams_per_count);
+        trace!("Calibration mass per count = {}", grams_per_count);
         Ok(())
     }
 
     pub async fn get_instantaneous_weight_grams(&mut self) -> Result<f32, Error<StrainGaugeE>> {
         let reading = self.get_filtered_raw_reading().await?;
-        debug!("Reading = {}", reading);
+        trace!("Reading = {}", reading);
         let tared_reading = reading - self.tare_offset as f32;
-        debug!("Tared reading = {}", tared_reading);
+        trace!("Tared reading = {}", tared_reading);
         Ok(tared_reading * self.calibration_gradient)
     }
 
@@ -108,7 +107,7 @@ where
         let new_bits_to_discard = self.strain_gauge.get_adc_bit_count() - (full_scale_range / standard_deviation ).log2().ceil() as usize;
         self.bits_to_discard = max(new_bits_to_discard, self.bits_to_discard);
 
-        debug!("Stabilize measurements calculated {} bits to discard", self.bits_to_discard);
+        trace!("Stabilize measurements calculated {} bits to discard", self.bits_to_discard);
 
         Ok(())
     }
