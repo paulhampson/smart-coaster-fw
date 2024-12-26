@@ -11,9 +11,9 @@ pub async fn hmi_input_handler(hmi_event_channel: HmiEventChannelSender<'_>, mut
         let hmi_io_event = select(rotary_encoder.state_change(), debounced_btn.wait_for_change_to(next_btn_level)).await;
 
         match hmi_io_event {
-            Either::First(encoder_moved) => hmi_event_channel.publish(HmiEvents::EncoderUpdate(encoder_moved)).await,
+            Either::First(encoder_moved) => hmi_event_channel.publish_immediate(HmiEvents::EncoderUpdate(encoder_moved)),
             Either::Second(_) => {
-                hmi_event_channel.publish(HmiEvents::PushButtonPressed(next_btn_level == Level::High)).await;
+                hmi_event_channel.publish_immediate(HmiEvents::PushButtonPressed(next_btn_level == Level::High));
                 match next_btn_level {
                     Level::High => {next_btn_level = Level::Low},
                     Level::Low => {next_btn_level = Level::High}
