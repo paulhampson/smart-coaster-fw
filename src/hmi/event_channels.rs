@@ -1,11 +1,11 @@
-use crate::hmi::display::DisplayState;
 use crate::hmi::rotary_encoder::Direction;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
+use crate::application::application_state::ProductState;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum HmiEvents {
-    ChangeDisplayState(DisplayState),
+    ChangeProductState(ProductState),
     EncoderUpdate(Direction),
     PushButtonPressed(bool),
     WeightUpdate(f32),

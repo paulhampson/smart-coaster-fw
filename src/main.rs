@@ -4,6 +4,7 @@
 mod led;
 mod hmi;
 mod weight;
+mod application;
 
 use embassy_executor::{Executor, Spawner};
 use embassy_time::{Duration, Timer};
@@ -26,11 +27,11 @@ use embassy_rp::{bind_interrupts, peripherals, pio};
 use embassy_sync::pubsub::PubSubChannel;
 use hmi::debouncer::Debouncer;
 use hmi::display::display_update_handler;
-use led::led_control::LedControl;
 use sh1106::{prelude::*, Builder};
 
-use crate::hmi::display::DisplayState;
+use crate::application::application_state::ProductState;
 use crate::hmi::event_channels::HmiEvents::PushButtonPressed;
+use crate::led::led_control::led_update_handler;
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
@@ -108,7 +109,7 @@ fn main() -> ! {
 fn core0_main(spawner: Spawner, resources: Core0Resources)
 {
     spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_EVENT_CHANNEL.publisher().unwrap())).unwrap();
-    spawner.spawn(led_task(resources.led_control)).unwrap();
+    spawner.spawn(led_task(resources.led_control, HMI_EVENT_CHANNEL.subscriber().unwrap())).unwrap();
     spawner.spawn(weighing_task(resources.strain_gauge_io, HMI_EVENT_CHANNEL.publisher().unwrap(), HMI_EVENT_CHANNEL.subscriber().unwrap())).unwrap()
 }
 
@@ -148,14 +149,13 @@ async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEv
 
 
 #[embassy_executor::task]
-async fn led_task(led_pio_resources: LedControlResources)
+async fn led_task(led_pio_resources: LedControlResources, hmi_event_channel_receiver: HmiEventChannelReceiver<'static>)
 {
     let Pio { mut common, sm0, .. } = Pio::new(led_pio_resources.pio, PioIrqs);
     let program = PioWs2812Program::new(&mut common);
     let pio_ws2812: PioWs2812<'_, PIO0, 0, LED_COUNT> = PioWs2812::new(&mut common, sm0, led_pio_resources.dma_channel, led_pio_resources.data_pin, &program);
 
-    let mut led_control = LedControl::new(pio_ws2812);
-    led_control.led_control_update().await;
+    led_update_handler(pio_ws2812, hmi_event_channel_receiver).await;
 }
 
 #[embassy_executor::task]
@@ -166,21 +166,21 @@ async fn weighing_task(strain_gauge_resources: StrainGaugeResources, hmi_event_c
     let strain_gauge = Hx711Async::new(clk_pin_out, data_pin, Hx711Gain::Gain128);
     let mut weight_scale = WeightScale::new(strain_gauge).await.unwrap();
 
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Tare));
+    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Tare));
     while hmi_event_channel_receiver.next_message_pure().await != PushButtonPressed(true) {}
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Wait));
+    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Wait));
     weight_scale.stabilize_measurements().await.unwrap();
     weight_scale.tare().await.unwrap();
     // TODO Handle tare failure
     let calibration_mass = 250;
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Calibration(calibration_mass)));
+    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Calibration(calibration_mass)));
     while hmi_event_channel_receiver.next_message_pure().await != PushButtonPressed(true) {}
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Wait));
+    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Wait));
     weight_scale.calibrate(calibration_mass as f32).await.unwrap();
     // TODO Handle calibration failure
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::CalibrationDone));
+    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::CalibrationDone));
     Timer::after(Duration::from_secs(2)).await;
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeDisplayState(DisplayState::Home));
+    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Home));
 
     loop {
         let new_weight = weight_scale.get_instantaneous_weight_grams().await.unwrap();

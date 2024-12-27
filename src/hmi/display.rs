@@ -1,5 +1,5 @@
 use core::fmt::Write;
-use defmt::{debug, error, Format};
+use defmt::{debug, error};
 use embassy_time::Instant;
 use embedded_graphics::Drawable;
 use embedded_graphics::geometry::Point;
@@ -12,26 +12,17 @@ use heapless::String;
 use sh1106::mode::GraphicsMode;
 use micromath::F32Ext;
 use crate::{HmiEventChannelReceiver};
+use crate::application::application_state::ProductState;
 use crate::hmi::event_channels::HmiEvents;
 use crate::hmi::rotary_encoder::Direction;
 
 const FRAME_TIMING_MS:u64 = 1000 / 30;
 
-#[derive(Debug, Format, Clone, Copy, PartialEq)]
-pub enum DisplayState {
-    Startup,
-    Home,
-    Tare,
-    Calibration(u32),
-    CalibrationDone,
-    Wait,
-}
-
 struct DisplayManager<'a, DI: sh1106::interface::DisplayInterface> {
     display: &'a mut GraphicsMode<DI>,
     text_style: MonoTextStyle<'a, BinaryColor>,
 
-    display_state: DisplayState,
+    display_state: ProductState,
 
     cw_count: u32,
     ccw_count: u32,
@@ -53,7 +44,7 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
                 .text_color(BinaryColor::On)
                 .build(),
 
-            display_state: DisplayState::Startup,
+            display_state: ProductState::Startup,
 
             cw_count: 0,
             ccw_count: 0,
@@ -63,7 +54,7 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
         }
     }
 
-    pub fn set_display_state(&mut self, display_state: DisplayState) {
+    pub fn set_display_state(&mut self, display_state: ProductState) {
         debug!("Display state: {:?}", display_state);
         self.display_state = display_state;
         self.update_now();
@@ -96,16 +87,16 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
     fn update_now(&mut self) {
         self.display.clear();
         match self.display_state {
-            DisplayState::Startup => self.draw_message_screen("Starting up..."),
-            DisplayState::Home => self.draw_home_screen(),
-            DisplayState::Tare => self.draw_message_screen("Remove items\nfrom device\nand press button"),
-            DisplayState::Calibration(calibration_mass_grams) => {
+            ProductState::Startup => self.draw_message_screen("Starting up..."),
+            ProductState::Home => self.draw_home_screen(),
+            ProductState::Tare => self.draw_message_screen("Remove items\nfrom device\nand press button"),
+            ProductState::Calibration(calibration_mass_grams) => {
                 let mut message_string = String::<40>::new();
                 write!(message_string, "Put {}g on device\nthen press button.", calibration_mass_grams)
                     .expect("String too long");
                 self.draw_message_screen(&message_string);}
-            DisplayState::CalibrationDone => {self.draw_message_screen("Calibration complete")}
-            DisplayState::Wait => {self.draw_wait_screen()}
+            ProductState::CalibrationDone => {self.draw_message_screen("Calibration complete")}
+            ProductState::Wait => {self.draw_wait_screen()}
         }
 
         let _ = self.display.flush().map_err(|_| error!("Display flush failed"));
@@ -184,7 +175,7 @@ pub async fn display_update_handler<DI: sh1106::interface::DisplayInterface>(mut
             HmiEvents::WeightUpdate(weight) => {
                 display_manager.input_weight(weight);
             }
-            HmiEvents::ChangeDisplayState(new_state) => {
+            HmiEvents::ChangeProductState(new_state) => {
                 display_manager.set_display_state(new_state);
             }
         }
