@@ -31,9 +31,9 @@ use sh1106::{prelude::*, Builder};
 
 use crate::application::application_state::ProductState;
 use crate::hmi::event_channels::HmiEvents::PushButtonPressed;
-use crate::led::led_control::led_update_handler;
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
+use crate::application::led_manager::led_manager;
 
 static HMI_EVENT_CHANNEL: HmiEventChannel = PubSubChannel::new(); // Channel::new();
 
@@ -155,7 +155,7 @@ async fn led_task(led_pio_resources: LedControlResources, hmi_event_channel_rece
     let program = PioWs2812Program::new(&mut common);
     let pio_ws2812: PioWs2812<'_, PIO0, 0, LED_COUNT> = PioWs2812::new(&mut common, sm0, led_pio_resources.dma_channel, led_pio_resources.data_pin, &program);
 
-    led_update_handler(pio_ws2812, hmi_event_channel_receiver).await;
+    led_manager(pio_ws2812, hmi_event_channel_receiver).await;
 }
 
 #[embassy_executor::task]
