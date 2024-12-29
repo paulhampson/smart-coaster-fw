@@ -24,7 +24,7 @@ where
                     HmiEvents::ChangeProductState(new_state) => {
                         match new_state {
                             ProductState::Startup => { led_control.set_mode(LedArrayMode::Off); }
-                            ProductState::Home => led_control.set_mode(LedArrayMode::RainbowWheel { speed: 2.0, repetitions: 0.5 }),
+                            ProductState::TestScreen => led_control.set_mode(LedArrayMode::RainbowWheel { speed: 2.0, repetitions: 0.5 }),
                             ProductState::Tare => led_control.set_mode(LedArrayMode::StaticColour { colour: RGB8::new(255, 0, 0) }),
                             ProductState::Calibration(_) => led_control.set_mode(LedArrayMode::Pulse {
                                 colour: RGB8::new(177, 3, 252),
