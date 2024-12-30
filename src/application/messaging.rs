@@ -18,8 +18,8 @@ pub enum ApplicationData {
 }
 
 const CHANNEL_DEPTH: usize = 10;
-const CHANNEL_SUBS: usize = 4;
-const CHANNEL_PUBS: usize = 2;
+const CHANNEL_SUBS: usize = 3;
+const CHANNEL_PUBS: usize = 2; // One for the actual application manager and one for WeighingSystemOverChannel
 
 pub type ApplicationChannel = PubSubChannel<CriticalSectionRawMutex, ApplicationMessage, CHANNEL_DEPTH, CHANNEL_SUBS, CHANNEL_PUBS>;
 pub type ApplicationChannelSubscriber<'a> = Subscriber<'a, CriticalSectionRawMutex, ApplicationMessage, CHANNEL_DEPTH, CHANNEL_SUBS, CHANNEL_PUBS>;

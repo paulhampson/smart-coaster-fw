@@ -16,7 +16,7 @@ use crate::hmi::messaging::{HmiChannel, HmiChannelPublisher, HmiChannelSubscribe
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::{info, warn};
+use defmt::info;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -26,13 +26,13 @@ use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use embassy_rp::{bind_interrupts, peripherals, pio};
 use embassy_sync::pubsub::PubSubChannel;
 use hmi::debouncer::Debouncer;
-use hmi::display::display_update_handler;
 use sh1106::{prelude::*, Builder};
 
 use crate::application::application_manager::ApplicationManager;
-use crate::application::led_manager::led_manager;
+use crate::application::led_manager::LedManager;
 use crate::application::messaging::{ApplicationChannel, ApplicationChannelPublisher, ApplicationChannelSubscriber};
 use crate::application::weighing_manager::WeighingManager;
+use crate::hmi::display::DisplayManager;
 use crate::led::led_control::LedController;
 use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightChannelPublisher};
 use crate::weight::weight::WeightScale;
@@ -131,7 +131,7 @@ async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiChan
 {
     let rotary_dt = hmi_input_pins.rotary_dt_pin;
     let rotary_clk = hmi_input_pins.rotary_clk_pin;
-    let debounced_btn = Debouncer::new(Input::new(hmi_input_pins.push_btn_pin, Pull::Up), Duration::from_millis(20));
+    let debounced_btn = Debouncer::new(Input::new(hmi_input_pins.push_btn_pin, Pull::Up), Duration::from_millis(100));
 
     let mut rotary_encoder = DebouncedRotaryEncoder::new(
         Input::new(rotary_dt, Pull::Up),
@@ -151,8 +151,8 @@ async fn display_task(display_i2c_pins: DisplayI2cPins, app_subscriber: Applicat
                                      I2cIrqs, Config::default());
 
     let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
-
-    display_update_handler(app_subscriber, &mut display).await;
+    let mut display_manager = DisplayManager::new(&mut display, app_subscriber);
+    display_manager.run().await;
 }
 
 
@@ -164,7 +164,8 @@ async fn led_task(led_pio_resources: LedControlResources, application_subscriber
     let pio_ws2812: PioWs2812<'_, PIO0, 0, LED_COUNT> = PioWs2812::new(&mut common, sm0, led_pio_resources.dma_channel, led_pio_resources.data_pin, &program);
     let led_control = LedController::new(pio_ws2812);
 
-    led_manager(led_control, application_subscriber).await;
+    let mut led_manager = LedManager::new(led_control, application_subscriber);
+    led_manager.run().await;
 }
 
 #[embassy_executor::task]

@@ -9,8 +9,8 @@ pub enum HmiMessage {
 }
 
 const CHANNEL_DEPTH: usize = 10;
-const CHANNEL_SUBS: usize = 4;
-const CHANNEL_PUBS: usize = 2;
+const CHANNEL_SUBS: usize = 1;
+const CHANNEL_PUBS: usize = 1;
 
 pub type HmiChannel = PubSubChannel<CriticalSectionRawMutex, HmiMessage, CHANNEL_DEPTH, CHANNEL_SUBS, CHANNEL_PUBS>;
 pub type HmiChannelSubscriber<'a> = Subscriber<'a, CriticalSectionRawMutex, HmiMessage, CHANNEL_DEPTH, CHANNEL_SUBS, CHANNEL_PUBS>;
