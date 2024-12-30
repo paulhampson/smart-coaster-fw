@@ -53,7 +53,9 @@ where
             let hmi_or_weight_message = select(self.hmi_subscriber.next_message_pure(), self.weighing_system.get_reading()).await;
 
             match hmi_or_weight_message {
-                Either::First(_) => {}
+                Either::First(hmi_message) => {
+                    self.app_publisher.publish(ApplicationMessage::HmiInput(hmi_message)).await;
+                }
                 Either::Second(weight_reading) => {
                     match weight_reading {
                         Ok(w) => { self.app_publisher.publish(ApplicationMessage::ApplicationDataUpdate(ApplicationData::Weight(w))).await; } // just send on weight for now so it updates on screen
