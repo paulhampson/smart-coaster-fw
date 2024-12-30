@@ -1,7 +1,7 @@
 use defmt::Format;
 
 #[derive(Debug, Format, Clone, Copy, PartialEq)]
-pub enum ProductState {
+pub enum ApplicationState {
     Startup,
     TestScreen,
     Tare,

@@ -1118,35 +1118,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rp2040-embassy"
-version = "0.1.0"
-dependencies = [
- "assign-resources",
- "cortex-m",
- "cortex-m-rt",
- "defmt",
- "defmt-rtt",
- "embassy-executor",
- "embassy-futures",
- "embassy-rp",
- "embassy-sync",
- "embassy-time",
- "embedded-graphics",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "embedded-io",
- "embedded-io-async",
- "embedded-storage",
- "heapless",
- "micromath",
- "panic-probe",
- "portable-atomic",
- "sh1106",
- "smart-leds",
- "static_cell",
-]
-
-[[package]]
 name = "rustc_version"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1226,6 +1197,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bc64ee02bbbf469603016df746c0ed224f263280b6ebb49b7ebadbff375c572"
 dependencies = [
  "rgb",
+]
+
+[[package]]
+name = "smartcoaster"
+version = "0.1.0"
+dependencies = [
+ "assign-resources",
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt",
+ "defmt-rtt",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-rp",
+ "embassy-sync",
+ "embassy-time",
+ "embedded-graphics",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "embedded-io",
+ "embedded-io-async",
+ "embedded-storage",
+ "heapless",
+ "micromath",
+ "panic-probe",
+ "portable-atomic",
+ "sh1106",
+ "smart-leds",
+ "static_cell",
 ]
 
 [[package]]

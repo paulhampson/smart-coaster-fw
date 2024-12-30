@@ -1,4 +1,3 @@
-use crate::application::application_state::ProductState;
 use embassy_rp::pio::Instance;
 use embassy_rp::pio_programs::ws2812::PioWs2812;
 use micromath::F32Ext;
@@ -31,9 +30,15 @@ fn single_colour_wheel(colour:RGB8, wheel_pos: u8) -> RGB8 {
      (intensity * colour.b as u32 / 255) as u8).into()
 }
 
+pub trait LedControl {
+    fn set_mode(&mut self, mode: LedArrayMode);
+    fn set_speed_factor(&mut self, speed: f32);
+    fn set_repetition_factor(&mut self, repetition_factor: f32);
+    async fn led_update(&mut self);
+}
 
 
-pub struct LedControl<'a, const LED_COUNT: usize, P: Instance, const S: usize> {
+pub struct LedController<'a, const LED_COUNT: usize, P: Instance, const S: usize> {
     ws2812pio: PioWs2812<'a, P, S, LED_COUNT>,
     led_count: usize,
     led_state: [RGB8; LED_COUNT],
@@ -44,26 +49,11 @@ pub struct LedControl<'a, const LED_COUNT: usize, P: Instance, const S: usize> {
     base_colour: RGB8,
 }
 
-impl<'a, const LED_COUNT: usize, P, const S: usize> LedControl<'a, LED_COUNT, P, S>
+impl<'a, const LED_COUNT: usize, P, const S: usize> LedControl for LedController<'a, LED_COUNT, P, S>
 where
     P: Instance,
 {
-    const LED_SINGLE_ROTATION_STEPS: f32 = 360.0;
-
-    pub fn new(ws2812pio: PioWs2812<'a, P, S, LED_COUNT>) -> Self {
-        Self {
-            ws2812pio,
-            led_count: LED_COUNT,
-            led_state: [RGB8::default(); LED_COUNT],
-            array_mode: LedArrayMode::Off,
-            animation_position: 0.0,
-            speed_factor: 1.0,
-            repetition_factor: 1.0,
-            base_colour: RGB8::new(0, 0, 0),
-        }
-    }
-
-    pub fn set_mode(&mut self, mode: LedArrayMode) {
+    fn set_mode(&mut self, mode: LedArrayMode) {
         self.array_mode = mode;
         match self.array_mode {
             LedArrayMode::RainbowWheel { speed, repetitions} => { self.set_speed_factor(speed); self.set_repetition_factor(repetitions); },
@@ -74,11 +64,11 @@ where
         }
     }
 
-    pub fn set_speed_factor(&mut self, speed: f32) { self.speed_factor = speed; }
+    fn set_speed_factor(&mut self, speed: f32) { self.speed_factor = speed; }
 
-    pub fn set_repetition_factor(&mut self, repetition_factor: f32) { self.repetition_factor = repetition_factor; }
+    fn set_repetition_factor(&mut self, repetition_factor: f32) { self.repetition_factor = repetition_factor; }
 
-    pub async fn led_update(&mut self) {
+    async fn led_update(&mut self) {
         match self.array_mode {
             LedArrayMode::Off => {self.off()}
             LedArrayMode::RainbowWheel{ speed:_, repetitions:_ }  => {self.rainbow_wheel()}
@@ -97,8 +87,29 @@ where
             0.0..360.0 => self.animation_position + self.speed_factor,
             _ => 0.0
         };
-
     }
+}
+
+impl<'a, const LED_COUNT: usize, P, const S: usize> LedController<'a, LED_COUNT, P, S>
+where
+    P: Instance,
+{
+    const LED_SINGLE_ROTATION_STEPS: f32 = 360.0;
+
+    pub fn new(ws2812pio: PioWs2812<'a, P, S, LED_COUNT>) -> Self {
+        Self {
+            ws2812pio,
+            led_count: LED_COUNT,
+            led_state: [RGB8::default(); LED_COUNT],
+            array_mode: LedArrayMode::Off,
+            animation_position: 0.0,
+            speed_factor: 1.0,
+            repetition_factor: 1.0,
+            base_colour: RGB8::new(0, 0, 0),
+        }
+    }
+
+
 
     fn animation_position_to_u8(&self) -> u8 {
         (self.animation_position * u8::MAX as f32 / Self::LED_SINGLE_ROTATION_STEPS) as u8

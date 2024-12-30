@@ -1,6 +1,6 @@
 pub(crate) mod weight;
 pub(crate) mod interface;
-pub(crate) mod event_channels;
+pub(crate) mod messaging;
 
 
 pub trait WeighingSystem {

@@ -11,8 +11,8 @@ use embassy_time::Duration;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
-use crate::hmi::event_channels::{HmiEventChannel, HmiEventChannelReceiver, HmiEventChannelSender};
 use crate::hmi::inputs::hmi_input_handler;
+use crate::hmi::messaging::{HmiChannel, HmiChannelPublisher, HmiChannelSubscriber};
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
@@ -31,13 +31,16 @@ use sh1106::{prelude::*, Builder};
 
 use crate::application::application_manager::ApplicationManager;
 use crate::application::led_manager::led_manager;
+use crate::application::messaging::{ApplicationChannel, ApplicationChannelPublisher, ApplicationChannelSubscriber};
 use crate::application::weighing_manager::WeighingManager;
-use crate::weight::event_channels::{WeighingSystemOverChannel, WeightEventChannel, WeightEventChannelReceiver, WeightEventChannelSender};
+use crate::led::led_control::LedController;
+use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightChannelPublisher};
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
-static HMI_EVENT_CHANNEL: HmiEventChannel = PubSubChannel::new();
-static WEIGHT_EVENT_CHANNEL: WeightEventChannel = PubSubChannel::new();
+static HMI_CHANNEL: HmiChannel = PubSubChannel::new();
+static WEIGHT_CHANNEL: WeightChannel = PubSubChannel::new();
+static APP_CHANNEL: ApplicationChannel = PubSubChannel::new();
 
 const LED_COUNT: usize = 8;
 
@@ -110,21 +113,21 @@ fn main() -> ! {
 
 fn core0_main(spawner: Spawner, resources: Core0Resources)
 {
-    spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_EVENT_CHANNEL.publisher().unwrap())).unwrap();
-    spawner.spawn(led_task(resources.led_control, HMI_EVENT_CHANNEL.subscriber().unwrap())).unwrap();
-    spawner.spawn(weighing_task(resources.strain_gauge_io, WEIGHT_EVENT_CHANNEL.subscriber().unwrap(), WEIGHT_EVENT_CHANNEL.publisher().unwrap() )).unwrap()
+    spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_CHANNEL.publisher().unwrap())).unwrap();
+    spawner.spawn(led_task(resources.led_control, APP_CHANNEL.subscriber().unwrap())).unwrap();
+    spawner.spawn(weighing_task(resources.strain_gauge_io, APP_CHANNEL.subscriber().unwrap(), WEIGHT_CHANNEL.publisher().unwrap() )).unwrap()
 }
 
 fn core1_main(spawner: Spawner, resources: Core1Resources)
 {
-    spawner.spawn(display_task(resources.display_i2c, HMI_EVENT_CHANNEL.subscriber().unwrap())).unwrap();
+    spawner.spawn(display_task(resources.display_i2c, APP_CHANNEL.subscriber().unwrap())).unwrap();
 
-    let ws = WeighingSystemOverChannel::new(WEIGHT_EVENT_CHANNEL.subscriber().unwrap(), WEIGHT_EVENT_CHANNEL.publisher().unwrap());
-    spawner.spawn(application_task(HMI_EVENT_CHANNEL.publisher().unwrap(), HMI_EVENT_CHANNEL.subscriber().unwrap(), ws)).unwrap();
+    let ws = WeighingSystemOverChannel::new(WEIGHT_CHANNEL.subscriber().unwrap(), APP_CHANNEL.publisher().unwrap());
+    spawner.spawn(application_task(APP_CHANNEL.publisher().unwrap(), HMI_CHANNEL.subscriber().unwrap(), ws)).unwrap();
 }
 
 #[embassy_executor::task]
-async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiEventChannelSender<'static>)
+async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiChannelPublisher<'static>)
 {
     let rotary_dt = hmi_input_pins.rotary_dt_pin;
     let rotary_clk = hmi_input_pins.rotary_clk_pin;
@@ -141,7 +144,7 @@ async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiEven
 }
 
 #[embassy_executor::task]
-async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEventChannelReceiver<'static>)
+async fn display_task(display_i2c_pins: DisplayI2cPins, app_subscriber: ApplicationChannelSubscriber<'static>)
 {
     let i2c = i2c::I2c::new_async(display_i2c_pins.i2c_peripheral,
                                      display_i2c_pins.scl_pin, display_i2c_pins.sda_pin,
@@ -149,37 +152,38 @@ async fn display_task(display_i2c_pins: DisplayI2cPins, hmi_event_channel: HmiEv
 
     let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
 
-    display_update_handler(hmi_event_channel, &mut display).await;
+    display_update_handler(app_subscriber, &mut display).await;
 }
 
 
 #[embassy_executor::task]
-async fn led_task(led_pio_resources: LedControlResources, hmi_event_channel_receiver: HmiEventChannelReceiver<'static>)
+async fn led_task(led_pio_resources: LedControlResources, application_subscriber: ApplicationChannelSubscriber<'static>)
 {
     let Pio { mut common, sm0, .. } = Pio::new(led_pio_resources.pio, PioIrqs);
     let program = PioWs2812Program::new(&mut common);
     let pio_ws2812: PioWs2812<'_, PIO0, 0, LED_COUNT> = PioWs2812::new(&mut common, sm0, led_pio_resources.dma_channel, led_pio_resources.data_pin, &program);
+    let led_control = LedController::new(pio_ws2812);
 
-    led_manager(pio_ws2812, hmi_event_channel_receiver).await;
+    led_manager(led_control, application_subscriber).await;
 }
 
 #[embassy_executor::task]
-async fn weighing_task(strain_gauge_resources: StrainGaugeResources, weight_channel_receiver: WeightEventChannelReceiver<'static>, weight_event_sender: WeightEventChannelSender<'static>)
+async fn weighing_task(strain_gauge_resources: StrainGaugeResources, app_subscriber: ApplicationChannelSubscriber<'static>, weight_event_sender: WeightChannelPublisher<'static>)
 {
     let clk_pin_out = Output::new(strain_gauge_resources.clk_pin, Level::Low);
     let data_pin = Input::new(strain_gauge_resources.data_pin, Pull::Up);
     let strain_gauge = Hx711Async::new(clk_pin_out, data_pin, Hx711Gain::Gain128);
     let weight_scale = WeightScale::new(strain_gauge).await.unwrap();
 
-    let weighing_manager = WeighingManager::new(weight_channel_receiver, weight_event_sender, weight_scale);
+    let weighing_manager = WeighingManager::new(app_subscriber, weight_event_sender, weight_scale);
     weighing_manager.run().await;
 }
 
 #[embassy_executor::task]
-async fn application_task(hmi_event_channel_sender: HmiEventChannelSender<'static>, hmi_event_channel_receiver: HmiEventChannelReceiver<'static>,
+async fn application_task(app_channel_sender: ApplicationChannelPublisher<'static>, hmi_channel_receiver: HmiChannelSubscriber<'static>,
                           weight_interface: WeighingSystemOverChannel)
 {
 
-    let mut application_manager = ApplicationManager::new(hmi_event_channel_receiver, hmi_event_channel_sender, weight_interface);
+    let mut application_manager = ApplicationManager::new(hmi_channel_receiver, app_channel_sender, weight_interface);
     application_manager.run().await;
 }
