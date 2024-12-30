@@ -7,11 +7,11 @@ mod weight;
 mod application;
 
 use embassy_executor::{Executor, Spawner};
-use embassy_time::{Duration, Timer};
+use embassy_time::Duration;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
-use crate::hmi::event_channels::{HmiEventChannel, HmiEventChannelReceiver, HmiEventChannelSender, HmiEvents};
+use crate::hmi::event_channels::{HmiEventChannel, HmiEventChannelReceiver, HmiEventChannelSender};
 use crate::hmi::inputs::hmi_input_handler;
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
@@ -29,13 +29,15 @@ use hmi::debouncer::Debouncer;
 use hmi::display::display_update_handler;
 use sh1106::{prelude::*, Builder};
 
-use crate::application::application_state::ProductState;
-use crate::hmi::event_channels::HmiEvents::PushButtonPressed;
+use crate::application::application_manager::ApplicationManager;
+use crate::application::led_manager::led_manager;
+use crate::application::weighing_manager::WeighingManager;
+use crate::weight::event_channels::{WeighingSystemOverChannel, WeightEventChannel, WeightEventChannelReceiver, WeightEventChannelSender};
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
-use crate::application::led_manager::led_manager;
 
-static HMI_EVENT_CHANNEL: HmiEventChannel = PubSubChannel::new(); // Channel::new();
+static HMI_EVENT_CHANNEL: HmiEventChannel = PubSubChannel::new();
+static WEIGHT_EVENT_CHANNEL: WeightEventChannel = PubSubChannel::new();
 
 const LED_COUNT: usize = 8;
 
@@ -110,12 +112,15 @@ fn core0_main(spawner: Spawner, resources: Core0Resources)
 {
     spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_EVENT_CHANNEL.publisher().unwrap())).unwrap();
     spawner.spawn(led_task(resources.led_control, HMI_EVENT_CHANNEL.subscriber().unwrap())).unwrap();
-    spawner.spawn(weighing_task(resources.strain_gauge_io, HMI_EVENT_CHANNEL.publisher().unwrap(), HMI_EVENT_CHANNEL.subscriber().unwrap())).unwrap()
+    spawner.spawn(weighing_task(resources.strain_gauge_io, WEIGHT_EVENT_CHANNEL.subscriber().unwrap(), WEIGHT_EVENT_CHANNEL.publisher().unwrap() )).unwrap()
 }
 
 fn core1_main(spawner: Spawner, resources: Core1Resources)
 {
     spawner.spawn(display_task(resources.display_i2c, HMI_EVENT_CHANNEL.subscriber().unwrap())).unwrap();
+
+    let ws = WeighingSystemOverChannel::new(WEIGHT_EVENT_CHANNEL.subscriber().unwrap(), WEIGHT_EVENT_CHANNEL.publisher().unwrap());
+    spawner.spawn(application_task(HMI_EVENT_CHANNEL.publisher().unwrap(), HMI_EVENT_CHANNEL.subscriber().unwrap(), ws)).unwrap();
 }
 
 #[embassy_executor::task]
@@ -159,32 +164,22 @@ async fn led_task(led_pio_resources: LedControlResources, hmi_event_channel_rece
 }
 
 #[embassy_executor::task]
-async fn weighing_task(strain_gauge_resources: StrainGaugeResources, hmi_event_channel_sender: HmiEventChannelSender<'static>, mut hmi_event_channel_receiver: HmiEventChannelReceiver<'static>)
+async fn weighing_task(strain_gauge_resources: StrainGaugeResources, weight_channel_receiver: WeightEventChannelReceiver<'static>, weight_event_sender: WeightEventChannelSender<'static>)
 {
     let clk_pin_out = Output::new(strain_gauge_resources.clk_pin, Level::Low);
     let data_pin = Input::new(strain_gauge_resources.data_pin, Pull::Up);
     let strain_gauge = Hx711Async::new(clk_pin_out, data_pin, Hx711Gain::Gain128);
-    let mut weight_scale = WeightScale::new(strain_gauge).await.unwrap();
+    let weight_scale = WeightScale::new(strain_gauge).await.unwrap();
 
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Tare));
-    while hmi_event_channel_receiver.next_message_pure().await != PushButtonPressed(true) {}
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Wait));
-    weight_scale.stabilize_measurements().await.unwrap();
-    weight_scale.tare().await.unwrap();
-    // TODO Handle tare failure
-    let calibration_mass = 250;
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Calibration(calibration_mass)));
-    while hmi_event_channel_receiver.next_message_pure().await != PushButtonPressed(true) {}
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Wait));
-    weight_scale.calibrate(calibration_mass as f32).await.unwrap();
-    // TODO Handle calibration failure
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::CalibrationDone));
-    Timer::after(Duration::from_secs(2)).await;
-    hmi_event_channel_sender.publish_immediate(HmiEvents::ChangeProductState(ProductState::Home));
+    let weighing_manager = WeighingManager::new(weight_channel_receiver, weight_event_sender, weight_scale);
+    weighing_manager.run().await;
+}
 
-    loop {
-        let new_weight = weight_scale.get_instantaneous_weight_grams().await.unwrap();
-        hmi_event_channel_sender.publish_immediate(HmiEvents::WeightUpdate(new_weight));
-        Timer::after(Duration::from_millis(250)).await;
-    }
+#[embassy_executor::task]
+async fn application_task(hmi_event_channel_sender: HmiEventChannelSender<'static>, hmi_event_channel_receiver: HmiEventChannelReceiver<'static>,
+                          weight_interface: WeighingSystemOverChannel)
+{
+
+    let mut application_manager = ApplicationManager::new(hmi_event_channel_receiver, hmi_event_channel_sender, weight_interface);
+    application_manager.run().await;
 }

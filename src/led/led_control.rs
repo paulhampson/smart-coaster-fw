@@ -5,11 +5,6 @@ use micromath::F32Ext;
 use smart_leds::hsv::{hsv2rgb, Hsv};
 use smart_leds::{gamma, RGB8};
 
-pub enum LedSpeed {
-    Fast,
-    Slow,
-}
-
 pub enum LedArrayMode {
     Off,
     RainbowWheel{ speed: f32, repetitions: f32 },
@@ -42,7 +37,6 @@ pub struct LedControl<'a, const LED_COUNT: usize, P: Instance, const S: usize> {
     ws2812pio: PioWs2812<'a, P, S, LED_COUNT>,
     led_count: usize,
     led_state: [RGB8; LED_COUNT],
-    display_state: ProductState,
     array_mode: LedArrayMode,
     animation_position: f32,
     speed_factor: f32,
@@ -61,7 +55,6 @@ where
             ws2812pio,
             led_count: LED_COUNT,
             led_state: [RGB8::default(); LED_COUNT],
-            display_state: ProductState::Startup,
             array_mode: LedArrayMode::Off,
             animation_position: 0.0,
             speed_factor: 1.0,

@@ -36,6 +36,10 @@ where
                                 repetitions: 2.0,
                             }),
                             ProductState::Wait => {}
+                            ProductState::ErrorScreenWithMessage(_) => led_control.set_mode(LedArrayMode::Pulse {
+                                colour: RGB8::new(255, 0, 0),
+                                speed: 6.0,
+                            }),
                         }
                     }
                     _ => {}

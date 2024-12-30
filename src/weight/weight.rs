@@ -4,6 +4,7 @@ use defmt::trace;
 use heapless::Vec;
 use micromath::statistics::{Mean, StdDev};
 use micromath::F32Ext;
+use crate::weight::WeighingSystem;
 
 const BITS_TO_DISCARD_BEFORE_STABILISATION: usize = 0;
 const STABILISATION_MEASUREMENTS: usize = 20;
@@ -25,8 +26,7 @@ impl<StrainGauge, StrainGaugeE> WeightScale<StrainGauge>
 where
     StrainGauge: AsyncStrainGaugeInterface<Error = StrainGaugeE>,
 {
-
-    pub async fn new(mut strain_gauge: StrainGauge) -> Result<Self, Error<StrainGaugeE>>  {
+    pub async fn new(mut strain_gauge: StrainGauge) -> Result<Self, Error<StrainGaugeE>> {
         strain_gauge.initialize().await.map_err(Error::StrainGaugeReadingError)?;
         Ok(Self {
             strain_gauge,
@@ -48,45 +48,18 @@ where
         Ok((reading >> self.bits_to_discard) as f32)
     }
 
-    pub async fn tare(&mut self) -> Result<(), Error<StrainGaugeE>> {
-        let mut measurement_buffer = Vec::<f32, STABILISATION_MEASUREMENTS>::new();
-
-        for _ in 0..STABILISATION_MEASUREMENTS {
-            let reading = self.get_filtered_raw_reading().await?;
-            measurement_buffer.push(reading).expect("Too many readings taken by stabilization function");
-        }
-
-        self.tare_offset = measurement_buffer.into_iter().mean();
-        trace!("Tare offset = {} ", self.tare_offset);
-
-        Ok(())
+    pub fn is_stabilized(&self) -> bool {
+        self.is_stabilized
     }
-
-    pub async fn calibrate(&mut self, calibration_mass: f32) -> Result<(), Error<StrainGaugeE>> {
-        let mut measurement_buffer = Vec::<f32, STABILISATION_MEASUREMENTS>::new();
-
-        for _ in 0..STABILISATION_MEASUREMENTS {
-            let reading = self.get_filtered_raw_reading().await?;
-            measurement_buffer.push(reading).expect("Too many readings taken by calibration function");
-        }
-
-        let tared_mean_measurement = measurement_buffer.into_iter().mean() - self.tare_offset;
-        let grams_per_count = calibration_mass / tared_mean_measurement;
-        self.calibration_gradient = grams_per_count;
-        trace!("Calibration mass per count = {}", grams_per_count);
-        Ok(())
-    }
-
-    pub async fn get_instantaneous_weight_grams(&mut self) -> Result<f32, Error<StrainGaugeE>> {
-        let reading = self.get_filtered_raw_reading().await?;
-        trace!("Reading = {}", reading);
-        let tared_reading = reading - self.tare_offset as f32;
-        trace!("Tared reading = {}", tared_reading);
-        Ok(tared_reading * self.calibration_gradient)
-    }
+}
+impl<StrainGauge, StrainGaugeE> WeighingSystem for WeightScale<StrainGauge>
+where
+    StrainGauge: AsyncStrainGaugeInterface<Error = StrainGaugeE>,
+{
+    type Error = Error<StrainGaugeE>;
 
     /// Takes readings and analyses noise, sets internal parameters to eliminate noise.
-    pub async fn stabilize_measurements(&mut self) -> Result<(), Error<StrainGaugeE>> {
+    async fn stabilize_measurements(&mut self) -> Result<(), Error<StrainGaugeE>> {
         let mut measurement_buffer = Vec::<f32, STABILISATION_MEASUREMENTS>::new();
 
         for _ in 0..STABILISATION_MEASUREMENTS {
@@ -110,8 +83,44 @@ where
         Ok(())
     }
 
-    pub fn is_stabilized(&self) -> bool {
-        self.is_stabilized
+    async fn tare(&mut self) -> Result<(), Error<StrainGaugeE>> {
+        let mut measurement_buffer = Vec::<f32, STABILISATION_MEASUREMENTS>::new();
+
+        for _ in 0..STABILISATION_MEASUREMENTS {
+            let reading = self.get_filtered_raw_reading().await?;
+            measurement_buffer.push(reading).expect("Too many readings taken by stabilization function");
+        }
+
+        self.tare_offset = measurement_buffer.into_iter().mean();
+        trace!("Tare offset = {} ", self.tare_offset);
+
+        Ok(())
     }
 
+    async fn calibrate(&mut self, calibration_mass: f32) -> Result<(), Error<StrainGaugeE>> {
+        let mut measurement_buffer = Vec::<f32, STABILISATION_MEASUREMENTS>::new();
+
+        for _ in 0..STABILISATION_MEASUREMENTS {
+            let reading = self.get_filtered_raw_reading().await?;
+            measurement_buffer.push(reading).expect("Too many readings taken by calibration function");
+        }
+
+        let tared_mean_measurement = measurement_buffer.into_iter().mean() - self.tare_offset;
+        let grams_per_count = calibration_mass / tared_mean_measurement;
+        self.calibration_gradient = grams_per_count;
+        trace!("Calibration mass per count = {}", grams_per_count);
+        Ok(())
+    }
+
+    async fn get_instantaneous_weight_grams(&mut self) -> Result<f32, Error<StrainGaugeE>> {
+        let reading = self.get_filtered_raw_reading().await?;
+        trace!("Reading = {}", reading);
+        let tared_reading = reading - self.tare_offset as f32;
+        trace!("Tared reading = {}", tared_reading);
+        Ok(tared_reading * self.calibration_gradient)
+    }
+
+    async fn get_reading(&mut self) -> Result<f32, Self::Error> {
+        self.get_instantaneous_weight_grams().await
+    }
 }
