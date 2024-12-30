@@ -16,7 +16,7 @@ use crate::hmi::messaging::{HmiChannel, HmiChannelPublisher, HmiChannelSubscribe
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::warn;
+use defmt::{info, warn};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -96,7 +96,7 @@ fn main() -> ! {
     let core0_resources = Core0Resources { hmi_inputs: resources.hmi_inputs, led_control: resources.led_control, strain_gauge_io: resources.strain_gauge_io };
     let core1_resources = Core1Resources { display_i2c: resources.display_i2c };
 
-    warn!("Launching application across cores");
+    info!("Launching application across cores");
 
     spawn_core1(
         p.CORE1,

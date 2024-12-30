@@ -17,7 +17,7 @@ use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationDat
 use crate::hmi::messaging::HmiMessage;
 use crate::hmi::rotary_encoder::Direction;
 
-const FRAME_TIMING_MS:u64 = 1000 / 30;
+const FRAME_TIMING_MS:u32 = 1000 / 30;
 
 struct DisplayManager<'a, DI: sh1106::interface::DisplayInterface> {
     display: &'a mut GraphicsMode<DI>,
@@ -81,7 +81,7 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
     }
 
     pub fn update(&mut self) {
-        if self.last_update.elapsed().as_millis() < FRAME_TIMING_MS {
+        if self.last_update.elapsed().as_millis() < FRAME_TIMING_MS as u64 {
             return;
         }
         self.update_now();
