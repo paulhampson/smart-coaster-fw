@@ -14,7 +14,10 @@ pub enum ApplicationMessage {
 
 #[derive(Clone)]
 pub enum ApplicationData {
-    Weight(f32)
+    Weight(f32),
+    Consumption(f32),
+    ConsumptionRate(f32),
+    TotalConsumed(f32),
 }
 
 const CHANNEL_DEPTH: usize = 10;

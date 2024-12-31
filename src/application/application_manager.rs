@@ -5,7 +5,7 @@ use crate::hmi::messaging::HmiMessage::PushButtonPressed;
 use crate::weight::WeighingSystem;
 use defmt::{debug, trace};
 use embassy_futures::select::{select, Either};
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Instant, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
 
@@ -79,6 +79,17 @@ where
                 }
             }
         }
+    }
+
+    async fn send_application_data_update(&mut self, d: ApplicationData) {
+        self.app_publisher.publish(ApplicationMessage::ApplicationDataUpdate(d)).await;
+    }
+
+    async fn update_consumption_rate(&mut self, monitoring_start_time: Instant, total_consumption:f32) -> f32 {
+        let elapsed_time_in_hours = f32::max(monitoring_start_time.elapsed().as_secs() as f32 / 3600.0, 1.0);
+        let consumption_rate = total_consumption / elapsed_time_in_hours;
+        self.send_application_data_update(ApplicationData::ConsumptionRate(consumption_rate)).await;
+        consumption_rate
     }
 
     pub async fn run(&mut self) {
@@ -166,28 +177,46 @@ where
         let mut last_stable_weight = self.get_stabilised_weight().await;
         let mut vessel_removed_weight = last_stable_weight;
         let mut vessel_placed_weight = last_stable_weight;
+        let mut total_consumption = 0.0;
+        let monitoring_start_time = Instant::now();
+        let mut consumption_update_ticker = Ticker::every(Duration::from_secs(60));
 
         self.update_application_state(ApplicationState::WaitingForActivity).await;
 
         loop {
-            self.wait_for_weight_activity().await;
+            let activity_or_ticker = select(self.wait_for_weight_activity(), consumption_update_ticker.next()).await;
+            match activity_or_ticker {
+                Either::First(_) => {
+                    let new_stable_weight = self.get_stabilised_weight().await;
+                    let stable_delta = new_stable_weight - last_stable_weight;
 
-            let new_stable_weight = self.get_stabilised_weight().await;
-            let stable_delta = new_stable_weight - last_stable_weight;
+                    if stable_delta > MINIMUM_DELTA_FOR_STATE_CHANGE {
+                        self.update_application_state(ApplicationState::VesselPlaced).await;
+                        let consumption = vessel_placed_weight - new_stable_weight;
+                        if consumption > 0.0 {
+                            total_consumption += consumption;
+                        }
+                        let consumption_rate = self.update_consumption_rate(monitoring_start_time, total_consumption).await;
 
-            if stable_delta > MINIMUM_DELTA_FOR_STATE_CHANGE {
-                self.update_application_state(ApplicationState::VesselPlaced).await;
-                let consumption = vessel_placed_weight - new_stable_weight;
-                vessel_placed_weight = new_stable_weight;
-                trace!("New placed weight {}", vessel_placed_weight);
-                debug!("Consumption = {}", consumption);
-            } else if stable_delta < -MINIMUM_DELTA_FOR_STATE_CHANGE {
-                self.update_application_state(ApplicationState::VesselRemoved).await;
-                vessel_removed_weight = new_stable_weight;
-                trace!("New removed weight {}", vessel_removed_weight);
+                        vessel_placed_weight = new_stable_weight;
+                        trace!("New placed weight {}", vessel_placed_weight);
+                        debug!("Consumption = {} ml", consumption);
+                        debug!("Total consumption = {} ml", total_consumption);
+                        debug!("Consumption rate = {} ml/hr", consumption_rate.round());
+                        self.send_application_data_update(ApplicationData::Consumption(f32::max(0.0, consumption))).await;
+                        self.send_application_data_update(ApplicationData::TotalConsumed(f32::max(0.0, total_consumption))).await;
+                    } else if stable_delta < -MINIMUM_DELTA_FOR_STATE_CHANGE {
+                        self.update_application_state(ApplicationState::VesselRemoved).await;
+                        vessel_removed_weight = new_stable_weight;
+                        trace!("New removed weight {}", vessel_removed_weight);
+                    }
+                    last_stable_weight = new_stable_weight;
+                }
+                Either::Second(_) => {
+                    let consumption_rate = self.update_consumption_rate(monitoring_start_time, total_consumption).await;
+                    debug!("Consumption rate = {} ml/hr", consumption_rate.round());
+                }
             }
-            last_stable_weight = new_stable_weight;
-
         }
 
 

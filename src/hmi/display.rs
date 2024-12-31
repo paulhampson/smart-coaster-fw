@@ -1,7 +1,8 @@
 use core::fmt::Write;
 use defmt::{debug, error, trace, warn};
+use embassy_futures::select::{select, Either};
 use embassy_sync::pubsub::WaitResult;
-use embassy_time::Instant;
+use embassy_time::{Duration, Instant, Ticker};
 use embedded_graphics::Drawable;
 use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
@@ -31,6 +32,9 @@ pub struct DisplayManager<'a, DI: sh1106::interface::DisplayInterface> {
     btn_press_count: u32,
     last_weight: f32,
     last_update: Instant,
+    consumption: f32,
+    consumption_rate: f32,
+    total_consumed: f32
 }
 
 impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
@@ -57,6 +61,9 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
             btn_press_count: 0,
             last_weight: 0.0,
             last_update: Instant::MIN,
+            consumption: 0.0,
+            consumption_rate: 0.0,
+            total_consumed: 0.0
         }
     }
 
@@ -95,7 +102,7 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
         match self.display_state {
             ApplicationState::Startup => self.draw_message_screen("Starting up..."),
             ApplicationState::WaitingForActivity => self.draw_message_screen("Waiting for activity"),
-            ApplicationState::TestScreen => self.draw_home_screen(),
+            ApplicationState::TestScreen => self.draw_test_screen(),
             ApplicationState::Tare => self.draw_message_screen("Remove items from device and press button"),
             ApplicationState::Calibration(calibration_mass_grams) => {
                 let mut message_string = String::<40>::new();
@@ -105,8 +112,8 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
             ApplicationState::CalibrationDone => {self.draw_message_screen("Calibration complete")}
             ApplicationState::Wait => {self.draw_wait_screen()}
             ApplicationState::ErrorScreenWithMessage(s) => {self.draw_message_screen(s)}
-            ApplicationState::VesselPlaced => {self.draw_message_screen("Vessel placed")}
-            ApplicationState::VesselRemoved => {self.draw_message_screen("Vessel removed")}
+            ApplicationState::VesselPlaced => {self.draw_monitoring_screen()}
+            ApplicationState::VesselRemoved => {self.draw_monitoring_screen()}
         }
 
         let _ = self.display.flush().map_err(|_| error!("Display flush failed"));
@@ -182,9 +189,8 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
         trace!("Draw message screen done");
     }
 
-    fn draw_home_screen(&mut self) {
+    fn draw_test_screen(&mut self) {
         let mut count_string = String::<32>::new();
-        self.display.clear();
 
         count_string.clear();
         write!(&mut count_string, "CW Count = {}", self.cw_count).unwrap();
@@ -215,48 +221,84 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
         self.draw_message_screen("Please wait...");
     }
 
+    fn draw_monitoring_screen(&mut self) {
+        let mut string_buffer = String::<100>::new();
+        let centred_text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Middle)
+            .build();
+
+        let central_x_pos = self.display.get_dimensions().0 as i32 / 2;
+        let central_y_pos = self.display.get_dimensions().1 as i32 / 2;
+        let target_y_pos = central_y_pos - (2f32 * self.text_style.line_height() as f32).round() as i32;
+        let centre_point = Point::new(central_x_pos, target_y_pos);
+
+        match self.display_state {
+            ApplicationState::VesselPlaced => {
+                write!(string_buffer, "Vessel placed\n").unwrap();
+            }
+            ApplicationState::VesselRemoved => {
+                write!(string_buffer, "Vessel removed\n").unwrap();
+            }
+            _ => {}
+        };
+        write!(string_buffer, "Rate: {:.0} ml/hr\n", self.consumption_rate).unwrap();
+        write!(string_buffer, "Last drink: {:.0} ml\n", self.consumption).unwrap();
+        write!(string_buffer, "Total: {:.0} ml", self.total_consumed).unwrap();
+        Text::with_text_style(string_buffer.as_str(), centre_point, self.text_style, centred_text_style).draw(self.display).unwrap();
+    }
+
     pub async fn run(&mut self) {
         self.update_screen();
+        let mut update_ticker = Ticker::every(Duration::from_millis(200));
 
         loop {
-            let wait_result = self.app_channel_subscriber.next_message().await;
+            let wait_result = select(self.app_channel_subscriber.next_message(), update_ticker.next()).await;
             match wait_result {
-                WaitResult::Lagged(count) => { warn!{"Display lost {} messages from HMI channel", count} }
-                WaitResult::Message(message) => {
-                    match message {
-                        ApplicationMessage::HmiInput(hmi_message) => match hmi_message {
-                            HmiMessage::EncoderUpdate(direction) => {
-                                trace!("Encoder update");
-                                if direction == Direction::Clockwise {
-                                    self.input_up();
-                                }
-                                if direction == Direction::CounterClockwise {
-                                    self.input_down();
-                                }
-                            }
+                Either::First(w) => {
+                    match w {
+                        WaitResult::Lagged(count) => { warn! {"Display lost {} messages from HMI channel", count} }
+                        WaitResult::Message(message) => {
+                            match message {
+                                ApplicationMessage::HmiInput(hmi_message) => match hmi_message {
+                                    HmiMessage::EncoderUpdate(direction) => {
+                                        trace!("Encoder update");
+                                        if direction == Direction::Clockwise {
+                                            self.input_up();
+                                        }
+                                        if direction == Direction::CounterClockwise {
+                                            self.input_down();
+                                        }
+                                    }
 
-                            HmiMessage::PushButtonPressed(is_pressed) => {
-                                debug!("Button pressed {:?} ", is_pressed);
-                                if is_pressed {
-                                    self.input_press();
+                                    HmiMessage::PushButtonPressed(is_pressed) => {
+                                        debug!("Button pressed {:?} ", is_pressed);
+                                        if is_pressed {
+                                            self.input_press();
+                                        }
+                                    }
                                 }
+                                ApplicationMessage::ApplicationStateUpdate(new_state) => {
+                                    trace!("Set display state");
+                                    self.set_display_state(new_state);
+                                }
+                                ApplicationMessage::ApplicationDataUpdate(data_update) => {
+                                    trace!("App data update");
+                                    match data_update {
+                                        ApplicationData::Weight(w) => { self.input_weight(w); }
+                                        ApplicationData::ConsumptionRate(r) => { self.consumption_rate = r; }
+                                        ApplicationData::Consumption(r) => { self.consumption = r; }
+                                        ApplicationData::TotalConsumed(r) => { self.total_consumed = r; }
+                                    }
+                                }
+                                ApplicationMessage::WeighSystemRequest(..) => {}
                             }
                         }
-                        ApplicationMessage::ApplicationStateUpdate(new_state) => {
-                            trace!("Set display state");
-                            self.set_display_state(new_state);
-                        }
-                        ApplicationMessage::ApplicationDataUpdate(data_update) => {
-                            trace!("App data update");
-                            match data_update {
-                                ApplicationData::Weight(w) => { self.input_weight(w); }
-                            }
-                        }
-                        ApplicationMessage::WeighSystemRequest(..) => {}
                     }
-                    self.update_screen();
                 }
+                Either::Second(_) => {}
             }
+            self.update_screen();
         }
     }
 }
