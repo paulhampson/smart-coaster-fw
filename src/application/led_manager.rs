@@ -57,6 +57,8 @@ where
                                     repetitions: 3.0,
                                     speed: 0.8
                                 }),
+                                ApplicationState::VesselRemoved => {}
+                                ApplicationState::VesselPlaced => {}
                             }
                         }
                         _ => {}

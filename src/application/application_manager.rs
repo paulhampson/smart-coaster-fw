@@ -1,10 +1,13 @@
 use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{ApplicationChannelPublisher, ApplicationData, ApplicationMessage};
-use crate::hmi::messaging::HmiMessage::PushButtonPressed;
 use crate::hmi::messaging::HmiChannelSubscriber;
+use crate::hmi::messaging::HmiMessage::PushButtonPressed;
 use crate::weight::WeighingSystem;
+use defmt::{debug, trace};
 use embassy_futures::select::{select, Either};
 use embassy_time::{Duration, Instant, Timer};
+use heapless::HistoryBuffer;
+use micromath::F32Ext;
 
 pub struct ApplicationManager<WS> {
     hmi_subscriber: HmiChannelSubscriber<'static>,
@@ -17,10 +20,11 @@ where
     WS: WeighingSystem,
 {
     const LONG_LONG_PRESS_TIME: Duration = Duration::from_secs(2);
+    const STABILISED_WEIGHT_MAX_DELTA: f32 = 5.0;
 
-    pub fn new(hmi_rx: HmiChannelSubscriber<'static>, app_publisher: ApplicationChannelPublisher<'static>, weighing_system: WS) -> Self {
+    pub fn new(hmi_subscriber: HmiChannelSubscriber<'static>, app_publisher: ApplicationChannelPublisher<'static>, weighing_system: WS) -> Self {
         Self {
-            hmi_subscriber: hmi_rx,
+            hmi_subscriber,
             app_publisher,
             weighing_system
         }
@@ -45,6 +49,38 @@ where
         while self.hmi_subscriber.next_message_pure().await != PushButtonPressed(true) {}
     }
 
+    async fn get_weight_reading_managed_error(&mut self) -> f32 {
+        match self.weighing_system.get_reading().await {
+            Ok(w) => { w }
+            Err(_) => { self.manage_error("Scale reading failed").await }
+        }
+    }
+
+    async fn get_stabilised_weight(&mut self) -> f32 {
+        const BUFFER_SIZE:usize = 4;
+        let mut readings = HistoryBuffer::<_, BUFFER_SIZE>::new();
+        loop {
+            readings.write(self.get_weight_reading_managed_error().await);
+
+            if readings.len() == BUFFER_SIZE {
+                let min_reading: f32 = *readings
+                    .as_slice()
+                    .iter()
+                    .reduce(|a, b| if a < b { a } else { b })
+                    .unwrap();
+                let max_reading: f32 = *readings
+                    .as_slice()
+                    .iter()
+                    .reduce(|a, b| if a > b { a } else { b })
+                    .unwrap();
+                let reading_delta = max_reading - min_reading;
+                if reading_delta < Self::STABILISED_WEIGHT_MAX_DELTA {
+                    return readings.as_slice().into_iter().sum::<f32>() / readings.len() as f32;
+                }
+            }
+        }
+    }
+
     pub async fn run(&mut self) {
         match self.weighing_calibration_sequence().await {
             Ok(_) => {
@@ -56,11 +92,14 @@ where
 
         self.test_screen(ApplicationState::WaitingForActivity).await;
 
+        self.coaster_activity_monitoring().await;
+
         loop {
             Timer::after(Duration::from_secs(1)).await;
         }
     }
 
+    /// Run the weight scale calibration sequence
     async fn weighing_calibration_sequence(&mut self) -> Result<(), WS::Error> {
         self.update_application_state(ApplicationState::Tare).await;
         self.wait_for_button().await;
@@ -77,6 +116,8 @@ where
         Ok(())
     }
 
+    /// Manage the data and behaviour for the system test screen that shows button, encoder and
+    /// weight. Long press will exit the state.
     async fn test_screen(&mut self, exit_to: ApplicationState) {
         self.update_application_state(ApplicationState::TestScreen).await;
         let mut press_start = Instant::MIN;
@@ -103,5 +144,52 @@ where
             }
         }
         self.update_application_state(exit_to).await;
+    }
+
+    async fn wait_for_weight_activity(&mut self) -> f32 {
+        const MINIMUM_DELTA_FOR_ACTIVITY:f32 = 10.0;
+        let mut last_weight = self.get_weight_reading_managed_error().await;
+        loop {
+            let current_weight = self.get_weight_reading_managed_error().await;
+            let weight_delta = current_weight - last_weight;
+            last_weight = current_weight;
+            if weight_delta.abs() > MINIMUM_DELTA_FOR_ACTIVITY {
+                return weight_delta
+            }
+        }
+    }
+
+    /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
+    /// how much fluid has been added and consumed. Report the consumption rate.
+    async fn coaster_activity_monitoring(&mut self) {
+        const MINIMUM_DELTA_FOR_STATE_CHANGE:f32 = 10.0;
+        let mut last_stable_weight = self.get_stabilised_weight().await;
+        let mut vessel_removed_weight = last_stable_weight;
+        let mut vessel_placed_weight = last_stable_weight;
+
+        self.update_application_state(ApplicationState::WaitingForActivity).await;
+
+        loop {
+            self.wait_for_weight_activity().await;
+
+            let new_stable_weight = self.get_stabilised_weight().await;
+            let stable_delta = new_stable_weight - last_stable_weight;
+
+            if stable_delta > MINIMUM_DELTA_FOR_STATE_CHANGE {
+                self.update_application_state(ApplicationState::VesselPlaced).await;
+                let consumption = vessel_placed_weight - new_stable_weight;
+                vessel_placed_weight = new_stable_weight;
+                trace!("New placed weight {}", vessel_placed_weight);
+                debug!("Consumption = {}", consumption);
+            } else if stable_delta < -MINIMUM_DELTA_FOR_STATE_CHANGE {
+                self.update_application_state(ApplicationState::VesselRemoved).await;
+                vessel_removed_weight = new_stable_weight;
+                trace!("New removed weight {}", vessel_removed_weight);
+            }
+            last_stable_weight = new_stable_weight;
+
+        }
+
+
     }
 }

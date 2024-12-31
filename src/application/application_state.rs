@@ -10,4 +10,6 @@ pub enum ApplicationState {
     CalibrationDone,
     Wait,
     ErrorScreenWithMessage(&'static str),
+    VesselRemoved,
+    VesselPlaced,
 }

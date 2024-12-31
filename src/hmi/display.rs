@@ -105,6 +105,8 @@ impl<'a, DI: sh1106::interface::DisplayInterface> DisplayManager<'a, DI>
             ApplicationState::CalibrationDone => {self.draw_message_screen("Calibration complete")}
             ApplicationState::Wait => {self.draw_wait_screen()}
             ApplicationState::ErrorScreenWithMessage(s) => {self.draw_message_screen(s)}
+            ApplicationState::VesselPlaced => {self.draw_message_screen("Vessel placed")}
+            ApplicationState::VesselRemoved => {self.draw_message_screen("Vessel removed")}
         }
 
         let _ = self.display.flush().map_err(|_| error!("Display flush failed"));
