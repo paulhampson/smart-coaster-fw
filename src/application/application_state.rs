@@ -12,4 +12,5 @@ pub enum ApplicationState {
     ErrorScreenWithMessage(&'static str),
     VesselRemoved,
     VesselPlaced,
+    Settings,
 }

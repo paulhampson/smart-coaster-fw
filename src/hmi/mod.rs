@@ -3,4 +3,5 @@ pub mod debouncer;
 pub mod display;
 pub mod inputs;
 pub mod messaging;
+pub(crate) mod screens;
 

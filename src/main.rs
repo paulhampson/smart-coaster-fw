@@ -1,10 +1,10 @@
 #![no_std]
 #![no_main]
 
-mod led;
-mod hmi;
-mod weight;
 mod application;
+mod hmi;
+mod led;
+mod weight;
 
 use embassy_executor::{Executor, Spawner};
 use embassy_time::Duration;
@@ -30,7 +30,9 @@ use sh1106::{prelude::*, Builder};
 
 use crate::application::application_manager::ApplicationManager;
 use crate::application::led_manager::LedManager;
-use crate::application::messaging::{ApplicationChannel, ApplicationChannelPublisher, ApplicationChannelSubscriber};
+use crate::application::messaging::{
+    ApplicationChannel, ApplicationChannelPublisher, ApplicationChannelSubscriber,
+};
 use crate::application::weighing_manager::WeighingManager;
 use crate::hmi::display::DisplayManager;
 use crate::led::led_control::LedController;
@@ -41,6 +43,8 @@ use static_cell::StaticCell;
 static HMI_CHANNEL: HmiChannel = PubSubChannel::new();
 static WEIGHT_CHANNEL: WeightChannel = PubSubChannel::new();
 static APP_CHANNEL: ApplicationChannel = PubSubChannel::new();
+
+const CORE1_STACK_SIZE: usize = 16 * 1024;
 
 const LED_COUNT: usize = 8;
 
@@ -84,17 +88,23 @@ bind_interrupts!(struct I2cIrqs {
     I2C0_IRQ => i2c::InterruptHandler<I2C0>;
 });
 
-static mut CORE1_STACK: Stack<4096> = Stack::new();
+static mut CORE1_STACK: Stack<CORE1_STACK_SIZE> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
-    let resources = split_resources!{p};
+    let resources = split_resources! {p};
 
-    let core0_resources = Core0Resources { hmi_inputs: resources.hmi_inputs, led_control: resources.led_control, strain_gauge_io: resources.strain_gauge_io };
-    let core1_resources = Core1Resources { display_i2c: resources.display_i2c };
+    let core0_resources = Core0Resources {
+        hmi_inputs: resources.hmi_inputs,
+        led_control: resources.led_control,
+        strain_gauge_io: resources.strain_gauge_io,
+    };
+    let core1_resources = Core1Resources {
+        display_i2c: resources.display_i2c,
+    };
 
     info!("Launching application across cores");
 
@@ -111,27 +121,60 @@ fn main() -> ! {
     executor0.run(|spawner| core0_main(spawner, core0_resources));
 }
 
-fn core0_main(spawner: Spawner, resources: Core0Resources)
-{
-    spawner.spawn(hmi_input_task(resources.hmi_inputs, HMI_CHANNEL.publisher().unwrap())).unwrap();
-    spawner.spawn(led_task(resources.led_control, APP_CHANNEL.subscriber().unwrap())).unwrap();
-    spawner.spawn(weighing_task(resources.strain_gauge_io, APP_CHANNEL.subscriber().unwrap(), WEIGHT_CHANNEL.publisher().unwrap() )).unwrap()
+fn core0_main(spawner: Spawner, resources: Core0Resources) {
+    spawner
+        .spawn(hmi_input_task(
+            resources.hmi_inputs,
+            HMI_CHANNEL.publisher().unwrap(),
+        ))
+        .unwrap();
+    spawner
+        .spawn(led_task(
+            resources.led_control,
+            APP_CHANNEL.subscriber().unwrap(),
+        ))
+        .unwrap();
+    spawner
+        .spawn(weighing_task(
+            resources.strain_gauge_io,
+            APP_CHANNEL.subscriber().unwrap(),
+            WEIGHT_CHANNEL.publisher().unwrap(),
+        ))
+        .unwrap()
 }
 
-fn core1_main(spawner: Spawner, resources: Core1Resources)
-{
-    spawner.spawn(display_task(resources.display_i2c, APP_CHANNEL.subscriber().unwrap())).unwrap();
+fn core1_main(spawner: Spawner, resources: Core1Resources) {
+    spawner
+        .spawn(display_task(
+            resources.display_i2c,
+            APP_CHANNEL.subscriber().unwrap(),
+        ))
+        .unwrap();
 
-    let ws = WeighingSystemOverChannel::new(WEIGHT_CHANNEL.subscriber().unwrap(), APP_CHANNEL.publisher().unwrap());
-    spawner.spawn(application_task(APP_CHANNEL.publisher().unwrap(), HMI_CHANNEL.subscriber().unwrap(), ws)).unwrap();
+    let ws = WeighingSystemOverChannel::new(
+        WEIGHT_CHANNEL.subscriber().unwrap(),
+        APP_CHANNEL.publisher().unwrap(),
+    );
+    spawner
+        .spawn(application_task(
+            APP_CHANNEL.publisher().unwrap(),
+            HMI_CHANNEL.subscriber().unwrap(),
+            ws,
+        ))
+        .unwrap();
 }
 
 #[embassy_executor::task]
-async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiChannelPublisher<'static>)
-{
+async fn hmi_input_task(
+    hmi_input_pins: HmiInputPins,
+    hmi_event_channel: HmiChannelPublisher<'static>,
+) {
     let rotary_dt = hmi_input_pins.rotary_dt_pin;
     let rotary_clk = hmi_input_pins.rotary_clk_pin;
-    let debounced_btn = Debouncer::new(Input::new(hmi_input_pins.push_btn_pin, Pull::Up), Duration::from_millis(100));
+    let debounced_btn = Debouncer::new(
+        Input::new(hmi_input_pins.push_btn_pin, Pull::Up),
+        Duration::from_millis(100),
+    );
 
     let mut rotary_encoder = DebouncedRotaryEncoder::new(
         Input::new(rotary_dt, Pull::Up),
@@ -140,28 +183,42 @@ async fn hmi_input_task(hmi_input_pins: HmiInputPins, hmi_event_channel: HmiChan
     );
 
     hmi_input_handler(hmi_event_channel, debounced_btn, &mut rotary_encoder).await;
-
 }
 
 #[embassy_executor::task]
-async fn display_task(display_i2c_pins: DisplayI2cPins, app_subscriber: ApplicationChannelSubscriber<'static>)
-{
-    let i2c = i2c::I2c::new_async(display_i2c_pins.i2c_peripheral,
-                                     display_i2c_pins.scl_pin, display_i2c_pins.sda_pin,
-                                     I2cIrqs, Config::default());
+async fn display_task(
+    display_i2c_pins: DisplayI2cPins,
+    app_subscriber: ApplicationChannelSubscriber<'static>,
+) {
+    let i2c = i2c::I2c::new_async(
+        display_i2c_pins.i2c_peripheral,
+        display_i2c_pins.scl_pin,
+        display_i2c_pins.sda_pin,
+        I2cIrqs,
+        Config::default(),
+    );
 
-    let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
-    let mut display_manager = DisplayManager::new(&mut display, app_subscriber);
+    let display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
+    let mut display_manager = DisplayManager::new(display, app_subscriber);
     display_manager.run().await;
 }
 
-
 #[embassy_executor::task]
-async fn led_task(led_pio_resources: LedControlResources, application_subscriber: ApplicationChannelSubscriber<'static>)
-{
-    let Pio { mut common, sm0, .. } = Pio::new(led_pio_resources.pio, PioIrqs);
+async fn led_task(
+    led_pio_resources: LedControlResources,
+    application_subscriber: ApplicationChannelSubscriber<'static>,
+) {
+    let Pio {
+        mut common, sm0, ..
+    } = Pio::new(led_pio_resources.pio, PioIrqs);
     let program = PioWs2812Program::new(&mut common);
-    let pio_ws2812: PioWs2812<'_, PIO0, 0, LED_COUNT> = PioWs2812::new(&mut common, sm0, led_pio_resources.dma_channel, led_pio_resources.data_pin, &program);
+    let pio_ws2812: PioWs2812<'_, PIO0, 0, LED_COUNT> = PioWs2812::new(
+        &mut common,
+        sm0,
+        led_pio_resources.dma_channel,
+        led_pio_resources.data_pin,
+        &program,
+    );
     let led_control = LedController::new(pio_ws2812);
 
     let mut led_manager = LedManager::new(led_control, application_subscriber);
@@ -169,8 +226,11 @@ async fn led_task(led_pio_resources: LedControlResources, application_subscriber
 }
 
 #[embassy_executor::task]
-async fn weighing_task(strain_gauge_resources: StrainGaugeResources, app_subscriber: ApplicationChannelSubscriber<'static>, weight_event_sender: WeightChannelPublisher<'static>)
-{
+async fn weighing_task(
+    strain_gauge_resources: StrainGaugeResources,
+    app_subscriber: ApplicationChannelSubscriber<'static>,
+    weight_event_sender: WeightChannelPublisher<'static>,
+) {
     let clk_pin_out = Output::new(strain_gauge_resources.clk_pin, Level::Low);
     let data_pin = Input::new(strain_gauge_resources.data_pin, Pull::Up);
     let strain_gauge = Hx711Async::new(clk_pin_out, data_pin, Hx711Gain::Gain128);
@@ -181,10 +241,12 @@ async fn weighing_task(strain_gauge_resources: StrainGaugeResources, app_subscri
 }
 
 #[embassy_executor::task]
-async fn application_task(app_channel_sender: ApplicationChannelPublisher<'static>, hmi_channel_receiver: HmiChannelSubscriber<'static>,
-                          weight_interface: WeighingSystemOverChannel)
-{
-
-    let mut application_manager = ApplicationManager::new(hmi_channel_receiver, app_channel_sender, weight_interface);
+async fn application_task(
+    app_channel_sender: ApplicationChannelPublisher<'static>,
+    hmi_channel_receiver: HmiChannelSubscriber<'static>,
+    weight_interface: WeighingSystemOverChannel,
+) {
+    let mut application_manager =
+        ApplicationManager::new(hmi_channel_receiver, app_channel_sender, weight_interface);
     application_manager.run().await;
 }

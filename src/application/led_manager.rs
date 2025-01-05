@@ -59,6 +59,7 @@ where
                                 }),
                                 ApplicationState::VesselRemoved => {}
                                 ApplicationState::VesselPlaced => {}
+                                ApplicationState::Settings => {}
                             }
                         }
                         _ => {}
