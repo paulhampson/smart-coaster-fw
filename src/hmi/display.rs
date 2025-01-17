@@ -4,22 +4,19 @@ use crate::application::messaging::{
 };
 use crate::hmi::messaging::HmiMessage;
 use crate::hmi::rotary_encoder::Direction;
-use crate::hmi::screens;
-use crate::hmi::screens::settings::TestEnum;
+use crate::hmi::screens::menu::{Menu, MenuStyle};
 use core::fmt::Write;
 use defmt::{debug, error, trace, warn};
 use embassy_futures::select::{select, Either};
 use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
 use embedded_graphics::geometry::Point;
-use embedded_graphics::mono_font::ascii::FONT_6X10;
+use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
 use embedded_graphics::mono_font::{MonoTextStyle, MonoTextStyleBuilder};
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::text::renderer::TextRenderer;
 use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 use embedded_graphics::Drawable;
-use embedded_menu::interaction::{Action, Interaction, Navigation};
-use embedded_menu::Menu;
 use heapless::String;
 use micromath::F32Ext;
 use sh1106::mode::GraphicsMode;
@@ -317,19 +314,32 @@ where
     }
 
     async fn draw_setting_screen(&mut self) {
-        let mut menu = Menu::with_style("Menu", screens::menu_style())
-            .add_item("Foo", ">", |_| 1)
-            .add_item("Check this 1", false, |b| 20 + b as i32)
-            .add_section_title("===== Section =====")
-            .add_item("Check this 2", false, |b| 30 + b as i32)
-            .add_item("Check this 3", TestEnum::A, |b| 40 + b as i32)
-            .add_item("Check this 4", TestEnum::A, |b| 40 + b as i32)
-            .add_item("Check this 5", TestEnum::A, |b| 40 + b as i32)
-            .add_item("Check this 6", TestEnum::A, |b| 40 + b as i32)
-            .build();
+        let heading_style = MonoTextStyle::new(&FONT_7X13_BOLD, BinaryColor::On);
+        let item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+        let highlighted_item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
+
+        let menu_style = MenuStyle::new(
+            BinaryColor::Off,
+            heading_style,
+            item_style,
+            BinaryColor::On,
+            BinaryColor::On,
+            highlighted_item_style,
+            BinaryColor::Off,
+        );
+
+        let mut menu = Menu::new("M1 Heading", menu_style);
+        menu.add_checkbox("M1 Check 1");
+        let options = &["a", "b", "c"];
+        menu.add_selector("M1 Selector 1", options);
+        menu.add_section("Section 1");
+
+        let mut sm = Menu::new("M1-1", menu_style);
+        sm.add_checkbox("M1-1 Check 1");
+        sm.add_back("Back");
+        menu.add_submenu(sm);
 
         self.display.clear();
-        menu.update(&self.display);
         menu.draw(&mut self.display)
             .unwrap_or_else(|_| error!("Setting menu draw failed"));
         let _ = self
@@ -337,55 +347,37 @@ where
             .flush()
             .map_err(|_| error!("Display flush failed"));
 
-        let mut update_ticker = Ticker::every(Duration::from_millis(10000));
-
         loop {
-            let wait_result = select(
-                self.app_channel_subscriber.next_message(),
-                update_ticker.next(),
-            )
-            .await;
+            let wait_result = self.app_channel_subscriber.next_message().await;
             match wait_result {
-                Either::First(w) => match w {
-                    WaitResult::Lagged(c) => {
-                        warn! {"Missed {} messages", c};
-                    }
-                    WaitResult::Message(message) => match message {
-                        ApplicationMessage::HmiInput(hmi_message) => match hmi_message {
+                WaitResult::Lagged(c) => {
+                    warn! {"Missed {} messages", c};
+                }
+                WaitResult::Message(message) => match message {
+                    ApplicationMessage::HmiInput(hmi_message) => {
+                        match hmi_message {
                             HmiMessage::EncoderUpdate(direction) => match direction {
-                                Direction::Clockwise => {
-                                    menu.interact(Interaction::Navigation(Navigation::Next));
-                                }
-                                Direction::CounterClockwise => {
-                                    menu.interact(Interaction::Navigation(Navigation::Previous));
-                                }
+                                Direction::Clockwise => menu.navigate_down(),
+                                Direction::CounterClockwise => menu.navigate_up(),
                                 Direction::None => {}
                             },
                             HmiMessage::PushButtonPressed(pressed) => {
                                 if pressed {
-                                    let selected = menu.selected_value();
-                                    debug!("Selected {}", selected);
-                                    menu.interact(Interaction::Action(Action::Select));
-                                    if selected == 1 {
-                                        break;
-                                    }
+                                    menu.select_item();
                                 }
                             }
-                        },
-                        _ => {}
-                    },
+                        }
+                        self.display.clear();
+                        menu.draw(&mut self.display)
+                            .unwrap_or_else(|_| error!("Setting menu draw failed"));
+                        let _ = self
+                            .display
+                            .flush()
+                            .map_err(|_| error!("Display flush failed"));
+                    }
+                    _ => {}
                 },
-                Either::Second(_) => {}
             }
-
-            self.display.clear();
-            menu.update(&self.display);
-            menu.draw(&mut self.display)
-                .unwrap_or_else(|_| error!("Setting menu draw failed"));
-            let _ = self
-                .display
-                .flush()
-                .map_err(|_| error!("Display flush failed"));
         }
     }
 

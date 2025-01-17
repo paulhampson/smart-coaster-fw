@@ -39,9 +39,10 @@ smart-leds = "0.4.0"
 portable-atomic = { version = "1.8.0", features = ["critical-section"] }
 static_cell = "2.1.0"
 micromath = { version = "2.1.0", features = ["statistics", "vector"] }
-embedded-menu = "0.6.1"
-#embedded-alloc = "0.6.0"
+#embedded-menu = "0.6.1"
+embedded-alloc = "0.6.0"
 embedded-layout = "0.4.1"
+trees = { version = "0.4.2", features = ["no_std"] }
 
 [profile.release]
 debug = 2

@@ -40,11 +40,18 @@ use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightC
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
+use core::ptr::addr_of_mut;
+use embedded_alloc::LlffHeap as Heap;
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 static HMI_CHANNEL: HmiChannel = PubSubChannel::new();
 static WEIGHT_CHANNEL: WeightChannel = PubSubChannel::new();
 static APP_CHANNEL: ApplicationChannel = PubSubChannel::new();
 
 const CORE1_STACK_SIZE: usize = 16 * 1024;
+const HEAP_SIZE: usize = 16 * 1024;
 
 const LED_COUNT: usize = 8;
 
@@ -96,6 +103,14 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
     let resources = split_resources! {p};
+
+    // Initialize the allocator BEFORE you use it
+    {
+        use core::mem::MaybeUninit;
+
+        static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
+    }
 
     let core0_resources = Core0Resources {
         hmi_inputs: resources.hmi_inputs,
