@@ -2,8 +2,8 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{
     ApplicationChannelPublisher, ApplicationData, ApplicationMessage,
 };
-use crate::hmi::messaging::HmiChannelSubscriber;
 use crate::hmi::messaging::HmiMessage::PushButtonPressed;
+use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiActionsMessage};
 use crate::weight::WeighingSystem;
 use defmt::{debug, trace};
 use embassy_futures::select::{select, Either};
@@ -14,6 +14,7 @@ use micromath::F32Ext;
 pub struct ApplicationManager<WS> {
     hmi_subscriber: HmiChannelSubscriber<'static>,
     app_publisher: ApplicationChannelPublisher<'static>,
+    ui_action_subscriber: UiActionChannelSubscriber<'static>,
     weighing_system: WS,
 }
 
@@ -27,11 +28,13 @@ where
     pub fn new(
         hmi_subscriber: HmiChannelSubscriber<'static>,
         app_publisher: ApplicationChannelPublisher<'static>,
+        ui_action_subscriber: UiActionChannelSubscriber<'static>,
         weighing_system: WS,
     ) -> Self {
         Self {
             hmi_subscriber,
             app_publisher,
+            ui_action_subscriber,
             weighing_system,
         }
     }
@@ -123,13 +126,21 @@ where
                 self.manage_error("Scale calibration failed").await;
             }
         }
-        self.settings_screen(ApplicationState::TestScreen).await;
-        self.test_screen(ApplicationState::WaitingForActivity).await;
 
-        self.coaster_activity_monitoring().await;
-
+        let mut next_state = self.settings_screen().await;
         loop {
-            Timer::after(Duration::from_secs(1)).await;
+            match next_state {
+                ApplicationState::WaitingForActivity => {
+                    self.coaster_activity_monitoring().await;
+                }
+                ApplicationState::TestScreen => {
+                    next_state = self.test_screen(ApplicationState::Settings).await;
+                }
+                ApplicationState::Settings => {
+                    next_state = self.settings_screen().await;
+                }
+                _ => {}
+            }
         }
     }
 
@@ -156,10 +167,10 @@ where
 
     /// Manage the data and behaviour for the system test screen that shows button, encoder and
     /// weight. Long press will exit the state.
-    async fn test_screen(&mut self, exit_to: ApplicationState) {
+    async fn test_screen(&mut self, exit_to: ApplicationState) -> ApplicationState {
         self.update_application_state(ApplicationState::TestScreen)
             .await;
-        let mut press_start = Instant::MIN;
+        let mut press_start = Instant::now();
         loop {
             let hmi_or_weight_message = select(
                 self.hmi_subscriber.next_message_pure(),
@@ -178,6 +189,7 @@ where
                         }
                         PushButtonPressed(false) => {
                             if press_start.elapsed() >= Self::LONG_LONG_PRESS_TIME {
+                                debug!("LONG_LONG_PRESS_TIME exceeded");
                                 break;
                             }
                         }
@@ -198,33 +210,47 @@ where
                 }
             }
         }
-        self.update_application_state(exit_to).await;
+        exit_to
     }
 
-    async fn settings_screen(&mut self, exit_to: ApplicationState) {
+    async fn settings_screen(&mut self) -> ApplicationState {
         self.update_application_state(ApplicationState::Settings)
             .await;
         let mut press_start = Instant::now();
 
         loop {
-            let hmi_message = self.hmi_subscriber.next_message_pure().await;
-            self.app_publisher
-                .publish(ApplicationMessage::HmiInput(hmi_message))
-                .await;
+            let ui_or_hmi = select(
+                self.ui_action_subscriber.next_message_pure(),
+                self.hmi_subscriber.next_message_pure(),
+            )
+            .await;
 
-            match hmi_message {
-                PushButtonPressed(true) => {
-                    press_start = Instant::now();
-                }
-                PushButtonPressed(false) => {
-                    if press_start.elapsed() >= Self::LONG_LONG_PRESS_TIME {
-                        break;
+            match ui_or_hmi {
+                Either::First(ui_action_message) => match ui_action_message {
+                    UiActionsMessage::StateChangeRequest(new_state) => {
+                        return new_state;
+                    }
+                },
+                Either::Second(hmi_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
+
+                    match hmi_message {
+                        PushButtonPressed(true) => {
+                            press_start = Instant::now();
+                        }
+                        PushButtonPressed(false) => {
+                            if press_start.elapsed() >= Self::LONG_LONG_PRESS_TIME {
+                                break;
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                _ => {}
             }
         }
-        self.update_application_state(exit_to).await;
+        ApplicationState::WaitingForActivity
     }
 
     async fn wait_for_weight_activity(&mut self) -> f32 {

@@ -2,16 +2,16 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{
     ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
 };
-use crate::hmi::messaging::HmiMessage;
+use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::rotary_encoder::Direction;
-use crate::hmi::screens::menu::{Menu, MenuStyle};
+use crate::hmi::screens::settings::{SettingMenu, SettingMenuIdentifier};
 use core::fmt::Write;
 use defmt::{debug, error, trace, warn};
 use embassy_futures::select::{select, Either};
 use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
 use embedded_graphics::geometry::Point;
-use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
+use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::{MonoTextStyle, MonoTextStyleBuilder};
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::text::renderer::TextRenderer;
@@ -20,12 +20,14 @@ use embedded_graphics::Drawable;
 use heapless::String;
 use micromath::F32Ext;
 use sh1106::mode::GraphicsMode;
+use simple_embedded_graphics_menu::items::SelectedData;
 
 pub struct DisplayManager<'a, DI>
 where
     DI: sh1106::interface::DisplayInterface,
 {
     app_channel_subscriber: ApplicationChannelSubscriber<'static>,
+    ui_action_publisher: UiActionChannelPublisher<'static>,
     display: GraphicsMode<DI>,
     text_style: MonoTextStyle<'a, BinaryColor>,
 
@@ -39,6 +41,7 @@ where
     consumption: f32,
     consumption_rate: f32,
     total_consumed: f32,
+    settings_screen: SettingMenu,
 }
 
 impl<DI> DisplayManager<'_, DI>
@@ -51,6 +54,7 @@ where
     pub fn new(
         mut display: GraphicsMode<DI>,
         app_channel_subscriber: ApplicationChannelSubscriber<'static>,
+        ui_action_publisher: UiActionChannelPublisher<'static>,
     ) -> Self {
         let _ = display.init().map_err(|_| error!("Failed to init display"));
         let _ = display
@@ -59,6 +63,7 @@ where
 
         Self {
             app_channel_subscriber,
+            ui_action_publisher,
             display,
             text_style: MonoTextStyleBuilder::new()
                 .font(&FONT_6X10)
@@ -75,6 +80,7 @@ where
             consumption: 0.0,
             consumption_rate: 0.0,
             total_consumed: 0.0,
+            settings_screen: SettingMenu::new(),
         }
     }
 
@@ -85,15 +91,41 @@ where
     }
 
     pub fn input_up(&mut self) {
-        self.cw_count += 1;
+        match self.display_state {
+            ApplicationState::TestScreen => {
+                self.cw_count += 1;
+            }
+            ApplicationState::Settings => {
+                self.settings_screen.input_up();
+            }
+            _ => {}
+        }
     }
 
     pub fn input_down(&mut self) {
-        self.ccw_count += 1;
+        match self.display_state {
+            ApplicationState::TestScreen => {
+                self.ccw_count += 1;
+            }
+            ApplicationState::Settings => {
+                self.settings_screen.input_down();
+            }
+            _ => {}
+        }
     }
 
     pub fn input_press(&mut self) {
-        self.btn_press_count += 1;
+        match self.display_state {
+            ApplicationState::TestScreen => {
+                self.btn_press_count += 1;
+            }
+            ApplicationState::Settings => {
+                if let Some(selected_data) = self.settings_screen.input_select() {
+                    self.process_selected_menu_item(selected_data);
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn input_weight(&mut self, weight: f32) {
@@ -133,7 +165,7 @@ where
             ApplicationState::ErrorScreenWithMessage(s) => self.draw_message_screen(s),
             ApplicationState::VesselPlaced => self.draw_monitoring_screen(),
             ApplicationState::VesselRemoved => self.draw_monitoring_screen(),
-            ApplicationState::Settings => self.draw_setting_screen().await,
+            ApplicationState::Settings => self.settings_screen.draw(&mut self.display),
         }
 
         let _ = self
@@ -313,71 +345,23 @@ where
         .unwrap();
     }
 
-    async fn draw_setting_screen(&mut self) {
-        let heading_style = MonoTextStyle::new(&FONT_7X13_BOLD, BinaryColor::On);
-        let item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-        let highlighted_item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
-
-        let menu_style = MenuStyle::new(
-            BinaryColor::Off,
-            heading_style,
-            item_style,
-            BinaryColor::On,
-            BinaryColor::On,
-            highlighted_item_style,
-            BinaryColor::Off,
-        );
-
-        let mut menu = Menu::new("M1 Heading", menu_style);
-        menu.add_checkbox("M1 Check 1");
-        let options = &["a", "b", "c"];
-        menu.add_selector("M1 Selector 1", options);
-        menu.add_section("Section 1");
-
-        let mut sm = Menu::new("M1-1", menu_style);
-        sm.add_checkbox("M1-1 Check 1");
-        sm.add_back("Back");
-        menu.add_submenu(sm);
-
-        self.display.clear();
-        menu.draw(&mut self.display)
-            .unwrap_or_else(|_| error!("Setting menu draw failed"));
-        let _ = self
-            .display
-            .flush()
-            .map_err(|_| error!("Display flush failed"));
-
-        loop {
-            let wait_result = self.app_channel_subscriber.next_message().await;
-            match wait_result {
-                WaitResult::Lagged(c) => {
-                    warn! {"Missed {} messages", c};
+    fn process_selected_menu_item(&mut self, menu_data: SelectedData<SettingMenuIdentifier>) {
+        match menu_data {
+            SelectedData::Action { id: identifier } => match identifier {
+                SettingMenuIdentifier::EnterTestScreen => {
+                    self.ui_action_publisher.publish_immediate(
+                        UiActionsMessage::StateChangeRequest(ApplicationState::TestScreen),
+                    );
                 }
-                WaitResult::Message(message) => match message {
-                    ApplicationMessage::HmiInput(hmi_message) => {
-                        match hmi_message {
-                            HmiMessage::EncoderUpdate(direction) => match direction {
-                                Direction::Clockwise => menu.navigate_down(),
-                                Direction::CounterClockwise => menu.navigate_up(),
-                                Direction::None => {}
-                            },
-                            HmiMessage::PushButtonPressed(pressed) => {
-                                if pressed {
-                                    menu.select_item();
-                                }
-                            }
-                        }
-                        self.display.clear();
-                        menu.draw(&mut self.display)
-                            .unwrap_or_else(|_| error!("Setting menu draw failed"));
-                        let _ = self
-                            .display
-                            .flush()
-                            .map_err(|_| error!("Display flush failed"));
-                    }
-                    _ => {}
-                },
+                _ => {}
+            },
+            SelectedData::Exit { id: _ } => {
+                self.ui_action_publisher
+                    .publish_immediate(UiActionsMessage::StateChangeRequest(
+                        ApplicationState::WaitingForActivity,
+                    ));
             }
+            _ => {}
         }
     }
 

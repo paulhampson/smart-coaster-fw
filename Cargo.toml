@@ -16,6 +16,8 @@ embedded-io-async = "0.6.1"
 embedded-storage = "0.3.1"
 
 cortex-m-rt = "0.7.3"
+cortex-m = { version = "0.7.6" }
+assign-resources = "0.4.1"
 
 #embassy-executor = { version = "0.6", features = ["task-arena-size-4096", "arch-cortex-m", "executor-thread", "defmt", "integrated-timers", "executor-interrupt"] }
 #embassy-sync = { version = "0.6" }
@@ -23,8 +25,7 @@ cortex-m-rt = "0.7.3"
 #embassy-rp = { version = "0.2.0", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl"] }
 #embassy-futures = "0.1.1"
 
-cortex-m = { version = "0.7.6" }
-assign-resources = "0.4.1"
+
 
 embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7fafa", subdir = "embassy-executor", features = ["task-arena-size-16384", "arch-cortex-m", "executor-thread", "defmt", "executor-interrupt"] }
 embassy-rp = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7fafa", subdir = "embassy-rp", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl", "rp2040"] }
@@ -43,6 +44,7 @@ micromath = { version = "2.1.0", features = ["statistics", "vector"] }
 embedded-alloc = "0.6.0"
 embedded-layout = "0.4.1"
 trees = { version = "0.4.2", features = ["no_std"] }
+simple-embedded-graphics-menu = { git = "https://github.com/paulhampson/simple-embedded-graphics-menu.git" }
 
 [profile.release]
 debug = 2

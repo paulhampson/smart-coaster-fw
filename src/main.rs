@@ -12,7 +12,10 @@ use embassy_time::Duration;
 use {defmt_rtt as _, panic_probe as _};
 
 use crate::hmi::inputs::hmi_input_handler;
-use crate::hmi::messaging::{HmiChannel, HmiChannelPublisher, HmiChannelSubscriber};
+use crate::hmi::messaging::{
+    HmiChannel, HmiChannelPublisher, HmiChannelSubscriber, UiActionChannel,
+    UiActionChannelPublisher, UiActionChannelSubscriber,
+};
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
@@ -47,6 +50,7 @@ use embedded_alloc::LlffHeap as Heap;
 static HEAP: Heap = Heap::empty();
 
 static HMI_CHANNEL: HmiChannel = PubSubChannel::new();
+static UI_ACTION_CHANNEL: UiActionChannel = PubSubChannel::new();
 static WEIGHT_CHANNEL: WeightChannel = PubSubChannel::new();
 static APP_CHANNEL: ApplicationChannel = PubSubChannel::new();
 
@@ -163,6 +167,7 @@ fn core1_main(spawner: Spawner, resources: Core1Resources) {
         .spawn(display_task(
             resources.display_i2c,
             APP_CHANNEL.subscriber().unwrap(),
+            UI_ACTION_CHANNEL.publisher().unwrap(),
         ))
         .unwrap();
 
@@ -174,6 +179,7 @@ fn core1_main(spawner: Spawner, resources: Core1Resources) {
         .spawn(application_task(
             APP_CHANNEL.publisher().unwrap(),
             HMI_CHANNEL.subscriber().unwrap(),
+            UI_ACTION_CHANNEL.subscriber().unwrap(),
             ws,
         ))
         .unwrap();
@@ -204,6 +210,7 @@ async fn hmi_input_task(
 async fn display_task(
     display_i2c_pins: DisplayI2cPins,
     app_subscriber: ApplicationChannelSubscriber<'static>,
+    ui_action_publisher: UiActionChannelPublisher<'static>,
 ) {
     let i2c = i2c::I2c::new_async(
         display_i2c_pins.i2c_peripheral,
@@ -214,7 +221,7 @@ async fn display_task(
     );
 
     let display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
-    let mut display_manager = DisplayManager::new(display, app_subscriber);
+    let mut display_manager = DisplayManager::new(display, app_subscriber, ui_action_publisher);
     display_manager.run().await;
 }
 
@@ -259,9 +266,14 @@ async fn weighing_task(
 async fn application_task(
     app_channel_sender: ApplicationChannelPublisher<'static>,
     hmi_channel_receiver: HmiChannelSubscriber<'static>,
+    ui_action_channel_receiver: UiActionChannelSubscriber<'static>,
     weight_interface: WeighingSystemOverChannel,
 ) {
-    let mut application_manager =
-        ApplicationManager::new(hmi_channel_receiver, app_channel_sender, weight_interface);
+    let mut application_manager = ApplicationManager::new(
+        hmi_channel_receiver,
+        app_channel_sender,
+        ui_action_channel_receiver,
+        weight_interface,
+    );
     application_manager.run().await;
 }
