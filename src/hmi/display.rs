@@ -1,10 +1,10 @@
 use crate::application::application_state::ApplicationState;
-use crate::application::messaging::{
-    ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
-};
-use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher, UiActionsMessage};
+use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMessage};
+use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
 use crate::hmi::rotary_encoder::Direction;
-use crate::hmi::screens::settings::{SettingMenu, SettingMenuIdentifier};
+use crate::hmi::screens::settings::SettingMenu;
+use crate::hmi::screens::test_mode::TestModeScreen;
+use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use core::fmt::Write;
 use defmt::{debug, error, trace, warn};
 use embassy_futures::select::{select, Either};
@@ -20,7 +20,6 @@ use embedded_graphics::Drawable;
 use heapless::String;
 use micromath::F32Ext;
 use sh1106::mode::GraphicsMode;
-use simple_embedded_graphics_menu::items::SelectedData;
 
 pub struct DisplayManager<'a, DI>
 where
@@ -33,15 +32,12 @@ where
 
     display_state: ApplicationState,
 
-    cw_count: u32,
-    ccw_count: u32,
-    btn_press_count: u32,
-    last_weight: f32,
     last_update: Instant,
     consumption: f32,
     consumption_rate: f32,
     total_consumed: f32,
     settings_screen: SettingMenu,
+    test_mode_screen: TestModeScreen,
 }
 
 impl<DI> DisplayManager<'_, DI>
@@ -49,7 +45,7 @@ where
     DI: sh1106::interface::DisplayInterface,
 {
     const FRAME_TIMING_MS: u32 = 1000 / 30;
-    const DEFAULT_FONTH_WIDTH: usize = 6;
+    const DEFAULT_FONT_WIDTH: usize = 6;
 
     pub fn new(
         mut display: GraphicsMode<DI>,
@@ -72,15 +68,12 @@ where
 
             display_state: ApplicationState::Startup,
 
-            cw_count: 0,
-            ccw_count: 0,
-            btn_press_count: 0,
-            last_weight: 0.0,
             last_update: Instant::MIN,
             consumption: 0.0,
             consumption_rate: 0.0,
             total_consumed: 0.0,
             settings_screen: SettingMenu::new(),
+            test_mode_screen: TestModeScreen::new(),
         }
     }
 
@@ -88,48 +81,6 @@ where
         debug!("Display state: {:?}", display_state);
         self.display_state = display_state;
         self.update_now().await;
-    }
-
-    pub fn input_up(&mut self) {
-        match self.display_state {
-            ApplicationState::TestScreen => {
-                self.cw_count += 1;
-            }
-            ApplicationState::Settings => {
-                self.settings_screen.input_up();
-            }
-            _ => {}
-        }
-    }
-
-    pub fn input_down(&mut self) {
-        match self.display_state {
-            ApplicationState::TestScreen => {
-                self.ccw_count += 1;
-            }
-            ApplicationState::Settings => {
-                self.settings_screen.input_down();
-            }
-            _ => {}
-        }
-    }
-
-    pub fn input_press(&mut self) {
-        match self.display_state {
-            ApplicationState::TestScreen => {
-                self.btn_press_count += 1;
-            }
-            ApplicationState::Settings => {
-                if let Some(selected_data) = self.settings_screen.input_select() {
-                    self.process_selected_menu_item(selected_data);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub fn input_weight(&mut self, weight: f32) {
-        self.last_weight = weight;
     }
 
     pub async fn update_screen(&mut self) {
@@ -146,7 +97,6 @@ where
             ApplicationState::WaitingForActivity => {
                 self.draw_message_screen("Waiting for activity")
             }
-            ApplicationState::TestScreen => self.draw_test_screen(),
             ApplicationState::Tare => {
                 self.draw_message_screen("Remove items from device and press button")
             }
@@ -165,6 +115,8 @@ where
             ApplicationState::ErrorScreenWithMessage(s) => self.draw_message_screen(s),
             ApplicationState::VesselPlaced => self.draw_monitoring_screen(),
             ApplicationState::VesselRemoved => self.draw_monitoring_screen(),
+
+            ApplicationState::TestScreen => self.test_mode_screen.draw(&mut self.display),
             ApplicationState::Settings => self.settings_screen.draw(&mut self.display),
         }
 
@@ -231,7 +183,7 @@ where
     }
 
     fn draw_message_screen(&mut self, message: &str) {
-        let max_line_length = self.display.get_dimensions().0 as usize / Self::DEFAULT_FONTH_WIDTH;
+        let max_line_length = self.display.get_dimensions().0 as usize / Self::DEFAULT_FONT_WIDTH;
         let formatted_message = Self::add_newlines_to_string::<100>(message, max_line_length);
         let centred_text_style = TextStyleBuilder::new()
             .alignment(Alignment::Center)
@@ -251,59 +203,6 @@ where
         .draw(&mut self.display)
         .unwrap();
         trace!("Draw message screen done");
-    }
-
-    fn draw_test_screen(&mut self) {
-        let mut count_string = String::<32>::new();
-
-        count_string.clear();
-        write!(&mut count_string, "CW Count = {}", self.cw_count).unwrap();
-        Text::with_baseline(
-            count_string.as_str(),
-            Point::new(0, 0),
-            self.text_style,
-            Baseline::Top,
-        )
-        .draw(&mut self.display)
-        .unwrap();
-
-        count_string.clear();
-        write!(&mut count_string, "CCW Count = {}", self.ccw_count).unwrap();
-        Text::with_baseline(
-            count_string.as_str(),
-            Point::new(0, 16),
-            self.text_style,
-            Baseline::Top,
-        )
-        .draw(&mut self.display)
-        .unwrap();
-
-        count_string.clear();
-        write!(&mut count_string, "Press Count = {}", self.btn_press_count).unwrap();
-        Text::with_baseline(
-            count_string.as_str(),
-            Point::new(0, 32),
-            self.text_style,
-            Baseline::Top,
-        )
-        .draw(&mut self.display)
-        .unwrap();
-
-        count_string.clear();
-        write!(
-            &mut count_string,
-            "Weight = {:.0}g",
-            self.last_weight.round()
-        )
-        .unwrap();
-        Text::with_baseline(
-            count_string.as_str(),
-            Point::new(0, 48),
-            self.text_style,
-            Baseline::Top,
-        )
-        .draw(&mut self.display)
-        .unwrap();
     }
 
     fn draw_wait_screen(&mut self) {
@@ -345,23 +244,26 @@ where
         .unwrap();
     }
 
-    fn process_selected_menu_item(&mut self, menu_data: SelectedData<SettingMenuIdentifier>) {
-        match menu_data {
-            SelectedData::Action { id: identifier } => match identifier {
-                SettingMenuIdentifier::EnterTestScreen => {
-                    self.ui_action_publisher.publish_immediate(
-                        UiActionsMessage::StateChangeRequest(ApplicationState::TestScreen),
-                    );
-                }
-                _ => {}
-            },
-            SelectedData::Exit { id: _ } => {
-                self.ui_action_publisher
-                    .publish_immediate(UiActionsMessage::StateChangeRequest(
-                        ApplicationState::WaitingForActivity,
-                    ));
-            }
-            _ => {}
+    fn route_ui_input(&mut self, input: UiInput) {
+        match self.display_state {
+            ApplicationState::Startup => {}
+            ApplicationState::Wait => {}
+            ApplicationState::ErrorScreenWithMessage(_) => {}
+
+            ApplicationState::Tare => {}
+            ApplicationState::Calibration(_) => {}
+            ApplicationState::CalibrationDone => {}
+
+            ApplicationState::WaitingForActivity => {}
+            ApplicationState::VesselRemoved => {}
+            ApplicationState::VesselPlaced => {}
+
+            ApplicationState::Settings => self
+                .settings_screen
+                .ui_input_handler(input, &self.ui_action_publisher),
+            ApplicationState::TestScreen => self
+                .test_mode_screen
+                .ui_input_handler(input, &self.ui_action_publisher),
         }
     }
 
@@ -383,19 +285,22 @@ where
                     WaitResult::Message(message) => match message {
                         ApplicationMessage::HmiInput(hmi_message) => match hmi_message {
                             HmiMessage::EncoderUpdate(direction) => {
-                                trace!("Encoder update");
-                                if direction == Direction::Clockwise {
-                                    self.input_up();
-                                }
-                                if direction == Direction::CounterClockwise {
-                                    self.input_down();
+                                trace!("Encoder update: {:?}", direction);
+                                match direction {
+                                    Direction::Clockwise => {
+                                        self.route_ui_input(UiInput::EncoderClockwise)
+                                    }
+                                    Direction::CounterClockwise => {
+                                        self.route_ui_input(UiInput::EncoderCounterClockwise)
+                                    }
+                                    Direction::None => {}
                                 }
                             }
-
                             HmiMessage::PushButtonPressed(is_pressed) => {
                                 debug!("Button pressed {:?} ", is_pressed);
-                                if is_pressed {
-                                    self.input_press();
+                                match is_pressed {
+                                    true => self.route_ui_input(UiInput::ButtonPress),
+                                    false => self.route_ui_input(UiInput::ButtonRelease),
                                 }
                             }
                         },
@@ -405,20 +310,7 @@ where
                         }
                         ApplicationMessage::ApplicationDataUpdate(data_update) => {
                             trace!("App data update");
-                            match data_update {
-                                ApplicationData::Weight(w) => {
-                                    self.input_weight(w);
-                                }
-                                ApplicationData::ConsumptionRate(r) => {
-                                    self.consumption_rate = r;
-                                }
-                                ApplicationData::Consumption(r) => {
-                                    self.consumption = r;
-                                }
-                                ApplicationData::TotalConsumed(r) => {
-                                    self.total_consumed = r;
-                                }
-                            }
+                            self.route_ui_input(UiInput::ApplicationData(data_update));
                         }
                         ApplicationMessage::WeighSystemRequest(..) => {}
                     },

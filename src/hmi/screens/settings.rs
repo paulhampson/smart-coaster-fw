@@ -1,3 +1,6 @@
+use crate::application::application_state::ApplicationState;
+use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
+use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use defmt::error;
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -46,19 +49,52 @@ impl SettingMenu {
         menu
     }
 
-    pub fn input_up(&mut self) {
-        self.menu.navigate_up();
+    fn process_selection(
+        &self,
+        selection_data: SelectedData<SettingMenuIdentifier>,
+        ui_action_publisher: &UiActionChannelPublisher,
+    ) {
+        match selection_data {
+            SelectedData::Action { id: identifier } => match identifier {
+                SettingMenuIdentifier::EnterTestScreen => {
+                    ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                        ApplicationState::TestScreen,
+                    ));
+                }
+                _ => {}
+            },
+            SelectedData::Exit { id: _ } => {
+                ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                    ApplicationState::WaitingForActivity,
+                ));
+            }
+            _ => {}
+        }
     }
+}
 
-    pub fn input_down(&mut self) {
-        self.menu.navigate_down();
+impl UiInputHandler for SettingMenu {
+    fn ui_input_handler(&mut self, input: UiInput, ui_action_publisher: &UiActionChannelPublisher) {
+        match input {
+            UiInput::EncoderClockwise => {
+                self.menu.navigate_down();
+            }
+            UiInput::EncoderCounterClockwise => {
+                self.menu.navigate_up();
+            }
+            UiInput::ButtonPress => {
+                if let Some(select_result) = self.menu.select_item() {
+                    self.process_selection(select_result, ui_action_publisher);
+                }
+            }
+            UiInput::ButtonRelease => {}
+            UiInput::ApplicationData(_) => {}
+        }
     }
+}
 
-    pub fn input_select(&mut self) -> Option<SelectedData<SettingMenuIdentifier>> {
-        self.menu.select_item()
-    }
-
-    pub(crate) fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
+impl UiDrawer for SettingMenu {
+    fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
     where
         DI: sh1106::interface::DisplayInterface,
     {
