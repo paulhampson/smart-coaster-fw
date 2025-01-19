@@ -132,7 +132,7 @@ fn main() -> ! {
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| core1_main(spawner, core1_resources));
+            executor1.run(|spawner| core1_main(spawner, core1_resources, &HEAP));
         },
     );
 
@@ -162,7 +162,7 @@ fn core0_main(spawner: Spawner, resources: Core0Resources) {
         .unwrap()
 }
 
-fn core1_main(spawner: Spawner, resources: Core1Resources) {
+fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) {
     spawner
         .spawn(display_task(
             resources.display_i2c,
@@ -181,6 +181,7 @@ fn core1_main(spawner: Spawner, resources: Core1Resources) {
             HMI_CHANNEL.subscriber().unwrap(),
             UI_ACTION_CHANNEL.subscriber().unwrap(),
             ws,
+            heap,
         ))
         .unwrap();
 }
@@ -268,12 +269,11 @@ async fn application_task(
     hmi_channel_receiver: HmiChannelSubscriber<'static>,
     ui_action_channel_receiver: UiActionChannelSubscriber<'static>,
     weight_interface: WeighingSystemOverChannel,
+    heap: &'static Heap,
 ) {
-    let mut application_manager = ApplicationManager::new(
-        hmi_channel_receiver,
-        app_channel_sender,
-        ui_action_channel_receiver,
-        weight_interface,
-    );
-    application_manager.run().await;
+    let mut application_manager =
+        ApplicationManager::new(app_channel_sender, weight_interface, heap);
+    application_manager
+        .run(ui_action_channel_receiver, hmi_channel_receiver)
+        .await;
 }

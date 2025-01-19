@@ -2,50 +2,41 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMessage};
 use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
 use crate::hmi::rotary_encoder::Direction;
+use crate::hmi::screens::heap_status::HeapStatusScreen;
+use crate::hmi::screens::monitoring_screen::MonitoringScreen;
 use crate::hmi::screens::settings::SettingMenu;
 use crate::hmi::screens::test_mode::TestModeScreen;
-use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
+use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
 use core::fmt::Write;
 use defmt::{debug, error, trace, warn};
 use embassy_futures::select::{select, Either};
 use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
-use embedded_graphics::geometry::Point;
-use embedded_graphics::mono_font::ascii::FONT_6X10;
-use embedded_graphics::mono_font::{MonoTextStyle, MonoTextStyleBuilder};
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::text::renderer::TextRenderer;
-use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
-use embedded_graphics::Drawable;
 use heapless::String;
-use micromath::F32Ext;
 use sh1106::mode::GraphicsMode;
 
-pub struct DisplayManager<'a, DI>
+pub struct DisplayManager<DI>
 where
     DI: sh1106::interface::DisplayInterface,
 {
     app_channel_subscriber: ApplicationChannelSubscriber<'static>,
     ui_action_publisher: UiActionChannelPublisher<'static>,
     display: GraphicsMode<DI>,
-    text_style: MonoTextStyle<'a, BinaryColor>,
 
     display_state: ApplicationState,
+    last_display_update: Instant,
 
-    last_update: Instant,
-    consumption: f32,
-    consumption_rate: f32,
-    total_consumed: f32,
     settings_screen: SettingMenu,
     test_mode_screen: TestModeScreen,
+    monitoring_screen: MonitoringScreen,
+    heap_status_screen: HeapStatusScreen,
 }
 
-impl<DI> DisplayManager<'_, DI>
+impl<DI> DisplayManager<DI>
 where
     DI: sh1106::interface::DisplayInterface,
 {
     const FRAME_TIMING_MS: u32 = 1000 / 30;
-    const DEFAULT_FONT_WIDTH: usize = 6;
 
     pub fn new(
         mut display: GraphicsMode<DI>,
@@ -61,19 +52,14 @@ where
             app_channel_subscriber,
             ui_action_publisher,
             display,
-            text_style: MonoTextStyleBuilder::new()
-                .font(&FONT_6X10)
-                .text_color(BinaryColor::On)
-                .build(),
 
             display_state: ApplicationState::Startup,
+            last_display_update: Instant::MIN,
 
-            last_update: Instant::MIN,
-            consumption: 0.0,
-            consumption_rate: 0.0,
-            total_consumed: 0.0,
             settings_screen: SettingMenu::new(),
             test_mode_screen: TestModeScreen::new(),
+            monitoring_screen: MonitoringScreen::new(),
+            heap_status_screen: HeapStatusScreen::new(),
         }
     }
 
@@ -84,7 +70,7 @@ where
     }
 
     pub async fn update_screen(&mut self) {
-        if self.last_update.elapsed().as_millis() < Self::FRAME_TIMING_MS as u64 {
+        if self.last_display_update.elapsed().as_millis() < Self::FRAME_TIMING_MS as u64 {
             return;
         }
         self.update_now().await;
@@ -93,13 +79,11 @@ where
     async fn update_now(&mut self) {
         self.display.clear();
         match self.display_state {
-            ApplicationState::Startup => self.draw_message_screen("Starting up..."),
-            ApplicationState::WaitingForActivity => {
-                self.draw_message_screen("Waiting for activity")
-            }
-            ApplicationState::Tare => {
-                self.draw_message_screen("Remove items from device and press button")
-            }
+            ApplicationState::Startup => draw_message_screen(&mut self.display, "Starting up..."),
+            ApplicationState::Tare => draw_message_screen(
+                &mut self.display,
+                "Remove items from device and press button",
+            ),
             ApplicationState::Calibration(calibration_mass_grams) => {
                 let mut message_string = String::<40>::new();
                 write!(
@@ -108,140 +92,31 @@ where
                     calibration_mass_grams
                 )
                 .expect("String too long");
-                self.draw_message_screen(&message_string);
+                draw_message_screen(&mut self.display, &message_string);
             }
-            ApplicationState::CalibrationDone => self.draw_message_screen("Calibration complete"),
+            ApplicationState::CalibrationDone => {
+                draw_message_screen(&mut self.display, "Calibration complete")
+            }
             ApplicationState::Wait => self.draw_wait_screen(),
-            ApplicationState::ErrorScreenWithMessage(s) => self.draw_message_screen(s),
-            ApplicationState::VesselPlaced => self.draw_monitoring_screen(),
-            ApplicationState::VesselRemoved => self.draw_monitoring_screen(),
+            ApplicationState::ErrorScreenWithMessage(s) => {
+                draw_message_screen(&mut self.display, s)
+            }
 
             ApplicationState::TestScreen => self.test_mode_screen.draw(&mut self.display),
             ApplicationState::Settings => self.settings_screen.draw(&mut self.display),
+            ApplicationState::Monitoring => self.monitoring_screen.draw(&mut self.display),
+            ApplicationState::HeapStatus => self.heap_status_screen.draw(&mut self.display),
         }
 
         let _ = self
             .display
             .flush()
             .map_err(|_| error!("Display flush failed"));
-        self.last_update = Instant::now();
-    }
-
-    pub fn add_newlines_to_string<const S: usize>(
-        input: &str,
-        max_line_length: usize,
-    ) -> String<S> {
-        let mut result = String::<S>::new();
-        let mut current_length = 0;
-
-        for word in input.split_whitespace() {
-            // If the word exceeds max_line_length, split it with a hyphen
-            if word.len() > max_line_length {
-                let mut start = 0;
-
-                while start < word.len() {
-                    // Split the word into chunks of max_line_length
-                    let end = core::cmp::min(start + max_line_length, word.len());
-                    let part = &word[start..end];
-
-                    // If not the first chunk, insert a newline
-                    if current_length > 0 {
-                        result.push('\n').unwrap();
-                        current_length = 0;
-                    }
-
-                    // Add the part to the result
-                    if end < word.len() {
-                        // Add part of the word with a hyphen
-                        result.push_str(part).unwrap();
-                        result.push('-').unwrap();
-                        current_length = part.len() + 1;
-                    } else {
-                        // Last chunk, no hyphen
-                        result.push_str(part).unwrap();
-                        current_length += part.len();
-                    }
-
-                    start = end; // Move the start position for the next chunk
-                }
-                continue;
-            }
-
-            // If adding the word exceeds the max line length, insert a newline
-            if current_length + word.len() > max_line_length {
-                result.push('\n').unwrap();
-                current_length = 0; // Reset line length
-            }
-
-            // Add the word to the result
-            result.push_str(word).unwrap();
-            result.push(' ').unwrap(); // Add a space after the word
-            current_length += word.len() + 1; // Include space in the length
-        }
-
-        result
-    }
-
-    fn draw_message_screen(&mut self, message: &str) {
-        let max_line_length = self.display.get_dimensions().0 as usize / Self::DEFAULT_FONT_WIDTH;
-        let formatted_message = Self::add_newlines_to_string::<100>(message, max_line_length);
-        let centred_text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Center)
-            .baseline(Baseline::Middle)
-            .build();
-
-        let line_offset_pixels =
-            (formatted_message.lines().count() - 1) as i32 * self.text_style.line_height() as i32;
-        let x_pos = self.display.get_dimensions().0 as i32 / 2;
-        let y_pos = self.display.get_dimensions().1 as i32 / 2 - line_offset_pixels;
-        Text::with_text_style(
-            &*formatted_message,
-            Point::new(x_pos, y_pos),
-            self.text_style,
-            centred_text_style,
-        )
-        .draw(&mut self.display)
-        .unwrap();
-        trace!("Draw message screen done");
+        self.last_display_update = Instant::now();
     }
 
     fn draw_wait_screen(&mut self) {
-        self.draw_message_screen("Please wait...");
-    }
-
-    fn draw_monitoring_screen(&mut self) {
-        let mut string_buffer = String::<100>::new();
-        let centred_text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Center)
-            .baseline(Baseline::Middle)
-            .build();
-
-        let central_x_pos = self.display.get_dimensions().0 as i32 / 2;
-        let central_y_pos = self.display.get_dimensions().1 as i32 / 2;
-        let target_y_pos =
-            central_y_pos - (2f32 * self.text_style.line_height() as f32).round() as i32;
-        let centre_point = Point::new(central_x_pos, target_y_pos);
-
-        match self.display_state {
-            ApplicationState::VesselPlaced => {
-                write!(string_buffer, "Vessel placed\n").unwrap();
-            }
-            ApplicationState::VesselRemoved => {
-                write!(string_buffer, "Vessel removed\n").unwrap();
-            }
-            _ => {}
-        };
-        write!(string_buffer, "Rate: {:.0} ml/hr\n", self.consumption_rate).unwrap();
-        write!(string_buffer, "Last drink: {:.0} ml\n", self.consumption).unwrap();
-        write!(string_buffer, "Total: {:.0} ml", self.total_consumed).unwrap();
-        Text::with_text_style(
-            string_buffer.as_str(),
-            centre_point,
-            self.text_style,
-            centred_text_style,
-        )
-        .draw(&mut self.display)
-        .unwrap();
+        draw_message_screen(&mut self.display, "Please wait...");
     }
 
     fn route_ui_input(&mut self, input: UiInput) {
@@ -254,15 +129,17 @@ where
             ApplicationState::Calibration(_) => {}
             ApplicationState::CalibrationDone => {}
 
-            ApplicationState::WaitingForActivity => {}
-            ApplicationState::VesselRemoved => {}
-            ApplicationState::VesselPlaced => {}
-
             ApplicationState::Settings => self
                 .settings_screen
                 .ui_input_handler(input, &self.ui_action_publisher),
             ApplicationState::TestScreen => self
                 .test_mode_screen
+                .ui_input_handler(input, &self.ui_action_publisher),
+            ApplicationState::Monitoring => self
+                .monitoring_screen
+                .ui_input_handler(input, &self.ui_action_publisher),
+            ApplicationState::HeapStatus => self
+                .heap_status_screen
                 .ui_input_handler(input, &self.ui_action_publisher),
         }
     }

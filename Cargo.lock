@@ -1235,7 +1235,7 @@ checksum = "5f179d4e11094a893b82fff208f74d448a7512f99f5a0acbd5c679b705f83ed9"
 [[package]]
 name = "simple-embedded-graphics-menu"
 version = "0.1.0"
-source = "git+https://github.com/paulhampson/simple-embedded-graphics-menu.git#295039bd908f883cc6ead8415d035ae8c95b46f1"
+source = "git+https://github.com/paulhampson/simple-embedded-graphics-menu.git#50b4d1738a3113c76eb92647c1180b78c12f3160"
 dependencies = [
  "embedded-graphics",
  "embedded-layout",

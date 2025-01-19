@@ -15,6 +15,7 @@ pub enum SettingMenuIdentifier {
     Root,
     EnterTestScreen,
     None,
+    EnterHeapStatusScreen,
 }
 
 pub struct SettingMenu {
@@ -44,7 +45,9 @@ impl SettingMenu {
         );
 
         let mut menu = Menu::new("Settings", SettingMenuIdentifier::Root, menu_style);
+        menu.add_section("System", SettingMenuIdentifier::None);
         menu.add_action("Device Test Mode", SettingMenuIdentifier::EnterTestScreen);
+        menu.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
         menu.add_exit("Exit", SettingMenuIdentifier::None);
         menu
     }
@@ -61,11 +64,16 @@ impl SettingMenu {
                         ApplicationState::TestScreen,
                     ));
                 }
+                SettingMenuIdentifier::EnterHeapStatusScreen => {
+                    ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                        ApplicationState::HeapStatus,
+                    ));
+                }
                 _ => {}
             },
             SelectedData::Exit { id: _ } => {
                 ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
-                    ApplicationState::WaitingForActivity,
+                    ApplicationState::Monitoring,
                 ));
             }
             _ => {}

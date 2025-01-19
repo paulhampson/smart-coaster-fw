@@ -1,21 +1,23 @@
-use crate::application::application_state::ApplicationState;
+use crate::application::application_state::{
+    ApplicationState, CalibrationStateSubstates, MonitoringStateSubstates,
+};
 use crate::application::messaging::{
     ApplicationChannelPublisher, ApplicationData, ApplicationMessage,
 };
 use crate::hmi::messaging::HmiMessage::PushButtonPressed;
 use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiActionsMessage};
 use crate::weight::WeighingSystem;
+use crate::Heap;
 use defmt::{debug, trace};
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select, select3, select4, Either, Either3, Either4};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
 
 pub struct ApplicationManager<WS> {
-    hmi_subscriber: HmiChannelSubscriber<'static>,
     app_publisher: ApplicationChannelPublisher<'static>,
-    ui_action_subscriber: UiActionChannelSubscriber<'static>,
     weighing_system: WS,
+    heap: &'static Heap,
 }
 
 impl<WS> ApplicationManager<WS>
@@ -26,21 +28,19 @@ where
     const STABILISED_WEIGHT_MAX_DELTA: f32 = 5.0;
 
     pub fn new(
-        hmi_subscriber: HmiChannelSubscriber<'static>,
         app_publisher: ApplicationChannelPublisher<'static>,
-        ui_action_subscriber: UiActionChannelSubscriber<'static>,
         weighing_system: WS,
+        heap: &'static Heap,
     ) -> Self {
         Self {
-            hmi_subscriber,
             app_publisher,
-            ui_action_subscriber,
             weighing_system,
+            heap,
         }
     }
 
-    async fn clear_out_hmi_rx(&mut self) {
-        while self.hmi_subscriber.try_next_message_pure().is_some() {}
+    async fn clear_out_hmi_rx(&mut self, hmi_subscriber: &mut HmiChannelSubscriber<'_>) {
+        while hmi_subscriber.try_next_message_pure().is_some() {}
     }
 
     async fn manage_error(&mut self, message: &'static str) -> ! {
@@ -60,8 +60,24 @@ where
             .await;
     }
 
-    async fn wait_for_button(&mut self) {
-        while self.hmi_subscriber.next_message_pure().await != PushButtonPressed(true) {}
+    async fn update_monitoring_substate(&mut self, state: MonitoringStateSubstates) {
+        self.app_publisher
+            .publish(ApplicationMessage::ApplicationDataUpdate(
+                ApplicationData::MonitoringSubstate(state),
+            ))
+            .await;
+    }
+
+    async fn update_calibration_substate(&mut self, state: CalibrationStateSubstates) {
+        self.app_publisher
+            .publish(ApplicationMessage::ApplicationDataUpdate(
+                ApplicationData::CalibrationSubstate(state),
+            ))
+            .await;
+    }
+
+    async fn wait_for_button(&mut self, hmi_subscriber: &mut HmiChannelSubscriber<'_>) {
+        while hmi_subscriber.next_message_pure().await != PushButtonPressed(true) {}
     }
 
     async fn get_weight_reading_managed_error(&mut self) -> f32 {
@@ -117,44 +133,68 @@ where
         consumption_rate
     }
 
-    pub async fn run(&mut self) {
-        match self.weighing_calibration_sequence().await {
+    pub async fn run(
+        &mut self,
+        mut ui_action_receiver: UiActionChannelSubscriber<'_>,
+        mut hmi_subscriber: HmiChannelSubscriber<'_>,
+    ) {
+        match self
+            .weighing_calibration_sequence(&mut hmi_subscriber)
+            .await
+        {
             Ok(_) => {
-                self.clear_out_hmi_rx().await;
+                self.clear_out_hmi_rx(&mut hmi_subscriber).await;
             }
             Err(_) => {
                 self.manage_error("Scale calibration failed").await;
             }
         }
 
-        let mut next_state = self.settings_screen().await;
+        let mut next_state = self
+            .settings_screen(&mut ui_action_receiver, &mut hmi_subscriber)
+            .await;
         loop {
             match next_state {
-                ApplicationState::WaitingForActivity => {
-                    self.coaster_activity_monitoring().await;
+                ApplicationState::Monitoring => {
+                    next_state = self
+                        .coaster_activity_monitoring(&mut ui_action_receiver, &mut hmi_subscriber)
+                        .await;
                 }
                 ApplicationState::TestScreen => {
-                    next_state = self.test_screen(ApplicationState::Settings).await;
+                    next_state = self
+                        .test_screen(ApplicationState::Settings, &mut hmi_subscriber)
+                        .await;
                 }
                 ApplicationState::Settings => {
-                    next_state = self.settings_screen().await;
+                    next_state = self
+                        .settings_screen(&mut ui_action_receiver, &mut hmi_subscriber)
+                        .await;
+                }
+                ApplicationState::HeapStatus => {
+                    next_state = self
+                        .heap_status_screen(&mut ui_action_receiver, &mut hmi_subscriber)
+                        .await
                 }
                 _ => {}
             }
+            debug!("Changing to next_state: {:?}", next_state);
         }
     }
 
     /// Run the weight scale calibration sequence
-    async fn weighing_calibration_sequence(&mut self) -> Result<(), WS::Error> {
+    async fn weighing_calibration_sequence(
+        &mut self,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+    ) -> Result<(), WS::Error> {
         self.update_application_state(ApplicationState::Tare).await;
-        self.wait_for_button().await;
+        self.wait_for_button(hmi_subscriber).await;
         self.update_application_state(ApplicationState::Wait).await;
         self.weighing_system.stabilize_measurements().await?;
         self.weighing_system.tare().await?;
         let calibration_mass = 500;
         self.update_application_state(ApplicationState::Calibration(calibration_mass))
             .await;
-        self.wait_for_button().await;
+        self.wait_for_button(hmi_subscriber).await;
         self.update_application_state(ApplicationState::Wait).await;
         self.weighing_system
             .calibrate(calibration_mass as f32)
@@ -167,13 +207,17 @@ where
 
     /// Manage the data and behaviour for the system test screen that shows button, encoder and
     /// weight. Long press will exit the state.
-    async fn test_screen(&mut self, exit_to: ApplicationState) -> ApplicationState {
+    async fn test_screen(
+        &mut self,
+        exit_to: ApplicationState,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+    ) -> ApplicationState {
         self.update_application_state(ApplicationState::TestScreen)
             .await;
         let mut press_start = Instant::now();
         loop {
             let hmi_or_weight_message = select(
-                self.hmi_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
                 self.weighing_system.get_reading(),
             )
             .await;
@@ -213,15 +257,19 @@ where
         exit_to
     }
 
-    async fn settings_screen(&mut self) -> ApplicationState {
+    async fn settings_screen(
+        &mut self,
+        ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+    ) -> ApplicationState {
         self.update_application_state(ApplicationState::Settings)
             .await;
         let mut press_start = Instant::now();
 
         loop {
             let ui_or_hmi = select(
-                self.ui_action_subscriber.next_message_pure(),
-                self.hmi_subscriber.next_message_pure(),
+                ui_action_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
             )
             .await;
 
@@ -250,7 +298,7 @@ where
                 }
             }
         }
-        ApplicationState::WaitingForActivity
+        ApplicationState::Monitoring
     }
 
     async fn wait_for_weight_activity(&mut self) -> f32 {
@@ -268,7 +316,11 @@ where
 
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
     /// how much fluid has been added and consumed. Report the consumption rate.
-    async fn coaster_activity_monitoring(&mut self) {
+    async fn coaster_activity_monitoring(
+        &mut self,
+        ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+    ) -> ApplicationState {
         const MINIMUM_DELTA_FOR_STATE_CHANGE: f32 = 10.0;
         let mut last_stable_weight = self.get_stabilised_weight().await;
         let mut vessel_placed_weight = last_stable_weight;
@@ -276,22 +328,24 @@ where
         let monitoring_start_time = Instant::now();
         let mut consumption_update_ticker = Ticker::every(Duration::from_secs(60));
 
-        self.update_application_state(ApplicationState::WaitingForActivity)
+        self.update_application_state(ApplicationState::Monitoring)
             .await;
 
         loop {
-            let activity_or_ticker = select(
+            let activity_or_ticker_or_ui_action = select4(
                 self.wait_for_weight_activity(),
                 consumption_update_ticker.next(),
+                ui_action_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
             )
             .await;
-            match activity_or_ticker {
-                Either::First(_) => {
+            match activity_or_ticker_or_ui_action {
+                Either4::First(_) => {
                     let new_stable_weight = self.get_stabilised_weight().await;
                     let stable_delta = new_stable_weight - last_stable_weight;
 
                     if stable_delta > MINIMUM_DELTA_FOR_STATE_CHANGE {
-                        self.update_application_state(ApplicationState::VesselPlaced)
+                        self.update_monitoring_substate(MonitoringStateSubstates::VesselPlaced)
                             .await;
                         let consumption = vessel_placed_weight - new_stable_weight;
                         if consumption > 0.0 {
@@ -316,17 +370,61 @@ where
                         ))
                         .await;
                     } else if stable_delta < -MINIMUM_DELTA_FOR_STATE_CHANGE {
-                        self.update_application_state(ApplicationState::VesselRemoved)
+                        self.update_monitoring_substate(MonitoringStateSubstates::VesselRemoved)
                             .await;
                         trace!("New removed weight {}", new_stable_weight);
                     }
                     last_stable_weight = new_stable_weight;
                 }
-                Either::Second(_) => {
+                Either4::Second(_) => {
                     let consumption_rate = self
                         .update_consumption_rate(monitoring_start_time, total_consumption)
                         .await;
                     debug!("Consumption rate = {} ml/hr", consumption_rate.round());
+                }
+                Either4::Third(ui_action_message) => match ui_action_message {
+                    UiActionsMessage::StateChangeRequest(new_state) => return new_state,
+                },
+                Either4::Fourth(hmi_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
+                }
+            }
+        }
+    }
+
+    async fn heap_status_screen(
+        &mut self,
+        ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+    ) -> ApplicationState {
+        self.update_application_state(ApplicationState::HeapStatus)
+            .await;
+
+        self.send_application_data_update(ApplicationData::HeapStatus {
+            used: self.heap.used(),
+            free: self.heap.free(),
+        })
+        .await;
+
+        loop {
+            let ui_or_hmi = select(
+                ui_action_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
+            )
+            .await;
+
+            match ui_or_hmi {
+                Either::First(ui_action_message) => match ui_action_message {
+                    UiActionsMessage::StateChangeRequest(new_state) => {
+                        return new_state;
+                    }
+                },
+                Either::Second(hmi_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
                 }
             }
         }
