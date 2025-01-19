@@ -4,14 +4,12 @@ use defmt::Format;
 pub enum ApplicationState {
     Startup,
     TestScreen,
-    Tare,
-    Calibration(u32),
-    CalibrationDone,
     Wait,
     ErrorScreenWithMessage(&'static str),
     Settings,
     Monitoring,
     HeapStatus,
+    Calibration,
 }
 
 #[derive(Clone)]

@@ -12,10 +12,11 @@ use simple_embedded_graphics_menu::{Menu, MenuStyle};
 
 #[derive(Copy, Clone, Debug)]
 pub enum SettingMenuIdentifier {
+    None,
     Root,
     EnterTestScreen,
-    None,
     EnterHeapStatusScreen,
+    DoCalibration,
 }
 
 pub struct SettingMenu {
@@ -46,6 +47,7 @@ impl SettingMenu {
 
         let mut menu = Menu::new("Settings", SettingMenuIdentifier::Root, menu_style);
         menu.add_section("System", SettingMenuIdentifier::None);
+        menu.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
         menu.add_action("Device Test Mode", SettingMenuIdentifier::EnterTestScreen);
         menu.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
         menu.add_exit("Exit", SettingMenuIdentifier::None);
@@ -69,6 +71,9 @@ impl SettingMenu {
                         ApplicationState::HeapStatus,
                     ));
                 }
+                SettingMenuIdentifier::DoCalibration => ui_action_publisher.publish_immediate(
+                    UiActionsMessage::StateChangeRequest(ApplicationState::Calibration),
+                ),
                 _ => {}
             },
             SelectedData::Exit { id: _ } => {

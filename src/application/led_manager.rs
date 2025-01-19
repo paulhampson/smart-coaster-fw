@@ -1,5 +1,7 @@
-use crate::application::application_state::ApplicationState;
-use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMessage};
+use crate::application::application_state::{ApplicationState, CalibrationStateSubstates};
+use crate::application::messaging::{
+    ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
+};
 use crate::led::led_control::{LedArrayMode, LedControl};
 use embassy_futures::select::{select, Either};
 use embassy_time::{Duration, Ticker};
@@ -31,8 +33,8 @@ where
                     self.led_control.led_update().await;
                 }
                 Either::Second(message) => {
-                    if let ApplicationMessage::ApplicationStateUpdate(new_state) = message {
-                        match new_state {
+                    match message {
+                        ApplicationMessage::ApplicationStateUpdate(new_state) => match new_state {
                             ApplicationState::Startup => {
                                 self.led_control.set_mode(LedArrayMode::Off);
                             }
@@ -40,24 +42,6 @@ where
                                 self.led_control.set_mode(LedArrayMode::RainbowWheel {
                                     speed: 2.0,
                                     repetitions: 0.5,
-                                })
-                            }
-                            ApplicationState::Tare => {
-                                self.led_control.set_mode(LedArrayMode::StaticColour {
-                                    colour: RGB8::new(255, 0, 0),
-                                })
-                            }
-                            ApplicationState::Calibration(_) => {
-                                self.led_control.set_mode(LedArrayMode::Pulse {
-                                    colour: RGB8::new(177, 3, 252),
-                                    speed: 3.0,
-                                })
-                            }
-                            ApplicationState::CalibrationDone => {
-                                self.led_control.set_mode(LedArrayMode::SingleColourWheel {
-                                    colour: RGB8::new(0, 255, 0),
-                                    speed: 1.0,
-                                    repetitions: 2.0,
                                 })
                             }
                             ApplicationState::Wait => {}
@@ -74,9 +58,40 @@ where
                                     speed: 0.8,
                                 })
                             }
-                            ApplicationState::Settings => {}
+                            ApplicationState::Settings => {
+                                self.led_control.set_mode(LedArrayMode::Pulse {
+                                    colour: RGB8::new(4, 4, 74),
+                                    speed: 0.5,
+                                })
+                            }
                             ApplicationState::HeapStatus => {}
-                        }
+                            ApplicationState::Calibration => {}
+                        },
+                        ApplicationMessage::ApplicationDataUpdate(app_data) => match app_data {
+                            ApplicationData::CalibrationSubstate(s) => match s {
+                                CalibrationStateSubstates::Tare => {
+                                    self.led_control.set_mode(LedArrayMode::StaticColour {
+                                        colour: RGB8::new(255, 0, 0),
+                                    })
+                                }
+                                CalibrationStateSubstates::Calibration(_) => {
+                                    self.led_control.set_mode(LedArrayMode::Pulse {
+                                        colour: RGB8::new(177, 3, 252),
+                                        speed: 3.0,
+                                    })
+                                }
+                                CalibrationStateSubstates::CalibrationDone => {
+                                    self.led_control.set_mode(LedArrayMode::SingleColourWheel {
+                                        colour: RGB8::new(0, 255, 0),
+                                        speed: 1.0,
+                                        repetitions: 2.0,
+                                    })
+                                }
+                                CalibrationStateSubstates::Wait => {}
+                            },
+                            _ => {}
+                        },
+                        _ => {}
                     }
                     self.led_control.led_update().await;
                 }

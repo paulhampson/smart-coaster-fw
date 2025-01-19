@@ -2,8 +2,9 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMessage};
 use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
 use crate::hmi::rotary_encoder::Direction;
+use crate::hmi::screens::calibration::CalibrationScreens;
 use crate::hmi::screens::heap_status::HeapStatusScreen;
-use crate::hmi::screens::monitoring_screen::MonitoringScreen;
+use crate::hmi::screens::monitoring::MonitoringScreen;
 use crate::hmi::screens::settings::SettingMenu;
 use crate::hmi::screens::test_mode::TestModeScreen;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
@@ -30,6 +31,7 @@ where
     test_mode_screen: TestModeScreen,
     monitoring_screen: MonitoringScreen,
     heap_status_screen: HeapStatusScreen,
+    calibration_screens: CalibrationScreens,
 }
 
 impl<DI> DisplayManager<DI>
@@ -60,6 +62,7 @@ where
             test_mode_screen: TestModeScreen::new(),
             monitoring_screen: MonitoringScreen::new(),
             heap_status_screen: HeapStatusScreen::new(),
+            calibration_screens: CalibrationScreens::new(),
         }
     }
 
@@ -80,23 +83,7 @@ where
         self.display.clear();
         match self.display_state {
             ApplicationState::Startup => draw_message_screen(&mut self.display, "Starting up..."),
-            ApplicationState::Tare => draw_message_screen(
-                &mut self.display,
-                "Remove items from device and press button",
-            ),
-            ApplicationState::Calibration(calibration_mass_grams) => {
-                let mut message_string = String::<40>::new();
-                write!(
-                    message_string,
-                    "Put {}g on device then press button.",
-                    calibration_mass_grams
-                )
-                .expect("String too long");
-                draw_message_screen(&mut self.display, &message_string);
-            }
-            ApplicationState::CalibrationDone => {
-                draw_message_screen(&mut self.display, "Calibration complete")
-            }
+
             ApplicationState::Wait => self.draw_wait_screen(),
             ApplicationState::ErrorScreenWithMessage(s) => {
                 draw_message_screen(&mut self.display, s)
@@ -106,6 +93,7 @@ where
             ApplicationState::Settings => self.settings_screen.draw(&mut self.display),
             ApplicationState::Monitoring => self.monitoring_screen.draw(&mut self.display),
             ApplicationState::HeapStatus => self.heap_status_screen.draw(&mut self.display),
+            ApplicationState::Calibration => self.calibration_screens.draw(&mut self.display),
         }
 
         let _ = self
@@ -125,10 +113,6 @@ where
             ApplicationState::Wait => {}
             ApplicationState::ErrorScreenWithMessage(_) => {}
 
-            ApplicationState::Tare => {}
-            ApplicationState::Calibration(_) => {}
-            ApplicationState::CalibrationDone => {}
-
             ApplicationState::Settings => self
                 .settings_screen
                 .ui_input_handler(input, &self.ui_action_publisher),
@@ -140,6 +124,9 @@ where
                 .ui_input_handler(input, &self.ui_action_publisher),
             ApplicationState::HeapStatus => self
                 .heap_status_screen
+                .ui_input_handler(input, &self.ui_action_publisher),
+            ApplicationState::Calibration => self
+                .calibration_screens
                 .ui_input_handler(input, &self.ui_action_publisher),
         }
     }

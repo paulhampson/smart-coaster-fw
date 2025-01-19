@@ -10,8 +10,9 @@ use embedded_graphics::Drawable;
 use heapless::String;
 use sh1106::mode::GraphicsMode;
 
+pub mod calibration;
 pub mod heap_status;
-pub mod monitoring_screen;
+pub mod monitoring;
 pub mod settings;
 pub mod test_mode;
 

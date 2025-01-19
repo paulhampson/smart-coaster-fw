@@ -9,7 +9,7 @@ use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiA
 use crate::weight::WeighingSystem;
 use crate::Heap;
 use defmt::{debug, trace};
-use embassy_futures::select::{select, select3, select4, Either, Either3, Either4};
+use embassy_futures::select::{select, select4, Either, Either4};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
@@ -138,18 +138,6 @@ where
         mut ui_action_receiver: UiActionChannelSubscriber<'_>,
         mut hmi_subscriber: HmiChannelSubscriber<'_>,
     ) {
-        match self
-            .weighing_calibration_sequence(&mut hmi_subscriber)
-            .await
-        {
-            Ok(_) => {
-                self.clear_out_hmi_rx(&mut hmi_subscriber).await;
-            }
-            Err(_) => {
-                self.manage_error("Scale calibration failed").await;
-            }
-        }
-
         let mut next_state = self
             .settings_screen(&mut ui_action_receiver, &mut hmi_subscriber)
             .await;
@@ -175,6 +163,20 @@ where
                         .heap_status_screen(&mut ui_action_receiver, &mut hmi_subscriber)
                         .await
                 }
+                ApplicationState::Calibration => {
+                    match self
+                        .weighing_calibration_sequence(&mut hmi_subscriber)
+                        .await
+                    {
+                        Ok(_) => {
+                            self.clear_out_hmi_rx(&mut hmi_subscriber).await;
+                        }
+                        Err(_) => {
+                            self.manage_error("Scale calibration failed").await;
+                        }
+                    }
+                    next_state = ApplicationState::Settings;
+                }
                 _ => {}
             }
             debug!("Changing to next_state: {:?}", next_state);
@@ -186,20 +188,25 @@ where
         &mut self,
         hmi_subscriber: &mut HmiChannelSubscriber<'_>,
     ) -> Result<(), WS::Error> {
-        self.update_application_state(ApplicationState::Tare).await;
+        self.update_application_state(ApplicationState::Calibration)
+            .await;
+        self.update_calibration_substate(CalibrationStateSubstates::Tare)
+            .await;
         self.wait_for_button(hmi_subscriber).await;
-        self.update_application_state(ApplicationState::Wait).await;
+        self.update_calibration_substate(CalibrationStateSubstates::Wait)
+            .await;
         self.weighing_system.stabilize_measurements().await?;
         self.weighing_system.tare().await?;
         let calibration_mass = 500;
-        self.update_application_state(ApplicationState::Calibration(calibration_mass))
+        self.update_calibration_substate(CalibrationStateSubstates::Calibration(calibration_mass))
             .await;
         self.wait_for_button(hmi_subscriber).await;
-        self.update_application_state(ApplicationState::Wait).await;
+        self.update_calibration_substate(CalibrationStateSubstates::Wait)
+            .await;
         self.weighing_system
             .calibrate(calibration_mass as f32)
             .await?;
-        self.update_application_state(ApplicationState::CalibrationDone)
+        self.update_calibration_substate(CalibrationStateSubstates::CalibrationDone)
             .await;
         Timer::after(Duration::from_secs(2)).await;
         Ok(())
