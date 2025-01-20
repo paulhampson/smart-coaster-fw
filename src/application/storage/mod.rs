@@ -1,1 +1,1 @@
-pub enum StoredSettings {}
+pub mod settings;

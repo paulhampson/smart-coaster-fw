@@ -138,6 +138,17 @@ where
         mut ui_action_receiver: UiActionChannelSubscriber<'_>,
         mut hmi_subscriber: HmiChannelSubscriber<'_>,
     ) {
+        self.update_application_state(ApplicationState::Startup)
+            .await;
+        match self.weighing_system.stabilize_measurements().await {
+            Ok(_) => {}
+            Err(_) => {
+                self.manage_error("Scale stabilisation failed").await;
+            }
+        }
+
+        self.clear_out_hmi_rx(&mut hmi_subscriber).await;
+
         let mut next_state = self
             .settings_screen(&mut ui_action_receiver, &mut hmi_subscriber)
             .await;

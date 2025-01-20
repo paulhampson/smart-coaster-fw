@@ -9,6 +9,7 @@ defmt = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
+
 embedded-hal = "1.0"
 embedded-hal-async = "1.0"
 embedded-io = "0.6.1"
@@ -32,6 +33,7 @@ embassy-rp = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7faf
 embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7fafa" }
 embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7fafa", features = ["defmt", "defmt-timestamp-uptime"] }
 embassy-futures = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7fafa" }
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy.git", rev = "2ba7fafa" }
 
 embedded-graphics = "0.8.1"
 sh1106 = "0.5.0"
@@ -43,6 +45,10 @@ micromath = { version = "2.1.0", features = ["statistics", "vector"] }
 embedded-alloc = "0.6.0"
 embedded-layout = "0.4.1"
 simple-embedded-graphics-menu = { git = "https://github.com/paulhampson/simple-embedded-graphics-menu.git" }
+sequential-storage = "4.0.1"
+embedded-storage-async = "0.4.1"
+enum-map = "2.7.3"
+strum = { version = "0.26.3", default-features = false, features = ["derive"] }
 
 [profile.release]
 debug = 2

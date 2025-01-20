@@ -6,7 +6,8 @@ mod hmi;
 mod led;
 mod weight;
 
-use embassy_executor::{Executor, Spawner};
+use core::ops::Range;
+use embassy_executor::{Executor, SpawnToken, Spawner};
 use embassy_time::Duration;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
@@ -23,10 +24,10 @@ use defmt::info;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::{I2C0, PIO0};
+use embassy_rp::peripherals::{FLASH, I2C0, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
-use embassy_rp::{bind_interrupts, peripherals, pio};
+use embassy_rp::{bind_interrupts, flash, peripherals, pio};
 use embassy_sync::pubsub::PubSubChannel;
 use hmi::debouncer::Debouncer;
 use sh1106::{prelude::*, Builder};
@@ -43,7 +44,10 @@ use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightC
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
+use crate::application::storage::settings::SettingsManager;
 use core::ptr::addr_of_mut;
+use embassy_embedded_hal::adapter::BlockingAsync;
+use embassy_rp::flash::Flash;
 use embedded_alloc::LlffHeap as Heap;
 
 #[global_allocator]
@@ -56,6 +60,13 @@ static APP_CHANNEL: ApplicationChannel = PubSubChannel::new();
 
 const CORE1_STACK_SIZE: usize = 16 * 1024;
 const HEAP_SIZE: usize = 16 * 1024;
+
+// Ensure this matches memory.x
+const NVM_START: u32 = 0x101FE000;
+const NVM_SIZE: usize = 0x2000;
+const NVM_END: u32 = NVM_START + NVM_SIZE as u32;
+const NVM_FLASH_RANGE: Range<u32> = NVM_START..NVM_END;
+const NVM_PAGE_SIZE: usize = 256;
 
 const LED_COUNT: usize = 8;
 
@@ -78,6 +89,10 @@ assign_resources! {
     strain_gauge_io: StrainGaugeResources {
         clk_pin: PIN_14,
         data_pin: PIN_15,
+    }
+    storage: StorageResources {
+        flash: FLASH,
+        dma_channel: DMA_CH1,
     }
 }
 
@@ -108,13 +123,23 @@ fn main() -> ! {
     let p = embassy_rp::init(Default::default());
     let resources = split_resources! {p};
 
-    // Initialize the allocator BEFORE you use it
+    // Initialize the allocator BEFORE it's used
     {
         use core::mem::MaybeUninit;
 
         static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
     }
+
+    let flash = embassy_rp::flash::Flash::<FLASH, flash::Async, NVM_SIZE>::new(
+        resources.storage.flash,
+        resources.storage.dma_channel,
+    );
+    let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
+
+    let mut settings_manager = SettingsManager::new(flash, NVM_FLASH_RANGE, NVM_PAGE_SIZE);
+
+    // TODO initialise settings manager, put settings manager behind a mutex
 
     let core0_resources = Core0Resources {
         hmi_inputs: resources.hmi_inputs,

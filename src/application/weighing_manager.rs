@@ -29,10 +29,7 @@ where
             let request_or_timer = select(self.app_channel_subscriber.next_message_pure(), periodic_timer.next()).await;
             match request_or_timer {
                 Either::First(message) => {
-                    match message {
-                        ApplicationMessage::WeighSystemRequest(weight_request) => { self.handle_request(weight_request).await; }
-                        _ => {}
-                    }
+                    if let ApplicationMessage::WeighSystemRequest(weight_request) = message { self.handle_request(weight_request).await; }
                 },
                 Either::Second(_) => {
                     self.do_measurement().await;
