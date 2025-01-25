@@ -8,12 +8,10 @@ use crate::hmi::screens::monitoring::MonitoringScreen;
 use crate::hmi::screens::settings::SettingMenu;
 use crate::hmi::screens::test_mode::TestModeScreen;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
-use core::fmt::Write;
 use defmt::{debug, error, trace, warn};
 use embassy_futures::select::{select, Either};
 use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
-use heapless::String;
 use sh1106::mode::GraphicsMode;
 
 pub struct DisplayManager<DI>
@@ -84,7 +82,6 @@ where
         match self.display_state {
             ApplicationState::Startup => draw_message_screen(&mut self.display, "Starting up..."),
 
-            ApplicationState::Wait => self.draw_wait_screen(),
             ApplicationState::ErrorScreenWithMessage(s) => {
                 draw_message_screen(&mut self.display, s)
             }
@@ -103,14 +100,9 @@ where
         self.last_display_update = Instant::now();
     }
 
-    fn draw_wait_screen(&mut self) {
-        draw_message_screen(&mut self.display, "Please wait...");
-    }
-
     fn route_ui_input(&mut self, input: UiInput) {
         match self.display_state {
             ApplicationState::Startup => {}
-            ApplicationState::Wait => {}
             ApplicationState::ErrorScreenWithMessage(_) => {}
 
             ApplicationState::Settings => self

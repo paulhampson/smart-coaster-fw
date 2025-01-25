@@ -4,7 +4,6 @@ use defmt::Format;
 pub enum ApplicationState {
     Startup,
     TestScreen,
-    Wait,
     ErrorScreenWithMessage(&'static str),
     Settings,
     Monitoring,

@@ -44,7 +44,6 @@ where
                                     repetitions: 0.5,
                                 })
                             }
-                            ApplicationState::Wait => {}
                             ApplicationState::ErrorScreenWithMessage(_) => {
                                 self.led_control.set_mode(LedArrayMode::Pulse {
                                     colour: RGB8::new(255, 0, 0),

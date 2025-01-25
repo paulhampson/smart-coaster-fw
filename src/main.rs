@@ -7,7 +7,7 @@ mod led;
 mod weight;
 
 use core::ops::Range;
-use embassy_executor::{Executor, SpawnToken, Spawner};
+use embassy_executor::{Executor, Spawner};
 use embassy_time::Duration;
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
@@ -44,10 +44,11 @@ use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightC
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
-use crate::application::storage::settings::SettingsManager;
+use crate::application::storage::settings::{SettingsManager, SettingsManagerMutex};
 use core::ptr::addr_of_mut;
 use embassy_embedded_hal::adapter::BlockingAsync;
-use embassy_rp::flash::Flash;
+use embassy_rp::flash::{Error, Flash};
+use embassy_sync::mutex::Mutex;
 use embedded_alloc::LlffHeap as Heap;
 
 #[global_allocator]
@@ -62,13 +63,20 @@ const CORE1_STACK_SIZE: usize = 16 * 1024;
 const HEAP_SIZE: usize = 16 * 1024;
 
 // Ensure this matches memory.x
-const NVM_START: u32 = 0x101FE000;
+const FLASH_SIZE: usize = 2 * 1024 * 1024;
 const NVM_SIZE: usize = 0x2000;
-const NVM_END: u32 = NVM_START + NVM_SIZE as u32;
-const NVM_FLASH_RANGE: Range<u32> = NVM_START..NVM_END;
+const NVM_FLASH_OFFSET_RANGE: Range<u32> = (FLASH_SIZE - NVM_SIZE) as u32..FLASH_SIZE as u32;
 const NVM_PAGE_SIZE: usize = 256;
 
 const LED_COUNT: usize = 8;
+
+static SETTINGS_STORE: SettingsManagerMutex<
+    Error,
+    BlockingAsync<Flash<FLASH, flash::Async, FLASH_SIZE>>,
+> = Mutex::new(SettingsManager::<
+    Error,
+    BlockingAsync<Flash<FLASH, flash::Async, FLASH_SIZE>>,
+>::new());
 
 assign_resources! {
     display_i2c: DisplayI2cPins{
@@ -100,6 +108,7 @@ struct Core0Resources {
     hmi_inputs: HmiInputPins,
     led_control: LedControlResources,
     strain_gauge_io: StrainGaugeResources,
+    storage: StorageResources,
 }
 
 struct Core1Resources {
@@ -131,20 +140,11 @@ fn main() -> ! {
         unsafe { HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
     }
 
-    let flash = embassy_rp::flash::Flash::<FLASH, flash::Async, NVM_SIZE>::new(
-        resources.storage.flash,
-        resources.storage.dma_channel,
-    );
-    let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
-
-    let mut settings_manager = SettingsManager::new(flash, NVM_FLASH_RANGE, NVM_PAGE_SIZE);
-
-    // TODO initialise settings manager, put settings manager behind a mutex
-
     let core0_resources = Core0Resources {
         hmi_inputs: resources.hmi_inputs,
         led_control: resources.led_control,
         strain_gauge_io: resources.strain_gauge_io,
+        storage: resources.storage,
     };
     let core1_resources = Core1Resources {
         display_i2c: resources.display_i2c,
@@ -166,6 +166,7 @@ fn main() -> ! {
 }
 
 fn core0_main(spawner: Spawner, resources: Core0Resources) {
+    spawner.spawn(storage_task(resources.storage)).unwrap();
     spawner
         .spawn(hmi_input_task(
             resources.hmi_inputs,
@@ -209,6 +210,22 @@ fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) 
             heap,
         ))
         .unwrap();
+}
+
+#[embassy_executor::task]
+async fn storage_task(storage_resources: StorageResources) {
+    let flash = embassy_rp::flash::Flash::<FLASH, flash::Async, FLASH_SIZE>::new(
+        storage_resources.flash,
+        storage_resources.dma_channel,
+    );
+    let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
+
+    {
+        let mut settings = SETTINGS_STORE.lock().await;
+        settings
+            .initialise(flash, NVM_FLASH_OFFSET_RANGE, NVM_PAGE_SIZE)
+            .await;
+    }
 }
 
 #[embassy_executor::task]
@@ -282,9 +299,12 @@ async fn weighing_task(
     let clk_pin_out = Output::new(strain_gauge_resources.clk_pin, Level::Low);
     let data_pin = Input::new(strain_gauge_resources.data_pin, Pull::Up);
     let strain_gauge = Hx711Async::new(clk_pin_out, data_pin, Hx711Gain::Gain128);
-    let weight_scale = WeightScale::new(strain_gauge).await.unwrap();
+    let weight_scale = WeightScale::new(strain_gauge, &SETTINGS_STORE)
+        .await
+        .unwrap();
 
-    let weighing_manager = WeighingManager::new(app_subscriber, weight_event_sender, weight_scale);
+    let mut weighing_manager =
+        WeighingManager::new(app_subscriber, weight_event_sender, weight_scale);
     weighing_manager.run().await;
 }
 

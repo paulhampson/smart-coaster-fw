@@ -1,4 +1,7 @@
 use core::ops::Range;
+use defmt::{debug, warn};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 use heapless::FnvIndexMap;
 use sequential_storage::cache::NoCache;
@@ -6,9 +9,13 @@ use sequential_storage::map;
 use sequential_storage::map::{SerializationError, Value};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
+pub type SettingsManagerMutex<E, F> = Mutex<CriticalSectionRawMutex, SettingsManager<E, F>>;
+
 pub enum SettingError {
     SaveError,
     RetrieveError,
+    NotInitialized,
+    EraseError,
 }
 
 #[repr(u8)]
@@ -54,7 +61,7 @@ impl Value<'_> for SettingValue {
 
         buffer[0] = id_byte;
         if total_serialization_len > 1 {
-            buffer[1..].copy_from_slice(&value_buffer[..data_bytes_count]);
+            buffer[1..total_serialization_len].copy_from_slice(&value_buffer[..data_bytes_count]);
         }
 
         Ok(total_serialization_len)
@@ -78,7 +85,7 @@ impl Value<'_> for SettingValue {
                 Ok(SettingValue::Float(value))
             }
             // Assuming 1 represents SmallInt
-            1 => {
+            2 => {
                 let value = value_buffer[0] as i8;
                 Ok(SettingValue::SmallInt(value))
             }
@@ -118,10 +125,14 @@ where
     E: defmt::Format,
     F: NorFlash + MultiwriteNorFlash<Error = E>,
 {
-    flash: F,
-    storage_range: Range<u32>,
+    flash: Option<F>,
+    storage_range: Option<Range<u32>>,
     flash_cache: NoCache,
-    settings_cache: FnvIndexMap<SettingKey, Option<SettingValue>, { StoredSettings::COUNT }>,
+    settings_cache: FnvIndexMap<
+        SettingKey,
+        Option<SettingValue>,
+        { StoredSettings::COUNT.next_power_of_two() },
+    >,
 }
 
 const DATA_BUFFER_SIZE: usize = 128;
@@ -129,18 +140,28 @@ const DATA_BUFFER_SIZE: usize = 128;
 impl<E, F> SettingsManager<E, F>
 where
     E: defmt::Format,
-    F: NorFlash + MultiwriteNorFlash<Error = E>,
+    F: MultiwriteNorFlash<Error = E>,
 {
-    pub fn new(flash: F, storage_range: Range<u32>, page_size: usize) -> Self {
+    pub const fn new() -> Self {
         Self {
-            flash,
-            storage_range,
+            flash: None,
+            storage_range: None,
             flash_cache: NoCache::new(),
             settings_cache: FnvIndexMap::new(),
         }
     }
 
-    pub async fn initialise(&mut self) {
+    pub async fn initialise(&mut self, flash: F, storage_range: Range<u32>, _page_size: usize) {
+        self.flash = Some(flash);
+        self.storage_range = Some(storage_range);
+        debug!(
+            "Settings initialising. Flash address range: {:x} to {:x}, size {:x}",
+            self.storage_range.clone().unwrap().start,
+            self.storage_range.clone().unwrap().end,
+            self.flash.as_ref().unwrap().capacity(),
+            // self.flash.as_ref().unwrap().FLASH_BASE,
+        );
+
         for setting in StoredSettings::iter() {
             let value = self.load_setting(&setting).await;
             if let Ok(setting_value) = value {
@@ -151,29 +172,71 @@ where
                 let _ = self.settings_cache.insert(setting.discriminant(), None);
             }
         }
+
+        if self.settings_cache.iter().all(|(_, v)| v.is_none()) {
+            warn!("No settings loaded on initialisation, erasing storage");
+            let _ = self
+                .clear_data()
+                .await
+                .map_err(|_| warn!("Clearing data failed"));
+        }
+        debug!("Settings initialised");
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.flash.is_some() && self.storage_range.is_some()
+    }
+
+    async fn clear_data(&mut self) -> Result<(), SettingError> {
+        if !self.is_initialized() {
+            warn!("Trying to clear data before initialisation");
+            return Err(SettingError::NotInitialized);
+        }
+        let flash = self.flash.as_mut().unwrap();
+        let storage_range = self.storage_range.clone().unwrap().clone();
+        sequential_storage::erase_all(flash, storage_range)
+            .await
+            .map_err(|e| {
+                warn!("Unable to erase settings storage. Error: {:?}", e);
+                SettingError::EraseError
+            })?;
+
+        Ok(())
     }
 
     async fn save_setting(&mut self, setting: StoredSettings) -> Result<(), SettingError> {
-        // Storage managment layer requires a buffer to work with. It must be big enough to
+        // Storage management layer requires a buffer to work with. It must be big enough to
         // serialize the biggest value of your storage type in,
         // rounded up  to word alignment of the flash. Some kinds of internal flash may require
         // this buffer to be aligned in RAM as well.
         let mut data_buffer = [0; DATA_BUFFER_SIZE];
 
+        if !self.is_initialized() {
+            warn!("Trying to save settings before initialisation");
+            return Err(SettingError::NotInitialized);
+        }
+
+        let flash = self.flash.as_mut().unwrap();
+        let storage_range = self.storage_range.clone().unwrap().clone();
+
         let k = setting.discriminant();
         let v = setting.value();
         map::store_item(
-            &mut self.flash,
-            self.storage_range.clone(),
+            flash,
+            storage_range,
             &mut self.flash_cache,
             &mut data_buffer,
             &k,
             &v,
         )
         .await
-        .map_err(|_| SettingError::SaveError)?;
+        .map_err(|e| {
+            warn!("Unable to save value. Error {:?}", e);
+            SettingError::SaveError
+        })?;
 
         let _ = self.settings_cache.insert(setting.discriminant(), Some(v));
+        debug!("Setting saved");
 
         Ok(())
     }
@@ -183,19 +246,31 @@ where
         setting: &StoredSettings,
     ) -> Result<Option<SettingValue>, SettingError> {
         let mut data_buffer = [0; DATA_BUFFER_SIZE];
+
+        if !self.is_initialized() {
+            warn!("Trying to load settings before initialisation");
+            return Err(SettingError::NotInitialized);
+        }
+
+        let flash = self.flash.as_mut().unwrap();
+        let storage_range = self.storage_range.clone().unwrap().clone();
+
         let value = map::fetch_item::<u16, SettingValue, _>(
-            &mut self.flash,
-            self.storage_range.clone(),
+            flash,
+            storage_range,
             &mut self.flash_cache,
             &mut data_buffer,
             &setting.discriminant(),
         )
         .await
-        .map_err(|_| SettingError::RetrieveError)?;
+        .map_err(|e| {
+            warn!("Unable to load setting. Error: {:?}", e);
+            SettingError::RetrieveError
+        })?;
         Ok(value)
     }
 
-    async fn get_setting(&mut self, setting_id: u16) -> Option<SettingValue> {
+    async fn get_setting(&self, setting_id: u16) -> Option<SettingValue> {
         self.settings_cache
             .get(&setting_id)
             .cloned()
@@ -212,7 +287,7 @@ where
         .await
     }
 
-    pub async fn get_weighing_system_tare_offset(&mut self) -> Option<f32> {
+    pub async fn get_weighing_system_tare_offset(&self) -> Option<f32> {
         let result = self
             .get_setting(
                 StoredSettings::WeighingSystemTareOffset(SettingValue::Float(0.0)).discriminant(),
@@ -238,7 +313,7 @@ where
         .await
     }
 
-    pub async fn get_weighing_system_calibration_gradient(&mut self) -> Option<f32> {
+    pub async fn get_weighing_system_calibration_gradient(&self) -> Option<f32> {
         let result = self
             .get_setting(
                 StoredSettings::WeighingSystemCalibrationGradient(SettingValue::Float(0.0))
@@ -262,7 +337,7 @@ where
         .await
     }
 
-    pub async fn get_system_led_brightness(&mut self) -> Option<i8> {
+    pub async fn get_system_led_brightness(&self) -> Option<i8> {
         let result = self
             .get_setting(
                 StoredSettings::SystemLedBrightness(SettingValue::SmallInt(0i8)).discriminant(),

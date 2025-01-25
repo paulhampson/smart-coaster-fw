@@ -20,7 +20,11 @@ impl CalibrationScreens {
 }
 
 impl UiInputHandler for CalibrationScreens {
-    fn ui_input_handler(&mut self, input: UiInput, ui_action_publisher: &UiActionChannelPublisher) {
+    fn ui_input_handler(
+        &mut self,
+        input: UiInput,
+        _ui_action_publisher: &UiActionChannelPublisher,
+    ) {
         match input {
             UiInput::ApplicationData(app_data) => match app_data {
                 ApplicationData::CalibrationSubstate(new_state) => {
