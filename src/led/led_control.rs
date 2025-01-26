@@ -150,12 +150,12 @@ where
             LedArrayMode::StaticColour { colour: _ } => self.static_colour(),
         };
 
-        let mut corrected_leds = [RGB8::default(); LED_COUNT];
-        for (idx, led) in gamma(self.led_state.iter().cloned()).enumerate() {
-            corrected_leds[idx] = led;
+        let mut scaled_leds = [RGB8::default(); LED_COUNT];
+        for (idx, led) in brightness(self.led_state.iter().cloned(), self.brightness).enumerate() {
+            scaled_leds[idx] = led;
         }
         let mut final_leds = [RGB8::default(); LED_COUNT];
-        for (idx, led) in brightness(corrected_leds.iter().cloned(), self.brightness).enumerate() {
+        for (idx, led) in gamma(scaled_leds.iter().cloned()).enumerate() {
             final_leds[idx] = led;
         }
 
