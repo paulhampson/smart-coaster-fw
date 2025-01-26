@@ -7,6 +7,8 @@ use embassy_futures::select::{select, Either};
 use embassy_time::{Duration, Ticker};
 use smart_leds::RGB8;
 
+const UPDATES_PER_SECOND: u64 = 30;
+
 pub struct LedManager<LC> {
     led_control: LC,
     app_channel: ApplicationChannelSubscriber<'static>,
@@ -24,7 +26,7 @@ where
     }
 
     pub async fn run(&mut self) {
-        let mut ticker = Ticker::every(Duration::from_millis(10));
+        let mut ticker = Ticker::every(Duration::from_millis(1000 / UPDATES_PER_SECOND));
         loop {
             let timer_or_state_change =
                 select(ticker.next(), self.app_channel.next_message_pure()).await;
@@ -47,14 +49,14 @@ where
                             ApplicationState::ErrorScreenWithMessage(_) => {
                                 self.led_control.set_mode(LedArrayMode::Pulse {
                                     colour: RGB8::new(255, 0, 0),
-                                    speed: 6.0,
+                                    speed: 3.0,
                                 })
                             }
                             ApplicationState::Monitoring => {
                                 self.led_control.set_mode(LedArrayMode::SingleColourWheel {
                                     colour: RGB8::new(62, 164, 240),
                                     repetitions: 3.0,
-                                    speed: 0.8,
+                                    speed: 0.5,
                                 })
                             }
                             ApplicationState::Settings => {
@@ -67,7 +69,7 @@ where
                             ApplicationState::Calibration => {}
                             ApplicationState::SetLedBrightness => {
                                 self.led_control.set_mode(LedArrayMode::RainbowWheel {
-                                    speed: 1.0,
+                                    speed: 1.0 / 6.0,
                                     repetitions: 1.0,
                                 })
                             }

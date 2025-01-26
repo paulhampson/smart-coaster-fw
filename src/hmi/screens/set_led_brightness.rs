@@ -106,7 +106,7 @@ impl UiDrawer for SetLedBrightnessScreen {
             Point::new(
                 0,
                 (display.size().height
-                    - ((count_string.lines().count() as u32 - 1) * text_style.line_height()))
+                    - ((count_string.lines().count() as u32) * text_style.line_height()))
                     as i32,
             ),
             text_style,

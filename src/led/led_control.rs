@@ -2,7 +2,7 @@ use crate::application::storage::settings::SettingsManagerMutex;
 use defmt::{trace, warn};
 use embassy_rp::pio::Instance;
 use embassy_rp::pio_programs::ws2812::PioWs2812;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_storage_async::nor_flash::MultiwriteNorFlash;
 use micromath::F32Ext;
 use smart_leds::hsv::{hsv2rgb, Hsv};
@@ -78,6 +78,7 @@ where
     base_colour: RGB8,
     brightness: u8,
     shared_settings: &'a SettingsManagerMutex<E, F>,
+    last_update: Instant,
 }
 
 impl<'a, const LED_COUNT: usize, P, const S: usize, E, F> LedControl
@@ -114,6 +115,7 @@ where
         }
     }
 
+    /// Speed is in rotations per second
     fn set_speed_factor(&mut self, speed: f32) {
         self.speed_factor = speed;
     }
@@ -161,8 +163,12 @@ where
 
         self.ws2812pio.write(&final_leds).await;
 
+        let degrees_per_sec = self.speed_factor * 360.0;
+        let degrees_to_progress =
+            (self.last_update.elapsed().as_millis() as f32 / 1000.0) * degrees_per_sec;
+        self.last_update = Instant::now();
         self.animation_position = match self.animation_position {
-            0.0..360.0 => self.animation_position + self.speed_factor,
+            0.0..360.0 => self.animation_position + degrees_to_progress,
             _ => 0.0,
         };
     }
@@ -191,6 +197,7 @@ where
             base_colour: RGB8::new(0, 0, 0),
             brightness: Self::get_stored_brightness(shared_settings).await,
             shared_settings,
+            last_update: Instant::now(),
         }
     }
 
