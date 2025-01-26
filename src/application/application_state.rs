@@ -9,7 +9,6 @@ pub enum ApplicationState {
     Monitoring,
     HeapStatus,
     Calibration,
-    SetLedBrightness,
 }
 
 #[derive(Clone)]

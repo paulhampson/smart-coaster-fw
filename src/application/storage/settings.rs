@@ -1,7 +1,12 @@
 use core::ops::Range;
 use defmt::{debug, warn, Format};
+use embassy_embedded_hal::adapter::BlockingAsync;
+use embassy_rp::flash;
+use embassy_rp::flash::{Error, Flash};
+use embassy_rp::peripherals::FLASH;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_time::{Duration, Timer};
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 use heapless::FnvIndexMap;
 use sequential_storage::cache::NoCache;
@@ -9,7 +14,27 @@ use sequential_storage::map;
 use sequential_storage::map::{SerializationError, Value};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
+pub static SETTINGS_STORE: SettingsManagerMutex<
+    Error,
+    BlockingAsync<Flash<FLASH, flash::Async, { crate::FLASH_SIZE }>>,
+> = Mutex::new(SettingsManager::<
+    Error,
+    BlockingAsync<Flash<FLASH, flash::Async, { crate::FLASH_SIZE }>>,
+>::new());
+
 pub type SettingsManagerMutex<E, F> = Mutex<CriticalSectionRawMutex, SettingsManager<E, F>>;
+
+pub async fn wait_for_settings_store_initialisation() {
+    loop {
+        {
+            let settings = SETTINGS_STORE.lock().await;
+            if settings.is_initialized() {
+                break;
+            }
+        }
+        Timer::after(Duration::from_millis(200)).await;
+    }
+}
 
 #[derive(Debug, Format)]
 pub enum SettingError {

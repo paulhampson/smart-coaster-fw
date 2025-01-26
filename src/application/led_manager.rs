@@ -60,19 +60,12 @@ where
                                 })
                             }
                             ApplicationState::Settings => {
-                                self.led_control.set_mode(LedArrayMode::Pulse {
-                                    colour: RGB8::new(4, 4, 74),
-                                    speed: 0.5,
+                                self.led_control.set_mode(LedArrayMode::StaticColour {
+                                    colour: RGB8::new(191, 64, 191),
                                 })
                             }
                             ApplicationState::HeapStatus => {}
                             ApplicationState::Calibration => {}
-                            ApplicationState::SetLedBrightness => {
-                                self.led_control.set_mode(LedArrayMode::RainbowWheel {
-                                    speed: 1.0 / 6.0,
-                                    repetitions: 1.0,
-                                })
-                            }
                         },
                         ApplicationMessage::ApplicationDataUpdate(app_data) => match app_data {
                             ApplicationData::LedBrightness(brightness) => {

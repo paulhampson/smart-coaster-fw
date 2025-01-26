@@ -1,10 +1,10 @@
-use crate::application::storage::settings::SettingsManagerMutex;
+use crate::application::storage::settings::{
+    wait_for_settings_store_initialisation, SETTINGS_STORE,
+};
 use crate::weight::interface::AsyncStrainGaugeInterface;
 use crate::weight::WeighingSystem;
 use core::cmp::max;
 use defmt::{trace, warn};
-use embassy_time::{Duration, Timer};
-use embedded_storage_async::nor_flash::MultiwriteNorFlash;
 use heapless::Vec;
 use micromath::statistics::{Mean, StdDev};
 use micromath::F32Ext;
@@ -17,36 +17,25 @@ pub enum Error<StrainGaugeE> {
     StrainGaugeReadingError(StrainGaugeE),
 }
 
-pub struct WeightScale<
-    StrainGauge,
-    E: defmt::Format + 'static,
-    F: MultiwriteNorFlash<Error = E> + 'static,
-> {
+pub struct WeightScale<StrainGauge> {
     strain_gauge: StrainGauge,
     tare_offset: f32,
     bits_to_discard: usize,
     calibration_gradient: f32,
     is_stabilized: bool,
-    shared_settings: &'static SettingsManagerMutex<E, F>,
 }
 
-impl<StrainGauge, StrainGaugeE, E, F> WeightScale<StrainGauge, E, F>
+impl<StrainGauge, StrainGaugeE> WeightScale<StrainGauge>
 where
     StrainGauge: AsyncStrainGaugeInterface<Error = StrainGaugeE>,
-    E: defmt::Format,
-    F: MultiwriteNorFlash<Error = E>,
 {
-    pub async fn new(
-        mut strain_gauge: StrainGauge,
-        shared_settings: &'static SettingsManagerMutex<E, F>,
-    ) -> Result<Self, Error<StrainGaugeE>> {
+    pub async fn new(mut strain_gauge: StrainGauge) -> Result<Self, Error<StrainGaugeE>> {
         strain_gauge
             .initialize()
             .await
             .map_err(Error::StrainGaugeReadingError)?;
 
-        let (tare_offset, calibration_gradient) =
-            Self::get_stored_calibration(shared_settings).await;
+        let (tare_offset, calibration_gradient) = Self::get_stored_calibration().await;
 
         Ok(Self {
             strain_gauge,
@@ -54,35 +43,28 @@ where
             bits_to_discard: BITS_TO_DISCARD_BEFORE_STABILISATION,
             calibration_gradient,
             is_stabilized: false,
-            shared_settings,
         })
     }
 
-    async fn get_stored_calibration(shared_settings: &SettingsManagerMutex<E, F>) -> (f32, f32) {
+    async fn get_stored_calibration() -> (f32, f32) {
         let tare_offset;
         let calibration_gradient;
-        loop {
-            {
-                let settings = shared_settings.lock().await;
-                if settings.is_initialized() {
-                    tare_offset = settings
-                        .get_weighing_system_tare_offset()
-                        .await
-                        .unwrap_or(0.0);
-                    calibration_gradient = settings
-                        .get_weighing_system_calibration_gradient()
-                        .await
-                        .unwrap_or(0.0);
-                    trace!(
-                        "Loaded calibration values - tare: {}, gradient: {}",
-                        tare_offset,
-                        calibration_gradient
-                    );
-                    return (tare_offset, calibration_gradient);
-                }
-            }
-            Timer::after(Duration::from_millis(200)).await;
-        }
+        wait_for_settings_store_initialisation().await;
+        let settings = SETTINGS_STORE.lock().await;
+        tare_offset = settings
+            .get_weighing_system_tare_offset()
+            .await
+            .unwrap_or(0.0);
+        calibration_gradient = settings
+            .get_weighing_system_calibration_gradient()
+            .await
+            .unwrap_or(0.0);
+        trace!(
+            "Loaded calibration values - tare: {}, gradient: {}",
+            tare_offset,
+            calibration_gradient
+        );
+        (tare_offset, calibration_gradient)
     }
 
     async fn get_filtered_raw_reading(&mut self) -> Result<f32, Error<StrainGaugeE>> {
@@ -97,7 +79,7 @@ where
 
     async fn save_new_tare(&mut self, tare: f32) {
         self.tare_offset = tare;
-        let mut settings = self.shared_settings.lock().await;
+        let mut settings = SETTINGS_STORE.lock().await;
         let _ = settings
             .set_weighing_system_tare_offset(tare)
             .await
@@ -106,7 +88,7 @@ where
 
     async fn save_new_calibration_gradient(&mut self, gradient: f32) {
         self.calibration_gradient = gradient;
-        let mut settings = self.shared_settings.lock().await;
+        let mut settings = SETTINGS_STORE.lock().await;
         let _ = settings
             .set_weighing_system_calibration_gradient(gradient)
             .await
@@ -117,11 +99,9 @@ where
         self.is_stabilized
     }
 }
-impl<StrainGauge, StrainGaugeE, E, F> WeighingSystem for WeightScale<StrainGauge, E, F>
+impl<StrainGauge, StrainGaugeE> WeighingSystem for WeightScale<StrainGauge>
 where
     StrainGauge: AsyncStrainGaugeInterface<Error = StrainGaugeE>,
-    E: defmt::Format,
-    F: MultiwriteNorFlash<Error = E>,
 {
     type Error = Error<StrainGaugeE>;
 

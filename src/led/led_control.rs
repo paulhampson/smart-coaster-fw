@@ -1,9 +1,10 @@
-use crate::application::storage::settings::SettingsManagerMutex;
-use defmt::{trace, warn};
+use crate::application::storage::settings::{
+    wait_for_settings_store_initialisation, SETTINGS_STORE,
+};
+use defmt::warn;
 use embassy_rp::pio::Instance;
 use embassy_rp::pio_programs::ws2812::PioWs2812;
-use embassy_time::{Duration, Instant, Timer};
-use embedded_storage_async::nor_flash::MultiwriteNorFlash;
+use embassy_time::Instant;
 use micromath::F32Ext;
 use smart_leds::hsv::{hsv2rgb, Hsv};
 use smart_leds::{brightness, gamma, RGB8};
@@ -63,11 +64,7 @@ pub trait LedControl {
     async fn led_update(&mut self);
 }
 
-pub struct LedController<'a, const LED_COUNT: usize, P: Instance, const S: usize, E, F>
-where
-    E: defmt::Format,
-    F: MultiwriteNorFlash<Error = E>,
-{
+pub struct LedController<'a, const LED_COUNT: usize, P: Instance, const S: usize> {
     ws2812pio: PioWs2812<'a, P, S, LED_COUNT>,
     led_count: usize,
     led_state: [RGB8; LED_COUNT],
@@ -77,16 +74,13 @@ where
     repetition_factor: f32,
     base_colour: RGB8,
     brightness: u8,
-    shared_settings: &'a SettingsManagerMutex<E, F>,
     last_update: Instant,
 }
 
-impl<'a, const LED_COUNT: usize, P, const S: usize, E, F> LedControl
-    for LedController<'a, LED_COUNT, P, S, E, F>
+impl<'a, const LED_COUNT: usize, P, const S: usize> LedControl
+    for LedController<'a, LED_COUNT, P, S>
 where
     P: Instance,
-    E: defmt::Format,
-    F: MultiwriteNorFlash<Error = E>,
 {
     fn set_mode(&mut self, mode: LedArrayMode) {
         self.array_mode = mode;
@@ -126,7 +120,7 @@ where
 
     async fn set_brightness(&mut self, brightness: u8) {
         self.brightness = brightness;
-        let mut settings = self.shared_settings.lock().await;
+        let mut settings = SETTINGS_STORE.lock().await;
         let _ = settings
             .set_system_led_brightness(brightness)
             .await
@@ -174,18 +168,13 @@ where
     }
 }
 
-impl<'a, const LED_COUNT: usize, P, const S: usize, E, F> LedController<'a, LED_COUNT, P, S, E, F>
+impl<'a, const LED_COUNT: usize, P, const S: usize> LedController<'a, LED_COUNT, P, S>
 where
     P: Instance,
-    E: defmt::Format,
-    F: MultiwriteNorFlash<Error = E>,
 {
     const LED_SINGLE_ROTATION_STEPS: f32 = 360.0;
 
-    pub async fn new(
-        ws2812pio: PioWs2812<'a, P, S, LED_COUNT>,
-        shared_settings: &'static SettingsManagerMutex<E, F>,
-    ) -> Self {
+    pub async fn new(ws2812pio: PioWs2812<'a, P, S, LED_COUNT>) -> Self {
         Self {
             ws2812pio,
             led_count: LED_COUNT,
@@ -195,28 +184,18 @@ where
             speed_factor: 1.0,
             repetition_factor: 1.0,
             base_colour: RGB8::new(0, 0, 0),
-            brightness: Self::get_stored_brightness(shared_settings).await,
-            shared_settings,
+            brightness: Self::get_stored_brightness().await,
             last_update: Instant::now(),
         }
     }
 
-    async fn get_stored_brightness(shared_settings: &'static SettingsManagerMutex<E, F>) -> u8 {
-        let brightness;
-        loop {
-            {
-                let settings = shared_settings.lock().await;
-                if settings.is_initialized() {
-                    brightness = settings
-                        .get_system_led_brightness()
-                        .await
-                        .unwrap_or(DEFAULT_BRIGHTNESS);
-                    trace!("Loaded LED brightness: {}", brightness,);
-                    return brightness;
-                }
-            }
-            Timer::after(Duration::from_millis(200)).await;
-        }
+    async fn get_stored_brightness() -> u8 {
+        wait_for_settings_store_initialisation().await;
+        let settings = SETTINGS_STORE.lock().await;
+        settings
+            .get_system_led_brightness()
+            .await
+            .unwrap_or(DEFAULT_BRIGHTNESS)
     }
 
     fn animation_position_to_u8(&self) -> u8 {

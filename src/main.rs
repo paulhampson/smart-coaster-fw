@@ -44,11 +44,8 @@ use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightC
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
-use crate::application::storage::settings::{SettingsManager, SettingsManagerMutex};
+use crate::application::storage::settings::SETTINGS_STORE;
 use core::ptr::addr_of_mut;
-use embassy_embedded_hal::adapter::BlockingAsync;
-use embassy_rp::flash::{Error, Flash};
-use embassy_sync::mutex::Mutex;
 use embedded_alloc::LlffHeap as Heap;
 
 #[global_allocator]
@@ -69,14 +66,6 @@ const NVM_FLASH_OFFSET_RANGE: Range<u32> = (FLASH_SIZE - NVM_SIZE) as u32..FLASH
 const NVM_PAGE_SIZE: usize = 256;
 
 const LED_COUNT: usize = 8;
-
-static SETTINGS_STORE: SettingsManagerMutex<
-    Error,
-    BlockingAsync<Flash<FLASH, flash::Async, FLASH_SIZE>>,
-> = Mutex::new(SettingsManager::<
-    Error,
-    BlockingAsync<Flash<FLASH, flash::Async, FLASH_SIZE>>,
->::new());
 
 assign_resources! {
     display_i2c: DisplayI2cPins{
@@ -264,7 +253,8 @@ async fn display_task(
     );
 
     let display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
-    let mut display_manager = DisplayManager::new(display, app_subscriber, ui_action_publisher);
+    let mut display_manager =
+        DisplayManager::new(display, app_subscriber, ui_action_publisher).await;
     display_manager.run().await;
 }
 
@@ -284,7 +274,7 @@ async fn led_task(
         led_pio_resources.data_pin,
         &program,
     );
-    let led_control = LedController::new(pio_ws2812, &SETTINGS_STORE).await;
+    let led_control = LedController::new(pio_ws2812).await;
 
     let mut led_manager = LedManager::new(led_control, application_subscriber);
     led_manager.run().await;
@@ -299,9 +289,7 @@ async fn weighing_task(
     let clk_pin_out = Output::new(strain_gauge_resources.clk_pin, Level::Low);
     let data_pin = Input::new(strain_gauge_resources.data_pin, Pull::Up);
     let strain_gauge = Hx711Async::new(clk_pin_out, data_pin, Hx711Gain::Gain128);
-    let weight_scale = WeightScale::new(strain_gauge, &SETTINGS_STORE)
-        .await
-        .unwrap();
+    let weight_scale = WeightScale::new(strain_gauge).await.unwrap();
 
     let mut weighing_manager =
         WeighingManager::new(app_subscriber, weight_event_sender, weight_scale);
