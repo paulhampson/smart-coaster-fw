@@ -23,6 +23,7 @@ pub enum ApplicationData {
     MonitoringSubstate(MonitoringStateSubstates),
     CalibrationSubstate(CalibrationStateSubstates),
     HeapStatus { used: usize, free: usize },
+    LedBrightness(u8),
 }
 
 const CHANNEL_DEPTH: usize = 10;

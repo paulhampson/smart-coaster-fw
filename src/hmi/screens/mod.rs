@@ -13,6 +13,7 @@ use sh1106::mode::GraphicsMode;
 pub mod calibration;
 pub mod heap_status;
 pub mod monitoring;
+pub mod set_led_brightness;
 pub mod settings;
 pub mod test_mode;
 

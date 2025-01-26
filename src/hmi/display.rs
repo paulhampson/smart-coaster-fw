@@ -5,6 +5,7 @@ use crate::hmi::rotary_encoder::Direction;
 use crate::hmi::screens::calibration::CalibrationScreens;
 use crate::hmi::screens::heap_status::HeapStatusScreen;
 use crate::hmi::screens::monitoring::MonitoringScreen;
+use crate::hmi::screens::set_led_brightness::SetLedBrightnessScreen;
 use crate::hmi::screens::settings::SettingMenu;
 use crate::hmi::screens::test_mode::TestModeScreen;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
@@ -30,6 +31,7 @@ where
     monitoring_screen: MonitoringScreen,
     heap_status_screen: HeapStatusScreen,
     calibration_screens: CalibrationScreens,
+    set_led_brightness_screen: SetLedBrightnessScreen,
 }
 
 impl<DI> DisplayManager<DI>
@@ -61,6 +63,7 @@ where
             monitoring_screen: MonitoringScreen::new(),
             heap_status_screen: HeapStatusScreen::new(),
             calibration_screens: CalibrationScreens::new(),
+            set_led_brightness_screen: SetLedBrightnessScreen::new(),
         }
     }
 
@@ -91,6 +94,9 @@ where
             ApplicationState::Monitoring => self.monitoring_screen.draw(&mut self.display),
             ApplicationState::HeapStatus => self.heap_status_screen.draw(&mut self.display),
             ApplicationState::Calibration => self.calibration_screens.draw(&mut self.display),
+            ApplicationState::SetLedBrightness => {
+                self.set_led_brightness_screen.draw(&mut self.display)
+            }
         }
 
         let _ = self
@@ -119,6 +125,9 @@ where
                 .ui_input_handler(input, &self.ui_action_publisher),
             ApplicationState::Calibration => self
                 .calibration_screens
+                .ui_input_handler(input, &self.ui_action_publisher),
+            ApplicationState::SetLedBrightness => self
+                .set_led_brightness_screen
                 .ui_input_handler(input, &self.ui_action_publisher),
         }
     }

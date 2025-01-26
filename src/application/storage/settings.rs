@@ -1,5 +1,5 @@
 use core::ops::Range;
-use defmt::{debug, warn};
+use defmt::{debug, warn, Format};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
@@ -11,6 +11,7 @@ use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 pub type SettingsManagerMutex<E, F> = Mutex<CriticalSectionRawMutex, SettingsManager<E, F>>;
 
+#[derive(Debug, Format)]
 pub enum SettingError {
     SaveError,
     RetrieveError,
@@ -23,7 +24,7 @@ pub enum SettingError {
 pub enum SettingValue {
     Default = 0,
     Float(f32),
-    SmallInt(i8),
+    SmallUInt(u8),
 }
 
 impl SettingValue {
@@ -48,8 +49,8 @@ impl Value<'_> for SettingValue {
         let data_bytes_count = match self {
             SettingValue::Default => 0,
             SettingValue::Float(v) => v.serialize_into(&mut value_buffer)?,
-            SettingValue::SmallInt(v) => {
-                value_buffer[0] = *v as u8;
+            SettingValue::SmallUInt(v) => {
+                value_buffer[0] = *v;
                 1
             }
         };
@@ -84,10 +85,9 @@ impl Value<'_> for SettingValue {
                 let value = f32::deserialize_from(value_buffer)?;
                 Ok(SettingValue::Float(value))
             }
-            // Assuming 1 represents SmallInt
             2 => {
-                let value = value_buffer[0] as i8;
-                Ok(SettingValue::SmallInt(value))
+                let value = value_buffer[0];
+                Ok(SettingValue::SmallUInt(value))
             }
             _ => Err(SerializationError::InvalidFormat),
         }
@@ -330,23 +330,23 @@ where
         None
     }
 
-    pub async fn set_system_led_brightness(&mut self, brightness: i8) -> Result<(), SettingError> {
-        self.save_setting(StoredSettings::SystemLedBrightness(SettingValue::SmallInt(
-            brightness,
-        )))
+    pub async fn set_system_led_brightness(&mut self, brightness: u8) -> Result<(), SettingError> {
+        self.save_setting(StoredSettings::SystemLedBrightness(
+            SettingValue::SmallUInt(brightness),
+        ))
         .await
     }
 
-    pub async fn get_system_led_brightness(&self) -> Option<i8> {
+    pub async fn get_system_led_brightness(&self) -> Option<u8> {
         let result = self
             .get_setting(
-                StoredSettings::SystemLedBrightness(SettingValue::SmallInt(0i8)).discriminant(),
+                StoredSettings::SystemLedBrightness(SettingValue::SmallUInt(0u8)).discriminant(),
             )
             .await;
 
         if let Some(setting_value) = result {
             return match setting_value {
-                SettingValue::SmallInt(v) => Some(v),
+                SettingValue::SmallUInt(v) => Some(v),
                 _ => None,
             };
         }

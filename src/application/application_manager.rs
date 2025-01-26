@@ -188,6 +188,11 @@ where
                     }
                     next_state = ApplicationState::Settings;
                 }
+                ApplicationState::SetLedBrightness => {
+                    next_state = self
+                        .set_led_brightness(&mut ui_action_receiver, &mut hmi_subscriber)
+                        .await;
+                }
                 _ => {}
             }
             debug!("Changing to next_state: {:?}", next_state);
@@ -296,6 +301,7 @@ where
                     UiActionsMessage::StateChangeRequest(new_state) => {
                         return new_state;
                     }
+                    _ => {}
                 },
                 Either::Second(hmi_message) => {
                     self.app_publisher
@@ -402,6 +408,7 @@ where
                 }
                 Either4::Third(ui_action_message) => match ui_action_message {
                     UiActionsMessage::StateChangeRequest(new_state) => return new_state,
+                    _ => {}
                 },
                 Either4::Fourth(hmi_message) => {
                     self.app_publisher
@@ -437,6 +444,44 @@ where
                 Either::First(ui_action_message) => match ui_action_message {
                     UiActionsMessage::StateChangeRequest(new_state) => {
                         return new_state;
+                    }
+                    _ => {}
+                },
+                Either::Second(hmi_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
+                }
+            }
+        }
+    }
+
+    async fn set_led_brightness(
+        &mut self,
+        ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+    ) -> ApplicationState {
+        self.update_application_state(ApplicationState::SetLedBrightness)
+            .await;
+
+        loop {
+            let ui_or_hmi = select(
+                ui_action_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
+            )
+            .await;
+
+            match ui_or_hmi {
+                Either::First(ui_action_message) => match ui_action_message {
+                    UiActionsMessage::StateChangeRequest(new_state) => {
+                        return new_state;
+                    }
+                    UiActionsMessage::LedBrightnessChangeRequest(new_brightness) => {
+                        self.app_publisher
+                            .publish(ApplicationMessage::ApplicationDataUpdate(
+                                ApplicationData::LedBrightness(new_brightness),
+                            ))
+                            .await
                     }
                 },
                 Either::Second(hmi_message) => {

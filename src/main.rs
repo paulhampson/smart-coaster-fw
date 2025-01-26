@@ -284,7 +284,7 @@ async fn led_task(
         led_pio_resources.data_pin,
         &program,
     );
-    let led_control = LedController::new(pio_ws2812);
+    let led_control = LedController::new(pio_ws2812, &SETTINGS_STORE).await;
 
     let mut led_manager = LedManager::new(led_control, application_subscriber);
     led_manager.run().await;

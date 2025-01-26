@@ -65,8 +65,17 @@ where
                             }
                             ApplicationState::HeapStatus => {}
                             ApplicationState::Calibration => {}
+                            ApplicationState::SetLedBrightness => {
+                                self.led_control.set_mode(LedArrayMode::RainbowWheel {
+                                    speed: 1.0,
+                                    repetitions: 1.0,
+                                })
+                            }
                         },
                         ApplicationMessage::ApplicationDataUpdate(app_data) => match app_data {
+                            ApplicationData::LedBrightness(brightness) => {
+                                self.led_control.set_brightness(brightness).await
+                            }
                             ApplicationData::CalibrationSubstate(s) => match s {
                                 CalibrationStateSubstates::Tare => {
                                     self.led_control.set_mode(LedArrayMode::StaticColour {

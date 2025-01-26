@@ -17,6 +17,7 @@ pub enum SettingMenuIdentifier {
     EnterTestScreen,
     EnterHeapStatusScreen,
     DoCalibration,
+    SetLedBrightness,
 }
 
 pub struct SettingMenu {
@@ -46,6 +47,8 @@ impl SettingMenu {
         );
 
         let mut menu = Menu::new("Settings", SettingMenuIdentifier::Root, menu_style);
+        menu.add_section("LEDs", SettingMenuIdentifier::None);
+        menu.add_action("LED Brightness", SettingMenuIdentifier::SetLedBrightness);
         menu.add_section("System", SettingMenuIdentifier::None);
         menu.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
         menu.add_action("Device Test Mode", SettingMenuIdentifier::EnterTestScreen);
@@ -74,6 +77,11 @@ impl SettingMenu {
                 SettingMenuIdentifier::DoCalibration => ui_action_publisher.publish_immediate(
                     UiActionsMessage::StateChangeRequest(ApplicationState::Calibration),
                 ),
+                SettingMenuIdentifier::SetLedBrightness => {
+                    ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                        ApplicationState::SetLedBrightness,
+                    ));
+                }
                 _ => {}
             },
             SelectedData::Exit { id: _ } => {
