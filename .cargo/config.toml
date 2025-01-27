@@ -6,3 +6,5 @@ target = "thumbv6m-none-eabi"
 
 [env]
 DEFMT_LOG = "debug"
+# Module based logging:
+# "app::important=info,app::noisy=error"

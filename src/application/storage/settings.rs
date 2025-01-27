@@ -1,5 +1,5 @@
 use core::ops::Range;
-use defmt::{debug, warn, Format};
+use defmt::{debug, trace, warn, Format};
 use embassy_embedded_hal::adapter::BlockingAsync;
 use embassy_rp::flash;
 use embassy_rp::flash::{Error, Flash};
@@ -8,6 +8,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
+use heapless::spsc::Queue;
 use heapless::FnvIndexMap;
 use sequential_storage::cache::NoCache;
 use sequential_storage::map;
@@ -25,11 +26,13 @@ pub static SETTINGS_STORE: SettingsManagerMutex<
 pub type SettingsManagerMutex<E, F> = Mutex<CriticalSectionRawMutex, SettingsManager<E, F>>;
 
 pub async fn wait_for_settings_store_initialisation() {
+    trace!("Waiting on settings initialisation");
     loop {
         {
             let settings = SETTINGS_STORE.lock().await;
             if settings.is_initialized() {
-                break;
+                trace!("Settings now available");
+                return;
             }
         }
         Timer::after(Duration::from_millis(200)).await;
@@ -42,6 +45,7 @@ pub enum SettingError {
     RetrieveError,
     NotInitialized,
     EraseError,
+    SaveQueueFull,
 }
 
 #[repr(u8)]
@@ -126,6 +130,7 @@ pub enum StoredSettings {
     WeighingSystemTareOffset(SettingValue) = 0,
     WeighingSystemCalibrationGradient(SettingValue) = 1,
     SystemLedBrightness(SettingValue) = 2,
+    SystemDisplayBrightness(SettingValue) = 3,
 }
 
 impl StoredSettings {
@@ -141,6 +146,7 @@ impl StoredSettings {
             StoredSettings::WeighingSystemTareOffset(v) => v.clone(),
             StoredSettings::WeighingSystemCalibrationGradient(v) => v.clone(),
             StoredSettings::SystemLedBrightness(v) => v.clone(),
+            StoredSettings::SystemDisplayBrightness(v) => v.clone(),
         }
     }
 }
@@ -158,6 +164,8 @@ where
         Option<SettingValue>,
         { StoredSettings::COUNT.next_power_of_two() },
     >,
+    settings_initialised: bool,
+    save_queue: Queue<StoredSettings, 5>,
 }
 
 const DATA_BUFFER_SIZE: usize = 128;
@@ -173,6 +181,8 @@ where
             storage_range: None,
             flash_cache: NoCache::new(),
             settings_cache: FnvIndexMap::new(),
+            settings_initialised: false,
+            save_queue: Queue::new(),
         }
     }
 
@@ -180,15 +190,14 @@ where
         self.flash = Some(flash);
         self.storage_range = Some(storage_range);
         debug!(
-            "Settings initialising. Flash address range: {:x} to {:x}, size {:x}",
+            "Settings initialising. Flash address range: 0x{:x} to 0x{:x}, size 0x{:x}",
             self.storage_range.clone().unwrap().start,
             self.storage_range.clone().unwrap().end,
             self.flash.as_ref().unwrap().capacity(),
-            // self.flash.as_ref().unwrap().FLASH_BASE,
         );
 
         for setting in StoredSettings::iter() {
-            let value = self.load_setting(&setting).await;
+            let value = self.load_setting_from_flash(&setting).await;
             if let Ok(setting_value) = value {
                 let _ = self
                     .settings_cache
@@ -205,16 +214,17 @@ where
                 .await
                 .map_err(|_| warn!("Clearing data failed"));
         }
+        self.settings_initialised = true;
         debug!("Settings initialised");
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.flash.is_some() && self.storage_range.is_some()
+        self.flash.is_some() && self.storage_range.is_some() && self.settings_initialised
     }
 
     async fn clear_data(&mut self) -> Result<(), SettingError> {
-        if !self.is_initialized() {
-            warn!("Trying to clear data before initialisation");
+        if !(self.flash.is_some() && self.storage_range.is_some()) {
+            warn!("Trying to clear data before storage is configured");
             return Err(SettingError::NotInitialized);
         }
         let flash = self.flash.as_mut().unwrap();
@@ -266,13 +276,20 @@ where
         Ok(())
     }
 
-    async fn load_setting(
+    pub async fn process_queued_saves(&mut self) -> Result<(), SettingError> {
+        while let Some(item) = self.save_queue.dequeue() {
+            self.save_setting(item).await?;
+        }
+        Ok(())
+    }
+
+    async fn load_setting_from_flash(
         &mut self,
         setting: &StoredSettings,
     ) -> Result<Option<SettingValue>, SettingError> {
         let mut data_buffer = [0; DATA_BUFFER_SIZE];
 
-        if !self.is_initialized() {
+        if !(self.flash.is_some() && self.storage_range.is_some()) {
             warn!("Trying to load settings before initialisation");
             return Err(SettingError::NotInitialized);
         }
@@ -295,29 +312,25 @@ where
         Ok(value)
     }
 
-    async fn get_setting(&self, setting_id: u16) -> Option<SettingValue> {
+    pub fn get_setting(&self, setting_id: u16) -> Option<SettingValue> {
         self.settings_cache
             .get(&setting_id)
             .cloned()
             .unwrap_or(None)
     }
 
-    pub async fn set_weighing_system_tare_offset(
-        &mut self,
-        offset: f32,
-    ) -> Result<(), SettingError> {
-        self.save_setting(StoredSettings::WeighingSystemTareOffset(
-            SettingValue::Float(offset),
-        ))
-        .await
+    pub fn set_weighing_system_tare_offset(&mut self, offset: f32) -> Result<(), SettingError> {
+        self.save_queue
+            .enqueue(StoredSettings::WeighingSystemTareOffset(
+                SettingValue::Float(offset),
+            ))
+            .map_err(|_| SettingError::SaveQueueFull)
     }
 
-    pub async fn get_weighing_system_tare_offset(&self) -> Option<f32> {
-        let result = self
-            .get_setting(
-                StoredSettings::WeighingSystemTareOffset(SettingValue::Float(0.0)).discriminant(),
-            )
-            .await;
+    pub fn get_weighing_system_tare_offset(&self) -> Option<f32> {
+        let result = self.get_setting(
+            StoredSettings::WeighingSystemTareOffset(SettingValue::Float(0.0)).discriminant(),
+        );
 
         if let Some(setting_value) = result {
             return match setting_value {
@@ -328,23 +341,22 @@ where
         None
     }
 
-    pub async fn set_weighing_system_calibration_gradient(
+    pub fn set_weighing_system_calibration_gradient(
         &mut self,
         gradient: f32,
     ) -> Result<(), SettingError> {
-        self.save_setting(StoredSettings::WeighingSystemCalibrationGradient(
-            SettingValue::Float(gradient),
-        ))
-        .await
+        self.save_queue
+            .enqueue(StoredSettings::WeighingSystemCalibrationGradient(
+                SettingValue::Float(gradient),
+            ))
+            .map_err(|_| SettingError::SaveQueueFull)
     }
 
-    pub async fn get_weighing_system_calibration_gradient(&self) -> Option<f32> {
-        let result = self
-            .get_setting(
-                StoredSettings::WeighingSystemCalibrationGradient(SettingValue::Float(0.0))
-                    .discriminant(),
-            )
-            .await;
+    pub fn get_weighing_system_calibration_gradient(&self) -> Option<f32> {
+        let result = self.get_setting(
+            StoredSettings::WeighingSystemCalibrationGradient(SettingValue::Float(0.0))
+                .discriminant(),
+        );
 
         if let Some(setting_value) = result {
             return match setting_value {
@@ -355,19 +367,40 @@ where
         None
     }
 
-    pub async fn set_system_led_brightness(&mut self, brightness: u8) -> Result<(), SettingError> {
-        self.save_setting(StoredSettings::SystemLedBrightness(
-            SettingValue::SmallUInt(brightness),
-        ))
-        .await
+    pub fn set_system_led_brightness(&mut self, brightness: u8) -> Result<(), SettingError> {
+        self.save_queue
+            .enqueue(StoredSettings::SystemLedBrightness(
+                SettingValue::SmallUInt(brightness),
+            ))
+            .map_err(|_| SettingError::SaveQueueFull)
     }
 
-    pub async fn get_system_led_brightness(&self) -> Option<u8> {
-        let result = self
-            .get_setting(
-                StoredSettings::SystemLedBrightness(SettingValue::SmallUInt(0u8)).discriminant(),
-            )
-            .await;
+    pub fn get_system_led_brightness(&self) -> Option<u8> {
+        let result = self.get_setting(
+            StoredSettings::SystemLedBrightness(SettingValue::SmallUInt(0u8)).discriminant(),
+        );
+
+        if let Some(setting_value) = result {
+            return match setting_value {
+                SettingValue::SmallUInt(v) => Some(v),
+                _ => None,
+            };
+        }
+        None
+    }
+
+    pub fn set_system_display_brightness(&mut self, brightness: u8) -> Result<(), SettingError> {
+        self.save_queue
+            .enqueue(StoredSettings::SystemDisplayBrightness(
+                SettingValue::SmallUInt(brightness),
+            ))
+            .map_err(|_| SettingError::SaveQueueFull)
+    }
+
+    pub fn get_system_display_brightness(&self) -> Option<u8> {
+        let result = self.get_setting(
+            StoredSettings::SystemDisplayBrightness(SettingValue::SmallUInt(0u8)).discriminant(),
+        );
 
         if let Some(setting_value) = result {
             return match setting_value {

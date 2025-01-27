@@ -13,6 +13,7 @@ pub enum HmiMessage {
 pub enum UiActionsMessage {
     StateChangeRequest(ApplicationState),
     LedBrightnessChangeRequest(u8),
+    DisplayBrightnessChangeRequest(u8),
 }
 
 const CHANNEL_DEPTH: usize = 10;

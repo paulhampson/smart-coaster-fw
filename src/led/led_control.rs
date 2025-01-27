@@ -123,7 +123,6 @@ where
         let mut settings = SETTINGS_STORE.lock().await;
         let _ = settings
             .set_system_led_brightness(brightness)
-            .await
             .map_err(|e| warn!("Failed to store LED brightness: {:?}", e));
     }
 
@@ -194,7 +193,6 @@ where
         let settings = SETTINGS_STORE.lock().await;
         settings
             .get_system_led_brightness()
-            .await
             .unwrap_or(DEFAULT_BRIGHTNESS)
     }
 

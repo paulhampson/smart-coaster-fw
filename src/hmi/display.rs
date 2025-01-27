@@ -1,5 +1,10 @@
 use crate::application::application_state::ApplicationState;
-use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMessage};
+use crate::application::messaging::{
+    ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
+};
+use crate::application::storage::settings::{
+    wait_for_settings_store_initialisation, SETTINGS_STORE,
+};
 use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
 use crate::hmi::rotary_encoder::Direction;
 use crate::hmi::screens::calibration::CalibrationScreens;
@@ -8,7 +13,7 @@ use crate::hmi::screens::monitoring::MonitoringScreen;
 use crate::hmi::screens::settings::SettingMenu;
 use crate::hmi::screens::test_mode::TestModeScreen;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
-use defmt::{debug, error, trace, warn};
+use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select, Either};
 use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
@@ -47,6 +52,15 @@ where
         let _ = display
             .flush()
             .map_err(|_| error!("Failed to flush display"));
+
+        {
+            wait_for_settings_store_initialisation().await;
+            let settings = SETTINGS_STORE.lock().await;
+            let display_brightness = settings.get_system_display_brightness().unwrap_or(128);
+            let _ = display
+                .set_contrast(display_brightness)
+                .map_err(|_| warn!("Failed to set display brightness"));
+        }
 
         Self {
             app_channel_subscriber,
@@ -141,7 +155,7 @@ where
                     WaitResult::Message(message) => match message {
                         ApplicationMessage::HmiInput(hmi_message) => match hmi_message {
                             HmiMessage::EncoderUpdate(direction) => {
-                                trace!("Encoder update: {:?}", direction);
+                                trace!("Encoder update: {:?}", Debug2Format(&direction));
                                 match direction {
                                     Direction::Clockwise => {
                                         self.route_ui_input(UiInput::EncoderClockwise)
@@ -165,8 +179,24 @@ where
                             self.set_display_state(new_state).await;
                         }
                         ApplicationMessage::ApplicationDataUpdate(data_update) => {
-                            trace!("App data update");
-                            self.route_ui_input(UiInput::ApplicationData(data_update));
+                            if let ApplicationData::DisplayBrightness(new_display_brightness) =
+                                data_update
+                            {
+                                trace!("Brightness update: {:?}", new_display_brightness);
+                                let _ = self
+                                    .display
+                                    .set_contrast(new_display_brightness)
+                                    .map_err(|_| warn!("Failed to set display brightness"));
+                                let mut settings = SETTINGS_STORE.lock().await;
+                                let _ = settings
+                                    .set_system_display_brightness(new_display_brightness)
+                                    .map_err(|_| {
+                                        warn!("Failed to save display brightness setting")
+                                    });
+                            } else {
+                                trace!("App data update");
+                                self.route_ui_input(UiInput::ApplicationData(data_update));
+                            }
                         }
                         ApplicationMessage::WeighSystemRequest(..) => {}
                     },

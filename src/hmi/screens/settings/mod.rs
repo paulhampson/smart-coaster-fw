@@ -3,6 +3,7 @@ use crate::application::storage::settings::{
     wait_for_settings_store_initialisation, SETTINGS_STORE,
 };
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
+use crate::hmi::screens::settings::display_brightness_options::DisplayBrightnessOptions;
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use defmt::Debug2Format;
 use defmt::{debug, error};
@@ -10,9 +11,13 @@ use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::Drawable;
+use led_brightness_options::LedBrightnessOptions;
 use sh1106::prelude::GraphicsMode;
 use simple_embedded_graphics_menu::items::SelectedData;
 use simple_embedded_graphics_menu::{Menu, MenuStyle};
+
+mod display_brightness_options;
+mod led_brightness_options;
 
 #[derive(Copy, Clone, Debug)]
 pub enum SettingMenuIdentifier {
@@ -22,70 +27,7 @@ pub enum SettingMenuIdentifier {
     EnterHeapStatusScreen,
     DoCalibration,
     SetLedBrightness,
-}
-
-pub enum LedBrightnessOptions {
-    Off,
-    Low,
-    Medium,
-    High,
-    Max,
-}
-
-impl LedBrightnessOptions {
-    const OFF: u8 = 0;
-    const LOW: u8 = 75;
-    const MEDIUM: u8 = 128;
-    const HIGH: u8 = 200;
-    const MAX: u8 = 255;
-
-    pub fn option_strings() -> &'static [&'static str] {
-        &["Off", "Low", "Medium", "High", "Max"]
-    }
-
-    pub fn brightness_mapping(&self) -> u8 {
-        match self {
-            LedBrightnessOptions::Off => Self::OFF,
-            LedBrightnessOptions::Low => Self::LOW,
-            LedBrightnessOptions::Medium => Self::MEDIUM,
-            LedBrightnessOptions::High => Self::HIGH,
-            LedBrightnessOptions::Max => Self::MAX,
-        }
-    }
-
-    pub fn option_index_to_brightness(index: usize) -> u8 {
-        match index {
-            0 => Self::OFF,
-            1 => Self::LOW,
-            2 => Self::MEDIUM,
-            3 => Self::HIGH,
-            4 => Self::MAX,
-            _ => 0,
-        }
-    }
-
-    pub fn to_option_index(&self) -> usize {
-        match self {
-            LedBrightnessOptions::Off => 0,
-            LedBrightnessOptions::Low => 1,
-            LedBrightnessOptions::Medium => 2,
-            LedBrightnessOptions::High => 3,
-            LedBrightnessOptions::Max => 4,
-        }
-    }
-}
-
-impl From<u8> for LedBrightnessOptions {
-    fn from(value: u8) -> Self {
-        match value {
-            0..=40 => Self::Off,
-            41..=90 => Self::Low,
-            91..=150 => Self::Medium,
-            151..=254 => Self::High,
-            255 => Self::Max,
-            _ => Self::Off,
-        }
-    }
+    DisplayBrightness,
 }
 
 pub struct SettingMenu {
@@ -116,23 +58,48 @@ impl SettingMenu {
 
         wait_for_settings_store_initialisation().await;
 
+        let mut device_and_system =
+            Menu::new("Device & System", SettingMenuIdentifier::None, menu_style);
+        device_and_system.add_section("LEDs", SettingMenuIdentifier::None);
+
+        {
+            let settings = SETTINGS_STORE.lock().await;
+            let led_brightness_option =
+                LedBrightnessOptions::from(settings.get_system_led_brightness().unwrap_or(128))
+                    .to_option_index();
+            device_and_system.add_selector(
+                "LED Brightness",
+                SettingMenuIdentifier::SetLedBrightness,
+                LedBrightnessOptions::option_strings(),
+                Some(led_brightness_option),
+            );
+        }
+
+        device_and_system.add_section("Display", SettingMenuIdentifier::None);
+        {
+            let settings = SETTINGS_STORE.lock().await;
+            let display_brightness_option = DisplayBrightnessOptions::from(
+                settings.get_system_display_brightness().unwrap_or(128),
+            )
+            .to_option_index();
+
+            device_and_system.add_selector(
+                "Brightness",
+                SettingMenuIdentifier::DisplayBrightness,
+                DisplayBrightnessOptions::option_strings(),
+                Some(display_brightness_option),
+            );
+        }
+        device_and_system.add_section("System", SettingMenuIdentifier::None);
+        device_and_system.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
+        device_and_system.add_action("Test Mode", SettingMenuIdentifier::EnterTestScreen);
+        device_and_system.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
+        device_and_system.add_back("Back", SettingMenuIdentifier::None);
+
         let mut menu = Menu::new("Settings", SettingMenuIdentifier::Root, menu_style);
-        menu.add_section("LEDs", SettingMenuIdentifier::None);
-        let settings = SETTINGS_STORE.lock().await;
-        let led_brightness_option =
-            LedBrightnessOptions::from(settings.get_system_led_brightness().await.unwrap_or(128))
-                .to_option_index();
-        menu.add_selector(
-            "LED Brightness",
-            SettingMenuIdentifier::SetLedBrightness,
-            LedBrightnessOptions::option_strings(),
-            Some(led_brightness_option),
-        );
-        menu.add_section("System", SettingMenuIdentifier::None);
-        menu.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
-        menu.add_action("Device Test Mode", SettingMenuIdentifier::EnterTestScreen);
-        menu.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
+        menu.add_submenu(device_and_system);
         menu.add_exit("Exit", SettingMenuIdentifier::None);
+
         menu
     }
 
@@ -169,6 +136,13 @@ impl SettingMenu {
                         ui_action_publisher.publish_immediate(
                             UiActionsMessage::LedBrightnessChangeRequest(
                                 LedBrightnessOptions::option_index_to_brightness(option_id),
+                            ),
+                        );
+                    }
+                    SettingMenuIdentifier::DisplayBrightness => {
+                        ui_action_publisher.publish_immediate(
+                            UiActionsMessage::DisplayBrightnessChangeRequest(
+                                DisplayBrightnessOptions::option_index_to_brightness(option_id),
                             ),
                         );
                     }

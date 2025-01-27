@@ -51,13 +51,9 @@ where
         let calibration_gradient;
         wait_for_settings_store_initialisation().await;
         let settings = SETTINGS_STORE.lock().await;
-        tare_offset = settings
-            .get_weighing_system_tare_offset()
-            .await
-            .unwrap_or(0.0);
+        tare_offset = settings.get_weighing_system_tare_offset().unwrap_or(0.0);
         calibration_gradient = settings
             .get_weighing_system_calibration_gradient()
-            .await
             .unwrap_or(0.0);
         trace!(
             "Loaded calibration values - tare: {}, gradient: {}",
@@ -82,7 +78,6 @@ where
         let mut settings = SETTINGS_STORE.lock().await;
         let _ = settings
             .set_weighing_system_tare_offset(tare)
-            .await
             .map_err(|_| warn!("Unable store tare offset"));
     }
 
@@ -91,7 +86,6 @@ where
         let mut settings = SETTINGS_STORE.lock().await;
         let _ = settings
             .set_weighing_system_calibration_gradient(gradient)
-            .await
             .map_err(|_| warn!("Unable store calibration gradient"));
     }
 

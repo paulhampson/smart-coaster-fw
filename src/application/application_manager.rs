@@ -303,6 +303,13 @@ where
                             ))
                             .await
                     }
+                    UiActionsMessage::DisplayBrightnessChangeRequest(new_brightness) => {
+                        self.app_publisher
+                            .publish(ApplicationMessage::ApplicationDataUpdate(
+                                ApplicationData::DisplayBrightness(new_brightness),
+                            ))
+                            .await
+                    }
                 },
                 Either::Second(hmi_message) => {
                     self.app_publisher

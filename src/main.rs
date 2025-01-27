@@ -8,7 +8,7 @@ mod weight;
 
 use core::ops::Range;
 use embassy_executor::{Executor, Spawner};
-use embassy_time::Duration;
+use embassy_time::{Duration, Timer};
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
 
@@ -20,7 +20,7 @@ use crate::hmi::messaging::{
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::info;
+use defmt::{error, info};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -214,6 +214,15 @@ async fn storage_task(storage_resources: StorageResources) {
         settings
             .initialise(flash, NVM_FLASH_OFFSET_RANGE, NVM_PAGE_SIZE)
             .await;
+    }
+
+    loop {
+        Timer::after(Duration::from_millis(500)).await;
+        let mut settings = SETTINGS_STORE.lock().await;
+        let _ = settings
+            .process_queued_saves()
+            .await
+            .map_err(|e| error!("Unable to process queued settings saves - {:?}", e));
     }
 }
 

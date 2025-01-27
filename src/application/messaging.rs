@@ -24,6 +24,7 @@ pub enum ApplicationData {
     CalibrationSubstate(CalibrationStateSubstates),
     HeapStatus { used: usize, free: usize },
     LedBrightness(u8),
+    DisplayBrightness(u8),
 }
 
 const CHANNEL_DEPTH: usize = 10;
