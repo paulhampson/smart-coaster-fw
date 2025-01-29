@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+extern crate alloc;
 
 #[cfg(all(feature = "flat_board", feature = "pcb_rev1"))]
 compile_error!("cannot configure for flat_board and pcb_rev1 at the same time");
@@ -12,6 +13,7 @@ mod hmi;
 mod led;
 mod weight;
 
+use alloc::string::ToString;
 use core::ops::Range;
 use embassy_executor::{Executor, Spawner};
 use embassy_time::{Duration, Timer};
@@ -26,11 +28,11 @@ use crate::hmi::messaging::{
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::{info};
+use defmt::{debug, info};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::{FLASH, I2C0, PIO0};
+use embassy_rp::peripherals::{FLASH, I2C0, I2C1, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use embassy_rp::{bind_interrupts, flash, peripherals, pio};
@@ -51,6 +53,7 @@ use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
 use core::ptr::addr_of_mut;
+use ds323x::{DateTimeAccess, Ds323x, NaiveDate};
 use embedded_alloc::LlffHeap as Heap;
 use crate::application::storage;
 use crate::application::storage::settings::accessor::FlashSettingsAccessor;
@@ -131,6 +134,11 @@ assign_resources! {
         flash: FLASH,
         dma_channel: DMA_CH1,
     }
+    rtc: RtcResources {
+        i2c_peripheral: I2C1,
+        sda_pin: PIN_2,
+        scl_pin: PIN_3,
+    }
 }
 
 struct Core0Resources {
@@ -138,6 +146,7 @@ struct Core0Resources {
     led_control: LedControlResources,
     strain_gauge_io: StrainGaugeResources,
     storage: StorageResources,
+    rtc: RtcResources,
 }
 
 struct Core1Resources {
@@ -150,6 +159,10 @@ bind_interrupts!(struct PioIrqs {
 
 bind_interrupts!(struct I2cIrqs {
     I2C0_IRQ => i2c::InterruptHandler<I2C0>;
+});
+
+bind_interrupts!(struct I2c1Irqs {
+    I2C1_IRQ => i2c::InterruptHandler<I2C1>;
 });
 
 static mut CORE1_STACK: Stack<CORE1_STACK_SIZE> = Stack::new();
@@ -174,6 +187,7 @@ fn main() -> ! {
         led_control: resources.led_control,
         strain_gauge_io: resources.strain_gauge_io,
         storage: resources.storage,
+        rtc: resources.rtc,
     };
     let core1_resources = Core1Resources {
         display_i2c: resources.display_i2c,
@@ -214,7 +228,8 @@ fn core0_main(spawner: Spawner, resources: Core0Resources) {
             APP_CHANNEL.subscriber().unwrap(),
             WEIGHT_CHANNEL.publisher().unwrap(),
         ))
-        .unwrap()
+        .unwrap();
+    spawner.spawn(rtc_task(resources.rtc)).unwrap();
 }
 
 fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) {
@@ -239,6 +254,29 @@ fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) 
             heap,
         ))
         .unwrap();
+}
+
+#[embassy_executor::task]
+async fn rtc_task(rtc_resources: RtcResources) {
+    let i2c = i2c::I2c::new_async(
+        rtc_resources.i2c_peripheral,
+        rtc_resources.scl_pin,
+        rtc_resources.sda_pin,
+        I2c1Irqs,
+        Config::default());
+
+    let mut rtc = Ds323x::new_ds3231(i2c);
+
+    // let datetime = NaiveDate::from_ymd_opt(2020, 5, 1)
+    //     .unwrap()
+    //     .and_hms_opt(19, 59, 58)
+    //     .unwrap();
+    // rtc.set_datetime(&datetime).unwrap();
+
+    loop {
+        debug!("Time test: {}", rtc.datetime().unwrap().to_string().as_str());
+        Timer::after(Duration::from_secs(10)).await;
+    }
 }
 
 #[embassy_executor::task]
