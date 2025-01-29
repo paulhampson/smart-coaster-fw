@@ -1,6 +1,12 @@
 #![no_std]
 #![no_main]
 
+#[cfg(all(feature = "flat_board", feature = "pcb_rev1"))]
+compile_error!("cannot configure for flat_board and pcb_rev1 at the same time");
+
+#[cfg(not(any(feature = "flat_board", feature = "pcb_rev1")))]
+compile_error!("no board configured - use feature \"flat_board\" or \"pcb_rev1\"");
+
 mod application;
 mod hmi;
 mod led;
@@ -65,8 +71,13 @@ const NVM_SIZE: usize = 0x2000;
 const NVM_FLASH_OFFSET_RANGE: Range<u32> = (FLASH_SIZE - NVM_SIZE) as u32..FLASH_SIZE as u32;
 const NVM_PAGE_SIZE: usize = 256;
 
+#[cfg(feature = "flat_board")]
 const LED_COUNT: usize = 8;
 
+#[cfg(feature = "pcb_rev1")]
+const LED_COUNT: usize = 12;
+
+#[cfg(feature = "flat_board")]
 assign_resources! {
     display_i2c: DisplayI2cPins{
         sda_pin: PIN_4,
@@ -86,6 +97,34 @@ assign_resources! {
     strain_gauge_io: StrainGaugeResources {
         clk_pin: PIN_14,
         data_pin: PIN_15,
+    }
+    storage: StorageResources {
+        flash: FLASH,
+        dma_channel: DMA_CH1,
+    }
+}
+
+#[cfg(feature = "pcb_rev1")]
+assign_resources! {
+    display_i2c: DisplayI2cPins{
+        sda_pin: PIN_20,
+        scl_pin: PIN_21,
+        i2c_peripheral: I2C0
+    },
+    hmi_inputs: HmiInputPins {
+        rotary_dt_pin: PIN_24,
+        rotary_clk_pin: PIN_23,
+        push_btn_pin: PIN_25,
+    },
+    led_control: LedControlResources {
+        pio: PIO0,
+        dma_channel: DMA_CH0,
+        data_pin: PIN_18,
+        led_power_en: PIN_15,
+    }
+    strain_gauge_io: StrainGaugeResources {
+        clk_pin: PIN_16,
+        data_pin: PIN_17,
     }
     storage: StorageResources {
         flash: FLASH,
@@ -272,6 +311,8 @@ async fn led_task(
     led_pio_resources: LedControlResources,
     application_subscriber: ApplicationChannelSubscriber<'static>,
 ) {
+    let led_power_en_output = Output::new(led_pio_resources.led_power_en, Level::High);
+
     let Pio {
         mut common, sm0, ..
     } = Pio::new(led_pio_resources.pio, PioIrqs);

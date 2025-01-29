@@ -56,7 +56,7 @@ where
                                 self.led_control.set_mode(LedArrayMode::SingleColourWheel {
                                     colour: RGB8::new(62, 164, 240),
                                     repetitions: 3.0,
-                                    speed: 0.5,
+                                    speed: 0.25,
                                 })
                             }
                             ApplicationState::Settings => {
