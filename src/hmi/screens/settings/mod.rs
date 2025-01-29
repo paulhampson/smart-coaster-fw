@@ -1,12 +1,11 @@
 use crate::application::application_state::ApplicationState;
-use crate::application::storage::settings::{
-    wait_for_settings_store_initialisation, SETTINGS_STORE,
-};
+use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::settings::display_brightness_options::DisplayBrightnessOptions;
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
-use defmt::Debug2Format;
+use core::marker::PhantomData;
 use defmt::{debug, error};
+use defmt::{warn, Debug2Format};
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::BinaryColor;
@@ -30,18 +29,26 @@ pub enum SettingMenuIdentifier {
     DisplayBrightness,
 }
 
-pub struct SettingMenu {
+pub struct SettingMenu<SA>
+where
+    SA: SettingsAccessor,
+{
     menu: Menu<'static, BinaryColor, SettingMenuIdentifier>,
+    phantom: PhantomData<SA>,
 }
 
-impl SettingMenu {
-    pub async fn new() -> Self {
+impl<SA> SettingMenu<SA>
+where
+    SA: SettingsAccessor,
+{
+    pub async fn new(settings: &SA) -> Self {
         Self {
-            menu: Self::build_menu().await,
+            menu: Self::build_menu(settings).await,
+            phantom: PhantomData,
         }
     }
 
-    async fn build_menu() -> Menu<'static, BinaryColor, SettingMenuIdentifier> {
+    async fn build_menu(settings: &SA) -> Menu<'static, BinaryColor, SettingMenuIdentifier> {
         let heading_style = MonoTextStyle::new(&FONT_7X13_BOLD, BinaryColor::On);
         let item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
         let highlighted_item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
@@ -56,17 +63,28 @@ impl SettingMenu {
             BinaryColor::Off,
         );
 
-        wait_for_settings_store_initialisation().await;
-
         let mut device_and_system =
             Menu::new("Device & System", SettingMenuIdentifier::None, menu_style);
         device_and_system.add_section("LEDs", SettingMenuIdentifier::None);
 
         {
-            let settings = SETTINGS_STORE.lock().await;
+            let led_brightness: u8 = if let Some(result) = settings
+                .get_setting(SettingsAccessorId::SystemLedBrightness)
+                .await
+            {
+                match result {
+                    SettingValue::SmallUInt(v) => v,
+                    _ => {
+                        warn!("Unable to retrieve LED brightness setting");
+                        128
+                    }
+                }
+            } else {
+                128
+            };
+
             let led_brightness_option =
-                LedBrightnessOptions::from(settings.get_system_led_brightness().unwrap_or(128))
-                    .to_option_index();
+                LedBrightnessOptions::from(led_brightness).to_option_index();
             device_and_system.add_selector(
                 "LED Brightness",
                 SettingMenuIdentifier::SetLedBrightness,
@@ -77,11 +95,23 @@ impl SettingMenu {
 
         device_and_system.add_section("Display", SettingMenuIdentifier::None);
         {
-            let settings = SETTINGS_STORE.lock().await;
-            let display_brightness_option = DisplayBrightnessOptions::from(
-                settings.get_system_display_brightness().unwrap_or(128),
-            )
-            .to_option_index();
+            let display_brightness: u8 = if let Some(result) = settings
+                .get_setting(SettingsAccessorId::SystemDisplayBrightness)
+                .await
+            {
+                match result {
+                    SettingValue::SmallUInt(v) => v,
+                    _ => {
+                        warn!("Unable to retrieve display brightness setting");
+                        128
+                    }
+                }
+            } else {
+                128
+            };
+
+            let display_brightness_option =
+                DisplayBrightnessOptions::from(display_brightness).to_option_index();
 
             device_and_system.add_selector(
                 "Brightness",
@@ -160,7 +190,10 @@ impl SettingMenu {
     }
 }
 
-impl UiInputHandler for SettingMenu {
+impl<SA> UiInputHandler for SettingMenu<SA>
+where
+    SA: SettingsAccessor,
+{
     fn ui_input_handler(&mut self, input: UiInput, ui_action_publisher: &UiActionChannelPublisher) {
         match input {
             UiInput::EncoderClockwise => {
@@ -180,7 +213,10 @@ impl UiInputHandler for SettingMenu {
     }
 }
 
-impl UiDrawer for SettingMenu {
+impl<SA> UiDrawer for SettingMenu<SA>
+where
+    SA: SettingsAccessor,
+{
     fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
     where
         DI: sh1106::interface::DisplayInterface,

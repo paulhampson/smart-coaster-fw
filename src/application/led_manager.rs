@@ -42,8 +42,8 @@ where
                             }
                             ApplicationState::TestScreen => {
                                 self.led_control.set_mode(LedArrayMode::RainbowWheel {
-                                    speed: 2.0,
-                                    repetitions: 0.5,
+                                    speed: 1.0,
+                                    repetitions: 1.0,
                                 })
                             }
                             ApplicationState::ErrorScreenWithMessage(_) => {

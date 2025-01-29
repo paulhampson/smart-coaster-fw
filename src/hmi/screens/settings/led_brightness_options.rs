@@ -6,6 +6,7 @@ pub enum LedBrightnessOptions {
     Max,
 }
 
+#[allow(dead_code)]
 impl LedBrightnessOptions {
     const OFF: u8 = 0;
     const LOW: u8 = 75;

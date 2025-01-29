@@ -5,6 +5,6 @@ runner = "probe-rs run --chip RP2040 --speed 5000"
 target = "thumbv6m-none-eabi"
 
 [env]
-DEFMT_LOG = "debug"
+DEFMT_LOG =  "debug"
 # Module based logging:
-# "app::important=info,app::noisy=error"
+# "smartcoaster::weight::weight=trace"

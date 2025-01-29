@@ -1,15 +1,12 @@
-use crate::application::storage::settings::{
-    wait_for_settings_store_initialisation, SETTINGS_STORE,
-};
+use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::weight::interface::AsyncStrainGaugeInterface;
 use crate::weight::WeighingSystem;
 use core::cmp::max;
-use defmt::{trace, warn};
+use defmt::{debug, trace, warn, Debug2Format};
 use heapless::Vec;
 use micromath::statistics::{Mean, StdDev};
 use micromath::F32Ext;
 
-const BITS_TO_DISCARD_BEFORE_STABILISATION: usize = 0;
 const STABILISATION_MEASUREMENTS: usize = 20;
 
 #[derive(Debug)]
@@ -17,50 +14,107 @@ pub enum Error<StrainGaugeE> {
     StrainGaugeReadingError(StrainGaugeE),
 }
 
-pub struct WeightScale<StrainGauge> {
+pub struct WeightScale<StrainGauge, SA>
+where
+    SA: SettingsAccessor,
+{
     strain_gauge: StrainGauge,
     tare_offset: f32,
     bits_to_discard: usize,
     calibration_gradient: f32,
     is_stabilized: bool,
+    settings: SA,
 }
 
-impl<StrainGauge, StrainGaugeE> WeightScale<StrainGauge>
+impl<StrainGauge, StrainGaugeE, SA> WeightScale<StrainGauge, SA>
 where
     StrainGauge: AsyncStrainGaugeInterface<Error = StrainGaugeE>,
+    SA: SettingsAccessor,
 {
-    pub async fn new(mut strain_gauge: StrainGauge) -> Result<Self, Error<StrainGaugeE>> {
+    pub async fn new(
+        mut strain_gauge: StrainGauge,
+        settings: SA,
+    ) -> Result<Self, Error<StrainGaugeE>> {
         strain_gauge
             .initialize()
             .await
             .map_err(Error::StrainGaugeReadingError)?;
 
-        let (tare_offset, calibration_gradient) = Self::get_stored_calibration().await;
-
-        Ok(Self {
+        let mut s = Self {
             strain_gauge,
-            tare_offset,
-            bits_to_discard: BITS_TO_DISCARD_BEFORE_STABILISATION,
-            calibration_gradient,
+            tare_offset: 0.0,
+            bits_to_discard: 0,
+            calibration_gradient: 0.0,
             is_stabilized: false,
-        })
+            settings,
+        };
+
+        (s.tare_offset, s.calibration_gradient, s.bits_to_discard) =
+            s.get_stored_calibration().await;
+
+        debug!("Loaded calibration: tare = {}, gradient = {}, bits to discard = {}",
+            s.tare_offset, s.calibration_gradient, s.bits_to_discard);
+
+        if s.bits_to_discard > 0 {
+            s.is_stabilized = true;
+        }
+
+        Ok(s)
     }
 
-    async fn get_stored_calibration() -> (f32, f32) {
-        let tare_offset;
-        let calibration_gradient;
-        wait_for_settings_store_initialisation().await;
-        let settings = SETTINGS_STORE.lock().await;
-        tare_offset = settings.get_weighing_system_tare_offset().unwrap_or(0.0);
-        calibration_gradient = settings
-            .get_weighing_system_calibration_gradient()
-            .unwrap_or(0.0);
-        trace!(
-            "Loaded calibration values - tare: {}, gradient: {}",
-            tare_offset,
-            calibration_gradient
-        );
-        (tare_offset, calibration_gradient)
+    async fn get_stored_calibration(&self) -> (f32, f32, usize) {
+        let tare_offset: f32 = if let Some(result) = self
+            .settings
+            .get_setting(SettingsAccessorId::WeighingSystemTareOffset)
+            .await
+        {
+            match result {
+                SettingValue::Float(v) => v,
+                _ => {
+                    warn!("Unable to get stored gradient");
+                    0.0
+                }
+            }
+        } else {
+            warn!("Unable to get stored gradient");
+            0.0
+        };
+
+        let calibration_gradient: f32 = if let Some(result) = self
+            .settings
+            .get_setting(SettingsAccessorId::WeighingSystemCalibrationGradient)
+            .await
+        {
+            match result {
+                SettingValue::Float(v) => v,
+                _ => {
+                    warn!("Unable to get stored tare");
+                    0.0
+                }
+            }
+        } else {
+            warn!("Unable to get stored tare");
+            0.0
+        };
+
+        let bits_to_discard: usize = if let Some(result) = self
+            .settings
+            .get_setting(SettingsAccessorId::WeighingSystemBitsToDiscard)
+            .await
+        {
+            match result {
+                SettingValue::SmallUInt(v) => v as usize,
+                _ => {
+                    warn!("Unable to get bits to discard settings");
+                    0usize
+                }
+            }
+        } else {
+            warn!("Unable to get bits to discard settings");
+            0usize
+        };
+
+        (tare_offset, calibration_gradient, bits_to_discard)
     }
 
     async fn get_filtered_raw_reading(&mut self) -> Result<f32, Error<StrainGaugeE>> {
@@ -75,27 +129,48 @@ where
 
     async fn save_new_tare(&mut self, tare: f32) {
         self.tare_offset = tare;
-        let mut settings = SETTINGS_STORE.lock().await;
-        let _ = settings
-            .set_weighing_system_tare_offset(tare)
-            .map_err(|_| warn!("Unable store tare offset"));
+        let _ = self
+            .settings
+            .save_setting(
+                SettingsAccessorId::WeighingSystemTareOffset,
+                SettingValue::Float(tare),
+            )
+            .await
+            .map_err(|e| warn!("Unable store tare offset: {}", Debug2Format(&e)));
     }
 
     async fn save_new_calibration_gradient(&mut self, gradient: f32) {
         self.calibration_gradient = gradient;
-        let mut settings = SETTINGS_STORE.lock().await;
-        let _ = settings
-            .set_weighing_system_calibration_gradient(gradient)
-            .map_err(|_| warn!("Unable store calibration gradient"));
+        let _ = self
+            .settings
+            .save_setting(
+                SettingsAccessorId::WeighingSystemCalibrationGradient,
+                SettingValue::Float(gradient),
+            )
+            .await
+            .map_err(|e| warn!("Unable store calibration gradient: {}", Debug2Format(&e)));
+    }
+
+    async fn save_new_bits_to_discard(&mut self, bits_to_discard: usize) {
+        self.bits_to_discard = bits_to_discard;
+        let _ = self
+            .settings
+            .save_setting(
+                SettingsAccessorId::WeighingSystemBitsToDiscard,
+                SettingValue::SmallUInt(bits_to_discard as u8),
+            )
+            .await
+            .map_err(|e| warn!("Unable store bits to discard: {}", Debug2Format(&e)));
     }
 
     pub fn is_stabilized(&self) -> bool {
         self.is_stabilized
     }
 }
-impl<StrainGauge, StrainGaugeE> WeighingSystem for WeightScale<StrainGauge>
+impl<StrainGauge, StrainGaugeE, SA> WeighingSystem for WeightScale<StrainGauge, SA>
 where
     StrainGauge: AsyncStrainGaugeInterface<Error = StrainGaugeE>,
+    SA: SettingsAccessor,
 {
     type Error = Error<StrainGaugeE>;
 
@@ -120,9 +195,10 @@ where
         let full_scale_range: f32 = (1 << self.strain_gauge.get_adc_bit_count()) as f32;
         let new_bits_to_discard = self.strain_gauge.get_adc_bit_count()
             - (full_scale_range / standard_deviation).log2().ceil() as usize;
-        self.bits_to_discard = max(new_bits_to_discard, self.bits_to_discard);
+        self.save_new_bits_to_discard(max(new_bits_to_discard, self.bits_to_discard))
+            .await;
 
-        trace!(
+        debug!(
             "Stabilize measurements calculated {} bits to discard",
             self.bits_to_discard
         );

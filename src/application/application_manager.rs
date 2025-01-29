@@ -106,7 +106,7 @@ where
                     .unwrap();
                 let reading_delta = max_reading - min_reading;
                 if reading_delta < Self::STABILISED_WEIGHT_MAX_DELTA {
-                    return readings.as_slice().into_iter().sum::<f32>() / readings.len() as f32;
+                    return readings.as_slice().iter().sum::<f32>() / readings.len() as f32;
                 }
             }
         }
@@ -140,12 +140,6 @@ where
     ) {
         self.update_application_state(ApplicationState::Startup)
             .await;
-        match self.weighing_system.stabilize_measurements().await {
-            Ok(_) => {}
-            Err(_) => {
-                self.manage_error("Scale stabilisation failed").await;
-            }
-        }
 
         self.clear_out_hmi_rx(&mut hmi_subscriber).await;
 

@@ -1,5 +1,6 @@
+use crate::application::storage::settings::{SettingError, SettingValue};
 use core::ops::Range;
-use defmt::{debug, trace, warn, Format};
+use defmt::{debug, trace, warn, Debug2Format};
 use embassy_embedded_hal::adapter::BlockingAsync;
 use embassy_rp::flash;
 use embassy_rp::flash::{Error, Flash};
@@ -12,21 +13,24 @@ use heapless::spsc::Queue;
 use heapless::FnvIndexMap;
 use sequential_storage::cache::NoCache;
 use sequential_storage::map;
-use sequential_storage::map::{SerializationError, Value};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
+
+pub type BlockingAsyncFlash = BlockingAsync< Flash<'static, FLASH, flash::Async, { crate::FLASH_SIZE }>>;
 
 pub static SETTINGS_STORE: SettingsManagerMutex<
     Error,
-    BlockingAsync<Flash<FLASH, flash::Async, { crate::FLASH_SIZE }>>,
+    BlockingAsyncFlash,
 > = Mutex::new(SettingsManager::<
     Error,
-    BlockingAsync<Flash<FLASH, flash::Async, { crate::FLASH_SIZE }>>,
+    BlockingAsyncFlash,
 >::new());
+
+
 
 pub type SettingsManagerMutex<E, F> = Mutex<CriticalSectionRawMutex, SettingsManager<E, F>>;
 
 pub async fn wait_for_settings_store_initialisation() {
-    trace!("Waiting on settings initialisation");
+    trace!("Checking settings initialisation");
     loop {
         {
             let settings = SETTINGS_STORE.lock().await;
@@ -39,90 +43,6 @@ pub async fn wait_for_settings_store_initialisation() {
     }
 }
 
-#[derive(Debug, Format)]
-pub enum SettingError {
-    SaveError,
-    RetrieveError,
-    NotInitialized,
-    EraseError,
-    SaveQueueFull,
-}
-
-#[repr(u8)]
-#[derive(Clone, PartialEq, Debug)]
-pub enum SettingValue {
-    Default = 0,
-    Float(f32),
-    SmallUInt(u8),
-}
-
-impl SettingValue {
-    fn discriminant(&self) -> u8 {
-        // SAFETY: Because `Self` is marked `repr(u8)`, its layout is a `repr(C)` `union`
-        // between `repr(C)` structs, each of which has the `u8` discriminant as its first
-        // field, so we can read the discriminant without offsetting the pointer.
-        unsafe { *<*const _>::from(self).cast::<u8>() }
-    }
-}
-
-impl Default for SettingValue {
-    fn default() -> Self {
-        Self::Default
-    }
-}
-
-impl Value<'_> for SettingValue {
-    fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize, SerializationError> {
-        let id_byte = self.discriminant();
-        let mut value_buffer: [u8; 10] = [0; 10];
-        let data_bytes_count = match self {
-            SettingValue::Default => 0,
-            SettingValue::Float(v) => v.serialize_into(&mut value_buffer)?,
-            SettingValue::SmallUInt(v) => {
-                value_buffer[0] = *v;
-                1
-            }
-        };
-        let total_serialization_len = data_bytes_count + 1;
-
-        if total_serialization_len > buffer.len() {
-            return Err(SerializationError::BufferTooSmall);
-        }
-
-        buffer[0] = id_byte;
-        if total_serialization_len > 1 {
-            buffer[1..total_serialization_len].copy_from_slice(&value_buffer[..data_bytes_count]);
-        }
-
-        Ok(total_serialization_len)
-    }
-
-    fn deserialize_from(buffer: &[u8]) -> Result<Self, SerializationError>
-    where
-        Self: Sized,
-    {
-        if buffer.len() <= 1 {
-            return Err(SerializationError::BufferTooSmall);
-        }
-
-        let id_byte = buffer[0];
-        let value_buffer = &buffer[1..];
-
-        match id_byte {
-            0 => Ok(SettingValue::Default),
-            1 => {
-                let value = f32::deserialize_from(value_buffer)?;
-                Ok(SettingValue::Float(value))
-            }
-            2 => {
-                let value = value_buffer[0];
-                Ok(SettingValue::SmallUInt(value))
-            }
-            _ => Err(SerializationError::InvalidFormat),
-        }
-    }
-}
-
 type SettingKey = u16;
 #[repr(u16)]
 #[derive(Clone, PartialEq, EnumCount, EnumIter, Debug)]
@@ -131,10 +51,11 @@ pub enum StoredSettings {
     WeighingSystemCalibrationGradient(SettingValue) = 1,
     SystemLedBrightness(SettingValue) = 2,
     SystemDisplayBrightness(SettingValue) = 3,
+    WeighingSystemBitsToDiscard(SettingValue) = 4,
 }
 
 impl StoredSettings {
-    fn discriminant(&self) -> u16 {
+    pub(crate) fn discriminant(&self) -> u16 {
         // SAFETY: Because `Self` is marked `repr(u8)`, its layout is a `repr(C)` `union`
         // between `repr(C)` structs, each of which has the `u8` discriminant as its first
         // field, so we can read the discriminant without offsetting the pointer.
@@ -147,6 +68,7 @@ impl StoredSettings {
             StoredSettings::WeighingSystemCalibrationGradient(v) => v.clone(),
             StoredSettings::SystemLedBrightness(v) => v.clone(),
             StoredSettings::SystemDisplayBrightness(v) => v.clone(),
+            StoredSettings::WeighingSystemBitsToDiscard(v) => v.clone(),
         }
     }
 }
@@ -271,7 +193,7 @@ where
         })?;
 
         let _ = self.settings_cache.insert(setting.discriminant(), Some(v));
-        debug!("Setting saved");
+        debug!("Setting saved - {}", Debug2Format(&setting));
 
         Ok(())
     }
@@ -319,95 +241,9 @@ where
             .unwrap_or(None)
     }
 
-    pub fn set_weighing_system_tare_offset(&mut self, offset: f32) -> Result<(), SettingError> {
+    pub fn queue_settings_save(&mut self, setting: StoredSettings) -> Result<(), SettingError> {
         self.save_queue
-            .enqueue(StoredSettings::WeighingSystemTareOffset(
-                SettingValue::Float(offset),
-            ))
+            .enqueue(setting)
             .map_err(|_| SettingError::SaveQueueFull)
-    }
-
-    pub fn get_weighing_system_tare_offset(&self) -> Option<f32> {
-        let result = self.get_setting(
-            StoredSettings::WeighingSystemTareOffset(SettingValue::Float(0.0)).discriminant(),
-        );
-
-        if let Some(setting_value) = result {
-            return match setting_value {
-                SettingValue::Float(v) => Some(v),
-                _ => None,
-            };
-        }
-        None
-    }
-
-    pub fn set_weighing_system_calibration_gradient(
-        &mut self,
-        gradient: f32,
-    ) -> Result<(), SettingError> {
-        self.save_queue
-            .enqueue(StoredSettings::WeighingSystemCalibrationGradient(
-                SettingValue::Float(gradient),
-            ))
-            .map_err(|_| SettingError::SaveQueueFull)
-    }
-
-    pub fn get_weighing_system_calibration_gradient(&self) -> Option<f32> {
-        let result = self.get_setting(
-            StoredSettings::WeighingSystemCalibrationGradient(SettingValue::Float(0.0))
-                .discriminant(),
-        );
-
-        if let Some(setting_value) = result {
-            return match setting_value {
-                SettingValue::Float(v) => Some(v),
-                _ => None,
-            };
-        }
-        None
-    }
-
-    pub fn set_system_led_brightness(&mut self, brightness: u8) -> Result<(), SettingError> {
-        self.save_queue
-            .enqueue(StoredSettings::SystemLedBrightness(
-                SettingValue::SmallUInt(brightness),
-            ))
-            .map_err(|_| SettingError::SaveQueueFull)
-    }
-
-    pub fn get_system_led_brightness(&self) -> Option<u8> {
-        let result = self.get_setting(
-            StoredSettings::SystemLedBrightness(SettingValue::SmallUInt(0u8)).discriminant(),
-        );
-
-        if let Some(setting_value) = result {
-            return match setting_value {
-                SettingValue::SmallUInt(v) => Some(v),
-                _ => None,
-            };
-        }
-        None
-    }
-
-    pub fn set_system_display_brightness(&mut self, brightness: u8) -> Result<(), SettingError> {
-        self.save_queue
-            .enqueue(StoredSettings::SystemDisplayBrightness(
-                SettingValue::SmallUInt(brightness),
-            ))
-            .map_err(|_| SettingError::SaveQueueFull)
-    }
-
-    pub fn get_system_display_brightness(&self) -> Option<u8> {
-        let result = self.get_setting(
-            StoredSettings::SystemDisplayBrightness(SettingValue::SmallUInt(0u8)).discriminant(),
-        );
-
-        if let Some(setting_value) = result {
-            return match setting_value {
-                SettingValue::SmallUInt(v) => Some(v),
-                _ => None,
-            };
-        }
-        None
     }
 }

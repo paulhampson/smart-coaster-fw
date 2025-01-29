@@ -1,7 +1,5 @@
-use crate::application::storage::settings::{
-    wait_for_settings_store_initialisation, SETTINGS_STORE,
-};
-use defmt::warn;
+use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use defmt::{warn, Debug2Format};
 use embassy_rp::pio::Instance;
 use embassy_rp::pio_programs::ws2812::PioWs2812;
 use embassy_time::Instant;
@@ -64,7 +62,10 @@ pub trait LedControl {
     async fn led_update(&mut self);
 }
 
-pub struct LedController<'a, const LED_COUNT: usize, P: Instance, const S: usize> {
+pub struct LedController<'a, const LED_COUNT: usize, P: Instance, const S: usize, SA>
+where
+    SA: SettingsAccessor,
+{
     ws2812pio: PioWs2812<'a, P, S, LED_COUNT>,
     led_count: usize,
     led_state: [RGB8; LED_COUNT],
@@ -75,12 +76,14 @@ pub struct LedController<'a, const LED_COUNT: usize, P: Instance, const S: usize
     base_colour: RGB8,
     brightness: u8,
     last_update: Instant,
+    settings: SA,
 }
 
-impl<'a, const LED_COUNT: usize, P, const S: usize> LedControl
-    for LedController<'a, LED_COUNT, P, S>
+impl<'a, const LED_COUNT: usize, P, const S: usize, SA> LedControl
+    for LedController<'a, LED_COUNT, P, S, SA>
 where
     P: Instance,
+    SA: SettingsAccessor,
 {
     fn set_mode(&mut self, mode: LedArrayMode) {
         self.array_mode = mode;
@@ -120,10 +123,14 @@ where
 
     async fn set_brightness(&mut self, brightness: u8) {
         self.brightness = brightness;
-        let mut settings = SETTINGS_STORE.lock().await;
-        let _ = settings
-            .set_system_led_brightness(brightness)
-            .map_err(|e| warn!("Failed to store LED brightness: {:?}", e));
+        let _ = self
+            .settings
+            .save_setting(
+                SettingsAccessorId::SystemLedBrightness,
+                SettingValue::SmallUInt(brightness),
+            )
+            .await
+            .map_err(|e| warn!("Failed to store LED brightness: {:?}", Debug2Format(&e)));
     }
 
     async fn led_update(&mut self) {
@@ -167,14 +174,15 @@ where
     }
 }
 
-impl<'a, const LED_COUNT: usize, P, const S: usize> LedController<'a, LED_COUNT, P, S>
+impl<'a, const LED_COUNT: usize, P, const S: usize, SA> LedController<'a, LED_COUNT, P, S, SA>
 where
     P: Instance,
+    SA: SettingsAccessor,
 {
     const LED_SINGLE_ROTATION_STEPS: f32 = 360.0;
 
-    pub async fn new(ws2812pio: PioWs2812<'a, P, S, LED_COUNT>) -> Self {
-        Self {
+    pub async fn new(ws2812pio: PioWs2812<'a, P, S, LED_COUNT>, settings: SA) -> Self {
+        let mut s = Self {
             ws2812pio,
             led_count: LED_COUNT,
             led_state: [RGB8::default(); LED_COUNT],
@@ -183,17 +191,26 @@ where
             speed_factor: 1.0,
             repetition_factor: 1.0,
             base_colour: RGB8::new(0, 0, 0),
-            brightness: Self::get_stored_brightness().await,
+            brightness: DEFAULT_BRIGHTNESS,
             last_update: Instant::now(),
-        }
+            settings,
+        };
+        s.brightness = s.get_stored_brightness().await;
+        s
     }
 
-    async fn get_stored_brightness() -> u8 {
-        wait_for_settings_store_initialisation().await;
-        let settings = SETTINGS_STORE.lock().await;
-        settings
-            .get_system_led_brightness()
-            .unwrap_or(DEFAULT_BRIGHTNESS)
+    async fn get_stored_brightness(&self) -> u8 {
+        if let Some(result) = self
+            .settings
+            .get_setting(SettingsAccessorId::SystemLedBrightness)
+            .await
+        {
+            return match result {
+                SettingValue::SmallUInt(v) => v,
+                _ => DEFAULT_BRIGHTNESS,
+            };
+        }
+        DEFAULT_BRIGHTNESS
     }
 
     fn animation_position_to_u8(&self) -> u8 {
@@ -211,7 +228,8 @@ where
 
         for i in 0..self.led_count {
             self.led_state[i] = rainbow_wheel(
-                (((((i * 256) / self.led_count) as f32 * self.repetition_factor).round() as u16
+                (((((i * 256) / (self.led_count - 1)) as f32 * self.repetition_factor).round()
+                    as u16
                     + scaled_position as u16)
                     & 255) as u8,
             );
@@ -221,8 +239,8 @@ where
     fn single_colour_wheel(&mut self) {
         let scaled_position = self.animation_position_to_u8();
         for i in 0..self.led_count {
-            let wheel_pos = (((i * 255 / self.led_count) as f32 * self.repetition_factor).round()
-                as u32
+            let wheel_pos = (((i * 255 / (self.led_count - 1)) as f32 * self.repetition_factor)
+                .round() as u32
                 + scaled_position as u32) as u8;
             self.led_state[i] = single_colour_wheel(self.base_colour, wheel_pos);
         }

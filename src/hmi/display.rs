@@ -2,9 +2,7 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{
     ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
 };
-use crate::application::storage::settings::{
-    wait_for_settings_store_initialisation, SETTINGS_STORE,
-};
+use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
 use crate::hmi::rotary_encoder::Direction;
 use crate::hmi::screens::calibration::CalibrationScreens;
@@ -19,9 +17,12 @@ use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
 use sh1106::mode::GraphicsMode;
 
-pub struct DisplayManager<DI>
+const DEFAULT_BRIGHTNESS: u8 = 128;
+
+pub struct DisplayManager<DI, SA>
 where
     DI: sh1106::interface::DisplayInterface,
+    SA: SettingsAccessor,
 {
     app_channel_subscriber: ApplicationChannelSubscriber<'static>,
     ui_action_publisher: UiActionChannelPublisher<'static>,
@@ -30,16 +31,19 @@ where
     display_state: ApplicationState,
     last_display_update: Instant,
 
-    settings_screen: SettingMenu,
+    settings_screen: SettingMenu<SA>,
     test_mode_screen: TestModeScreen,
     monitoring_screen: MonitoringScreen,
     heap_status_screen: HeapStatusScreen,
     calibration_screens: CalibrationScreens,
+
+    settings: SA,
 }
 
-impl<DI> DisplayManager<DI>
+impl<DI, SA> DisplayManager<DI, SA>
 where
     DI: sh1106::interface::DisplayInterface,
+    SA: SettingsAccessor,
 {
     const FRAME_TIMING_MS: u32 = 1000 / 30;
 
@@ -47,20 +51,28 @@ where
         mut display: GraphicsMode<DI>,
         app_channel_subscriber: ApplicationChannelSubscriber<'static>,
         ui_action_publisher: UiActionChannelPublisher<'static>,
+        settings: SA,
     ) -> Self {
         let _ = display.init().map_err(|_| error!("Failed to init display"));
         let _ = display
             .flush()
             .map_err(|_| error!("Failed to flush display"));
 
+        let display_brightness: u8 = if let Some(result) = settings
+            .get_setting(SettingsAccessorId::SystemDisplayBrightness)
+            .await
         {
-            wait_for_settings_store_initialisation().await;
-            let settings = SETTINGS_STORE.lock().await;
-            let display_brightness = settings.get_system_display_brightness().unwrap_or(128);
-            let _ = display
-                .set_contrast(display_brightness)
-                .map_err(|_| warn!("Failed to set display brightness"));
-        }
+            match result {
+                SettingValue::SmallUInt(v) => v,
+                _ => DEFAULT_BRIGHTNESS,
+            }
+        } else {
+            DEFAULT_BRIGHTNESS
+        };
+
+        let _ = display
+            .set_contrast(display_brightness)
+            .map_err(|_| warn!("Failed to set display brightness"));
 
         Self {
             app_channel_subscriber,
@@ -70,11 +82,13 @@ where
             display_state: ApplicationState::Startup,
             last_display_update: Instant::MIN,
 
-            settings_screen: SettingMenu::new().await,
+            settings_screen: SettingMenu::new(&settings).await,
             test_mode_screen: TestModeScreen::new(),
             monitoring_screen: MonitoringScreen::new(),
             heap_status_screen: HeapStatusScreen::new(),
             calibration_screens: CalibrationScreens::new(),
+
+            settings,
         }
     }
 
@@ -167,7 +181,7 @@ where
                                 }
                             }
                             HmiMessage::PushButtonPressed(is_pressed) => {
-                                trace!("Button pressed {:?} ", is_pressed);
+                                debug!("Button pressed {:?} ", is_pressed);
                                 match is_pressed {
                                     true => self.route_ui_input(UiInput::ButtonPress),
                                     false => self.route_ui_input(UiInput::ButtonRelease),
@@ -187,11 +201,18 @@ where
                                     .display
                                     .set_contrast(new_display_brightness)
                                     .map_err(|_| warn!("Failed to set display brightness"));
-                                let mut settings = SETTINGS_STORE.lock().await;
-                                let _ = settings
-                                    .set_system_display_brightness(new_display_brightness)
-                                    .map_err(|_| {
-                                        warn!("Failed to save display brightness setting")
+                                let _ = self
+                                    .settings
+                                    .save_setting(
+                                        SettingsAccessorId::SystemDisplayBrightness,
+                                        SettingValue::SmallUInt(new_display_brightness),
+                                    )
+                                    .await
+                                    .map_err(|e| {
+                                        warn!(
+                                            "Failed to save display brightness: {}",
+                                            Debug2Format(&e)
+                                        );
                                     });
                             } else {
                                 trace!("App data update");

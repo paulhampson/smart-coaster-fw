@@ -1,6 +1,6 @@
-
 pub mod hx711async;
 
+#[allow(dead_code)]
 pub trait AsyncStrainGaugeInterface {
     type Error;
 

@@ -26,7 +26,7 @@ use crate::hmi::messaging::{
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::{error, info};
+use defmt::{info};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -50,9 +50,10 @@ use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightC
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
-use crate::application::storage::settings::SETTINGS_STORE;
 use core::ptr::addr_of_mut;
 use embedded_alloc::LlffHeap as Heap;
+use crate::application::storage;
+use crate::application::storage::settings::accessor::FlashSettingsAccessor;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -182,7 +183,7 @@ fn main() -> ! {
 
     spawn_core1(
         p.CORE1,
-        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+        unsafe { &mut *addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| core1_main(spawner, core1_resources, &HEAP));
@@ -248,20 +249,11 @@ async fn storage_task(storage_resources: StorageResources) {
     );
     let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
 
-    {
-        let mut settings = SETTINGS_STORE.lock().await;
-        settings
-            .initialise(flash, NVM_FLASH_OFFSET_RANGE, NVM_PAGE_SIZE)
-            .await;
-    }
+    storage::settings::accessor::initialise_settings_store(flash, NVM_FLASH_OFFSET_RANGE, NVM_PAGE_SIZE).await;
 
     loop {
         Timer::after(Duration::from_millis(500)).await;
-        let mut settings = SETTINGS_STORE.lock().await;
-        let _ = settings
-            .process_queued_saves()
-            .await
-            .map_err(|e| error!("Unable to process queued settings saves - {:?}", e));
+        storage::settings::accessor::process_save_queue().await;
     }
 }
 
@@ -300,9 +292,10 @@ async fn display_task(
         Config::default(),
     );
 
+    let settings = FlashSettingsAccessor::new();
     let display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
     let mut display_manager =
-        DisplayManager::new(display, app_subscriber, ui_action_publisher).await;
+        DisplayManager::new(display, app_subscriber, ui_action_publisher, settings).await;
     display_manager.run().await;
 }
 
@@ -311,7 +304,7 @@ async fn led_task(
     led_pio_resources: LedControlResources,
     application_subscriber: ApplicationChannelSubscriber<'static>,
 ) {
-    let led_power_en_output = Output::new(led_pio_resources.led_power_en, Level::High);
+    let _led_power_en_output = Output::new(led_pio_resources.led_power_en, Level::High);
 
     let Pio {
         mut common, sm0, ..
@@ -324,7 +317,8 @@ async fn led_task(
         led_pio_resources.data_pin,
         &program,
     );
-    let led_control = LedController::new(pio_ws2812).await;
+    let settings = FlashSettingsAccessor::new();
+    let led_control = LedController::new(pio_ws2812, settings).await;
 
     let mut led_manager = LedManager::new(led_control, application_subscriber);
     led_manager.run().await;
@@ -339,7 +333,8 @@ async fn weighing_task(
     let clk_pin_out = Output::new(strain_gauge_resources.clk_pin, Level::Low);
     let data_pin = Input::new(strain_gauge_resources.data_pin, Pull::Up);
     let strain_gauge = Hx711Async::new(clk_pin_out, data_pin, Hx711Gain::Gain128);
-    let weight_scale = WeightScale::new(strain_gauge).await.unwrap();
+    let settings = FlashSettingsAccessor::new();
+    let weight_scale = WeightScale::new(strain_gauge, settings).await.unwrap();
 
     let mut weighing_manager =
         WeighingManager::new(app_subscriber, weight_event_sender, weight_scale);
