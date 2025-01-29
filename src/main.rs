@@ -274,13 +274,13 @@ async fn hmi_input_task(
     let rotary_clk = hmi_input_pins.rotary_clk_pin;
     let debounced_btn = Debouncer::new(
         Input::new(hmi_input_pins.push_btn_pin, Pull::Up),
-        Duration::from_millis(100),
+        Duration::from_millis(4),
     );
 
     let mut rotary_encoder = DebouncedRotaryEncoder::new(
         Input::new(rotary_dt, Pull::Up),
         Input::new(rotary_clk, Pull::Up),
-        Duration::from_millis(6),
+        Duration::from_millis(4),
     );
 
     hmi_input_handler(hmi_event_channel, debounced_btn, &mut rotary_encoder).await;

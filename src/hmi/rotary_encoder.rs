@@ -1,5 +1,5 @@
-use embassy_futures::join::join;
 use crate::hmi::debouncer::Debouncer;
+use embassy_futures::join::join;
 use embassy_futures::select::{select, Either};
 use embassy_rp::gpio::{Input, Level};
 use embassy_time::Duration;
@@ -29,38 +29,66 @@ pub trait RotaryEncoder {
 
 pub struct DebouncedRotaryEncoder<'a> {
     debounced_dt: Debouncer<'a>,
-    debounced_clk: Debouncer<'a>
+    debounced_clk: Debouncer<'a>,
 }
 
-impl<'a> DebouncedRotaryEncoder<'a>
-{
+impl<'a> DebouncedRotaryEncoder<'a> {
     pub fn new(pin_dt: Input<'a>, pin_clk: Input<'a>, debounce_duration: Duration) -> Self {
         Self {
-            debounced_dt:  Debouncer::new(pin_dt, debounce_duration),
-            debounced_clk:  Debouncer::new(pin_clk, debounce_duration),
+            debounced_dt: Debouncer::new(pin_dt, debounce_duration),
+            debounced_clk: Debouncer::new(pin_clk, debounce_duration),
         }
     }
 }
 
-
 impl RotaryEncoder for DebouncedRotaryEncoder<'_> {
-
     async fn state_change(&mut self) -> Direction {
-        join(self.debounced_clk.wait_until_stable(Level::High),  self.debounced_dt.wait_until_stable(Level::High)).await;
+        let mut clk_level: Level;
+        let mut dt_level: Level;
 
-        let io_changes = select(self.debounced_dt.wait_for_first_falling_edge(), self.debounced_clk.wait_for_first_falling_edge()).await;
-
-        join(self.debounced_dt.wait_until_stable(Level::Low), self.debounced_clk.wait_until_stable(Level::Low)).await;
-        join(self.debounced_dt.wait_until_stable(Level::High), self.debounced_clk.wait_until_stable(Level::High)).await;
-
-        match io_changes {
-            Either::First(_) => {
-                // DT changed first
-                Direction::CounterClockwise
+        // ensure we aren't in the middle of a transition
+        loop {
+            (clk_level, dt_level) =
+                join(self.debounced_clk.debounce(), self.debounced_dt.debounce()).await;
+            if clk_level == dt_level {
+                break;
             }
-            Either::Second(_) => {
-                // CLK changed first
-                Direction::Clockwise
+        }
+
+        match clk_level {
+            Level::Low => {
+                let io_changes = select(
+                    self.debounced_dt.wait_for_first_rising_edge(),
+                    self.debounced_clk.wait_for_first_rising_edge(),
+                )
+                .await;
+                match io_changes {
+                    Either::First(_) => {
+                        // DT changed first
+                        Direction::CounterClockwise
+                    }
+                    Either::Second(_) => {
+                        // CLK changed first
+                        Direction::Clockwise
+                    }
+                }
+            }
+            Level::High => {
+                let io_changes = select(
+                    self.debounced_dt.wait_for_first_falling_edge(),
+                    self.debounced_clk.wait_for_first_falling_edge(),
+                )
+                .await;
+                match io_changes {
+                    Either::First(_) => {
+                        // DT changed first
+                        Direction::CounterClockwise
+                    }
+                    Either::Second(_) => {
+                        // CLK changed first
+                        Direction::Clockwise
+                    }
+                }
             }
         }
     }
@@ -69,15 +97,14 @@ impl RotaryEncoder for DebouncedRotaryEncoder<'_> {
 #[allow(dead_code)]
 pub struct RawRotaryEncoder<'a> {
     dt: Input<'a>,
-    clk: Input<'a>
+    clk: Input<'a>,
 }
 
 #[allow(dead_code)]
-impl<'a> RawRotaryEncoder<'a>
-{
+impl<'a> RawRotaryEncoder<'a> {
     fn new(pin_dt: Input<'a>, pin_clk: Input<'a>) -> Self {
         Self {
-            dt:  pin_dt,
+            dt: pin_dt,
             clk: pin_clk,
         }
     }
@@ -97,8 +124,7 @@ impl<'a> RawRotaryEncoder<'a>
 }
 
 #[allow(dead_code)]
-impl<'a> RotaryEncoder for RawRotaryEncoder<'a>
-{
+impl<'a> RotaryEncoder for RawRotaryEncoder<'a> {
     async fn state_change(&mut self) -> Direction {
         let mut s = self.get_current_state();
         s |= s << 2;

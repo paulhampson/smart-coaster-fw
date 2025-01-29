@@ -167,7 +167,7 @@ where
                                 }
                             }
                             HmiMessage::PushButtonPressed(is_pressed) => {
-                                debug!("Button pressed {:?} ", is_pressed);
+                                trace!("Button pressed {:?} ", is_pressed);
                                 match is_pressed {
                                     true => self.route_ui_input(UiInput::ButtonPress),
                                     false => self.route_ui_input(UiInput::ButtonRelease),
