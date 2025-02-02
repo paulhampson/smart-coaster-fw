@@ -61,6 +61,7 @@ impl UiInputHandler for MonitoringScreen {
             ),
             UiInput::ButtonRelease => {}
             UiInput::ApplicationData(data) => self.process_application_data(data),
+            UiInput::DateTimeUpdate(_) => {}
         }
     }
 }

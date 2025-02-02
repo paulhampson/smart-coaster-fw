@@ -6,6 +6,7 @@ use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use core::marker::PhantomData;
 use defmt::{debug, error};
 use defmt::{warn, Debug2Format};
+use ds323x::{NaiveDateTime};
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::BinaryColor;
@@ -34,6 +35,7 @@ where
     SA: SettingsAccessor,
 {
     menu: Menu<'static, BinaryColor, SettingMenuIdentifier>,
+    datetime: NaiveDateTime,
     phantom: PhantomData<SA>,
 }
 
@@ -44,6 +46,7 @@ where
     pub async fn new(settings: &SA) -> Self {
         Self {
             menu: Self::build_menu(settings).await,
+            datetime: NaiveDateTime::default(),
             phantom: PhantomData,
         }
     }
@@ -209,6 +212,7 @@ where
             }
             UiInput::ButtonRelease => {}
             UiInput::ApplicationData(_) => {}
+            UiInput::DateTimeUpdate(dt) => {self.datetime = dt;}
         }
     }
 }

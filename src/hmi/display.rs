@@ -12,10 +12,11 @@ use crate::hmi::screens::settings::SettingMenu;
 use crate::hmi::screens::test_mode::TestModeScreen;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
 use defmt::{debug, error, trace, warn, Debug2Format};
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select3, Either3};
 use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
 use sh1106::mode::GraphicsMode;
+use crate::rtc::accessor::RtcAccessor;
 
 const DEFAULT_BRIGHTNESS: u8 = 128;
 
@@ -38,6 +39,7 @@ where
     calibration_screens: CalibrationScreens,
 
     settings: SA,
+    rtc_accessor: RtcAccessor,
 }
 
 impl<DI, SA> DisplayManager<DI, SA>
@@ -73,6 +75,7 @@ where
         let _ = display
             .set_contrast(display_brightness)
             .map_err(|_| warn!("Failed to set display brightness"));
+        let rtc_accessor = RtcAccessor::new().unwrap_or_else(|_| panic!("Failed to get RTC accessor"));
 
         Self {
             app_channel_subscriber,
@@ -89,12 +92,15 @@ where
             calibration_screens: CalibrationScreens::new(),
 
             settings,
+            rtc_accessor
         }
     }
 
     pub async fn set_display_state(&mut self, display_state: ApplicationState) {
         debug!("Display state: {:?}", display_state);
         self.display_state = display_state;
+        let dt = self.rtc_accessor.get_date_time();
+        self.route_ui_input(UiInput::DateTimeUpdate(dt));
         self.update_now().await;
     }
 
@@ -156,13 +162,14 @@ where
         let mut update_ticker = Ticker::every(Duration::from_millis(200));
 
         loop {
-            let wait_result = select(
+            let wait_result = select3(
                 self.app_channel_subscriber.next_message(),
                 update_ticker.next(),
+                self.rtc_accessor.wait_for_next_second()
             )
             .await;
             match wait_result {
-                Either::First(w) => match w {
+                Either3::First(w) => match w {
                     WaitResult::Lagged(count) => {
                         warn! {"Display lost {} messages from HMI channel", count}
                     }
@@ -222,7 +229,11 @@ where
                         ApplicationMessage::WeighSystemRequest(..) => {}
                     },
                 },
-                Either::Second(_) => {}
+                Either3::Second(_) => {}
+                Either3::Third(dt) => {
+                    trace!("DateTime update");
+                    self.route_ui_input(UiInput::DateTimeUpdate(dt));
+                }
             }
             self.update_screen().await;
         }

@@ -1,3 +1,4 @@
+use ds323x::NaiveDateTime;
 use crate::application::messaging::ApplicationData;
 use crate::hmi::messaging::UiActionChannelPublisher;
 use embedded_graphics::geometry::Point;
@@ -22,6 +23,7 @@ pub enum UiInput {
     ButtonPress,
     ButtonRelease,
     ApplicationData(ApplicationData),
+    DateTimeUpdate(NaiveDateTime)
 }
 
 pub trait UiInputHandler {

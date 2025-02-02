@@ -12,8 +12,8 @@ mod application;
 mod hmi;
 mod led;
 mod weight;
+mod rtc;
 
-use alloc::string::ToString;
 use core::ops::Range;
 use embassy_executor::{Executor, Spawner};
 use embassy_time::{Duration, Timer};
@@ -28,7 +28,7 @@ use crate::hmi::messaging::{
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::{debug, info};
+use defmt::{info};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -53,10 +53,11 @@ use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
 use core::ptr::addr_of_mut;
-use ds323x::{DateTimeAccess, Ds323x, NaiveDate};
+use ds323x::{Ds323x};
 use embedded_alloc::LlffHeap as Heap;
 use crate::application::storage;
 use crate::application::storage::settings::accessor::FlashSettingsAccessor;
+use crate::rtc::{RtcControl, SystemRtc};
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -265,18 +266,9 @@ async fn rtc_task(rtc_resources: RtcResources) {
         I2c1Irqs,
         Config::default());
 
-    let mut rtc = Ds323x::new_ds3231(i2c);
-
-    // let datetime = NaiveDate::from_ymd_opt(2020, 5, 1)
-    //     .unwrap()
-    //     .and_hms_opt(19, 59, 58)
-    //     .unwrap();
-    // rtc.set_datetime(&datetime).unwrap();
-
-    loop {
-        debug!("Time test: {}", rtc.datetime().unwrap().to_string().as_str());
-        Timer::after(Duration::from_secs(10)).await;
-    }
+    let rtc: SystemRtc = Ds323x::new_ds3231(i2c);
+    let mut rtc_control = RtcControl::new(rtc);
+    rtc_control.run().await;
 }
 
 #[embassy_executor::task]
