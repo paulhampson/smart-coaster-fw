@@ -1353,6 +1353,7 @@ name = "smartcoaster"
 version = "0.1.0"
 dependencies = [
  "assign-resources",
+ "chrono",
  "cortex-m",
  "cortex-m-rt",
  "defmt",

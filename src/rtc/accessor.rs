@@ -1,5 +1,5 @@
 use defmt::warn;
-use crate::rtc::signal::{RtcWatchReceiver, RTC_TIME_UPDATE};
+use crate::rtc::signal::{RtcWatchReceiver, RTC_SET_TIME, RTC_TIME_UPDATE};
 use ds323x::NaiveDateTime;
 
 pub enum RtcAccessorError {
@@ -35,4 +35,8 @@ impl RtcAccessor {
         }
         self.recent_dt
     }
+}
+
+pub fn set_date_time(dt: NaiveDateTime) {
+    RTC_SET_TIME.signal(dt);
 }

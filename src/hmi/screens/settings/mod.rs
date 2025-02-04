@@ -28,6 +28,7 @@ pub enum SettingMenuIdentifier {
     DoCalibration,
     SetLedBrightness,
     DisplayBrightness,
+    SetDateTime,
 }
 
 pub struct SettingMenu<SA>
@@ -124,6 +125,7 @@ where
             );
         }
         device_and_system.add_section("System", SettingMenuIdentifier::None);
+        device_and_system.add_action("Set Date/Time", SettingMenuIdentifier::SetDateTime);
         device_and_system.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
         device_and_system.add_action("Test Mode", SettingMenuIdentifier::EnterTestScreen);
         device_and_system.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
@@ -155,6 +157,9 @@ where
                 }
                 SettingMenuIdentifier::DoCalibration => ui_action_publisher.publish_immediate(
                     UiActionsMessage::StateChangeRequest(ApplicationState::Calibration),
+                ),
+                SettingMenuIdentifier::SetDateTime => ui_action_publisher.publish_immediate(
+                    UiActionsMessage::StateChangeRequest(ApplicationState::SetDateTime),
                 ),
                 _ => {}
             },

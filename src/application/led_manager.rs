@@ -65,8 +65,10 @@ where
                                 })
                             }
                             ApplicationState::HeapStatus => {}
-                            ApplicationState::Calibration => {}
+                            ApplicationState::Calibration => {},
+                            ApplicationState::SetDateTime => {},
                         },
+
                         ApplicationMessage::ApplicationDataUpdate(app_data) => match app_data {
                             ApplicationData::LedBrightness(brightness) => {
                                 self.led_control.set_brightness(brightness).await

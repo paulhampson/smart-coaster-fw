@@ -148,6 +148,7 @@ where
             .await;
         loop {
             match next_state {
+                ApplicationState::Startup | ApplicationState::ErrorScreenWithMessage(_) => {}
                 ApplicationState::Monitoring => {
                     next_state = self
                         .coaster_activity_monitoring(&mut ui_action_receiver, &mut hmi_subscriber)
@@ -182,7 +183,11 @@ where
                     }
                     next_state = ApplicationState::Settings;
                 }
-                _ => {}
+                ApplicationState::SetDateTime => {
+                    next_state = self
+                        .set_date_time_screen(&mut ui_action_receiver, &mut hmi_subscriber)
+                        .await;
+                }
             }
             debug!("Changing to next_state: {:?}", next_state);
         }
@@ -276,7 +281,6 @@ where
     ) -> ApplicationState {
         self.update_application_state(ApplicationState::Settings)
             .await;
-        let mut press_start = Instant::now();
 
         loop {
             let ui_or_hmi = select(
@@ -309,22 +313,38 @@ where
                     self.app_publisher
                         .publish(ApplicationMessage::HmiInput(hmi_message))
                         .await;
-
-                    match hmi_message {
-                        PushButtonPressed(true) => {
-                            press_start = Instant::now();
-                        }
-                        PushButtonPressed(false) => {
-                            if press_start.elapsed() >= Self::LONG_LONG_PRESS_TIME {
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
                 }
             }
         }
-        ApplicationState::Monitoring
+    }
+
+    async fn set_date_time_screen(
+        &mut self,
+        ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+    ) -> ApplicationState {
+        self.update_application_state(ApplicationState::SetDateTime)
+            .await;
+        loop {
+            let ui_or_hmi = select(
+                ui_action_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
+            )
+            .await;
+
+            match ui_or_hmi {
+                Either::First(ui_action_message) => {
+                    if let UiActionsMessage::StateChangeRequest(new_state) = ui_action_message {
+                        return new_state;
+                    }
+                }
+                Either::Second(hmi_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
+                }
+            }
+        }
     }
 
     async fn wait_for_weight_activity(&mut self) -> f32 {

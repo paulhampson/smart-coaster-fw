@@ -16,6 +16,7 @@ use embassy_futures::select::{select3, Either3};
 use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
 use sh1106::mode::GraphicsMode;
+use crate::hmi::screens::set_date_time::SetDateTimeScreen;
 use crate::rtc::accessor::RtcAccessor;
 
 const DEFAULT_BRIGHTNESS: u8 = 128;
@@ -37,9 +38,11 @@ where
     monitoring_screen: MonitoringScreen,
     heap_status_screen: HeapStatusScreen,
     calibration_screens: CalibrationScreens,
+    set_date_time_screen: SetDateTimeScreen,
 
     settings: SA,
     rtc_accessor: RtcAccessor,
+
 }
 
 impl<DI, SA> DisplayManager<DI, SA>
@@ -90,6 +93,7 @@ where
             monitoring_screen: MonitoringScreen::new(),
             heap_status_screen: HeapStatusScreen::new(),
             calibration_screens: CalibrationScreens::new(),
+            set_date_time_screen: SetDateTimeScreen::new(),
 
             settings,
             rtc_accessor
@@ -125,6 +129,7 @@ where
             ApplicationState::Monitoring => self.monitoring_screen.draw(&mut self.display),
             ApplicationState::HeapStatus => self.heap_status_screen.draw(&mut self.display),
             ApplicationState::Calibration => self.calibration_screens.draw(&mut self.display),
+            ApplicationState::SetDateTime => self.set_date_time_screen.draw(&mut self.display),
         }
 
         let _ = self
@@ -153,6 +158,9 @@ where
                 .ui_input_handler(input, &self.ui_action_publisher),
             ApplicationState::Calibration => self
                 .calibration_screens
+                .ui_input_handler(input, &self.ui_action_publisher),
+            ApplicationState::SetDateTime => self
+                .set_date_time_screen
                 .ui_input_handler(input, &self.ui_action_publisher),
         }
     }
@@ -231,8 +239,10 @@ where
                 },
                 Either3::Second(_) => {}
                 Either3::Third(dt) => {
-                    trace!("DateTime update");
-                    self.route_ui_input(UiInput::DateTimeUpdate(dt));
+                    if self.display_state != ApplicationState::SetDateTime {
+                        trace!("DateTime update");
+                        self.route_ui_input(UiInput::DateTimeUpdate(dt));
+                    }
                 }
             }
             self.update_screen().await;

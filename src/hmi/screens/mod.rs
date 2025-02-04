@@ -16,6 +16,7 @@ pub mod heap_status;
 pub mod monitoring;
 pub mod settings;
 pub mod test_mode;
+pub mod set_date_time;
 
 pub enum UiInput {
     EncoderClockwise,

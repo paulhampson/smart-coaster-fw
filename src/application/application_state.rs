@@ -9,6 +9,7 @@ pub enum ApplicationState {
     Monitoring,
     HeapStatus,
     Calibration,
+    SetDateTime,
 }
 
 #[derive(Clone)]
