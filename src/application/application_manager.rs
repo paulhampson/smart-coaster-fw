@@ -318,7 +318,7 @@ where
                             ))
                             .await
                     }
-                    UiActionsMessage::MonitoringModeChangeRequest(period_option) => {
+                    UiActionsMessage::MonitoringModeChangeRequest(_period_option) => {
                         // TODO use the period option - pass it to the monitoring functionality
                     }
                 },

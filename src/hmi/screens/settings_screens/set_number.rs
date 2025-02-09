@@ -4,18 +4,23 @@ use crate::application::storage::settings::{SettingValue, SettingsAccessor, Sett
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::settings_screens::SettingScreen;
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
-use core::cmp::PartialEq;
+use core::cmp::{max, min, PartialEq};
+use core::fmt::Write;
 use defmt::error;
 use defmt::Debug2Format;
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_6X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::text::{Alignment, Baseline, TextStyleBuilder};
+use embedded_graphics::prelude::{OriginDimensions, Point};
+use embedded_graphics::text::renderer::TextRenderer;
+use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
+use embedded_graphics::Drawable;
+use embedded_layout::View;
 use heapless::String;
 use sh1106::interface::DisplayInterface;
 use sh1106::mode::GraphicsMode;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum Element {
     NumberEntryPosition(usize),
     Save,
@@ -88,10 +93,19 @@ impl SetNumberScreen {
         }
     }
 
-    pub fn reset_for_entry(&mut self, value: u32) {
-        self.current_element = Element::NumberEntryPosition(0);
-        self.element_active = false;
-        self.value = value;
+    fn increase_value(&mut self, element: usize) {
+        let position = self.num_elements - element - 1;
+        let new_value = self.value + 10u32.pow(position as u32);
+        self.value = min(new_value, self.max);
+    }
+
+    fn decrease_value(&mut self, element: usize) {
+        let position = self.num_elements - element - 1;
+        let mut new_value = self.value - 10u32.pow(position as u32);
+        if new_value > self.max {
+            new_value = 0;
+        }
+        self.value = max(new_value, self.min);
     }
 }
 
@@ -105,8 +119,10 @@ impl UiInputHandler for SetNumberScreen {
     ) {
         match input {
             UiInput::EncoderClockwise => {
-                if let Element::NumberEntryPosition(position) = self.current_element {
-                    self.value += 10u32.pow(position as u32);
+                if self.element_active {
+                    if let Element::NumberEntryPosition(position) = self.current_element {
+                        self.increase_value(position);
+                    }
                 } else {
                     self.current_element = self.current_element.next_element(self.num_elements);
                 }
@@ -114,7 +130,7 @@ impl UiInputHandler for SetNumberScreen {
             UiInput::EncoderCounterClockwise => {
                 if self.element_active {
                     if let Element::NumberEntryPosition(position) = self.current_element {
-                        self.value -= 10u32.pow(position as u32);
+                        self.decrease_value(position);
                     }
                 } else {
                     self.current_element = self.current_element.previous_element(self.num_elements);
@@ -157,12 +173,18 @@ impl UiDrawer for SetNumberScreen {
             .text_color(BinaryColor::Off)
             .background_color(BinaryColor::On)
             .build();
+        let hover_element_style = MonoTextStyleBuilder::new()
+            .font(&FONT_6X10)
+            .text_color(BinaryColor::On)
+            .background_color(BinaryColor::Off)
+            .underline()
+            .build();
 
         let label_char_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X13_BOLD)
             .text_color(BinaryColor::On)
             .build();
-        let label_alignment_style = TextStyleBuilder::new()
+        let label_text_style = TextStyleBuilder::new()
             .alignment(Alignment::Center)
             .baseline(Baseline::Top)
             .build();
@@ -173,5 +195,113 @@ impl UiDrawer for SetNumberScreen {
             .build();
 
         let mut string_buffer = String::<32>::new();
+        let mut next_point = Point::new((display.size().width / 2) as i32, 0);
+
+        string_buffer.clear();
+        writeln!(&mut string_buffer, "{}", self.label).unwrap();
+        next_point = Text::with_text_style(
+            string_buffer.as_str(),
+            next_point,
+            label_char_style,
+            label_text_style,
+        )
+        .draw(display)
+        .unwrap();
+
+        let setting_text_width = (self.num_elements + 1 + self.units.len())
+            * text_style.font.character_size.width as usize;
+        let x_offset = ((display.size().width - setting_text_width as u32) / 2) as i32;
+
+        next_point.x =
+            x_offset + (self.num_elements * text_style.font.character_size.width as usize) as i32;
+        next_point.y = ((display.size().height / 2) - text_style.line_height() / 2) as i32;
+
+        // draws right to left because it's easier to mask off each digit
+        let mut value_to_display = self.value;
+        for element_idx in (0..self.num_elements).rev() {
+            let style_to_use = if let Element::NumberEntryPosition(position) = self.current_element
+            {
+                if position == element_idx {
+                    if self.element_active {
+                        active_element_style
+                    } else {
+                        hover_element_style
+                    }
+                } else {
+                    text_style
+                }
+            } else {
+                text_style
+            };
+
+            string_buffer.clear();
+            write!(&mut string_buffer, "{}", value_to_display % 10).unwrap();
+            Text::with_baseline(
+                string_buffer.as_str(),
+                next_point,
+                style_to_use,
+                Baseline::Top,
+            )
+            .draw(display)
+            .unwrap();
+
+            value_to_display /= 10;
+            next_point.x -= text_style.font.character_size.width as i32;
+        }
+
+        next_point.x = x_offset
+            + ((self.num_elements + 2) * text_style.font.character_size.width as usize) as i32;
+
+        string_buffer.clear();
+        write!(&mut string_buffer, "{}", self.units).unwrap();
+        next_point = Text::with_baseline(
+            string_buffer.as_str(),
+            next_point,
+            text_style,
+            Baseline::Top,
+        )
+        .draw(display)
+        .unwrap();
+
+        next_point.x = 0;
+        next_point.y = display.size().height as i32;
+        let char_style_to_use = if self.current_element == Element::Save {
+            active_element_style
+        } else {
+            text_style
+        };
+        string_buffer.clear();
+        write!(&mut string_buffer, "[Save]").unwrap();
+        next_point = Text::with_text_style(
+            string_buffer.as_str(),
+            next_point,
+            char_style_to_use,
+            TextStyleBuilder::new()
+                .alignment(Alignment::Left)
+                .baseline(Baseline::Bottom)
+                .build(),
+        )
+        .draw(display)
+        .unwrap();
+
+        next_point.x = display.size().width as i32;
+        let char_style_to_use = if self.current_element == Element::Cancel {
+            active_element_style
+        } else {
+            text_style
+        };
+        string_buffer.clear();
+        writeln!(&mut string_buffer, "[Cancel]").unwrap();
+        Text::with_text_style(
+            string_buffer.as_str(),
+            next_point,
+            char_style_to_use,
+            TextStyleBuilder::new()
+                .alignment(Alignment::Right)
+                .baseline(Baseline::Bottom)
+                .build(),
+        )
+        .draw(display)
+        .unwrap();
     }
 }
