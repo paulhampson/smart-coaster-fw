@@ -40,10 +40,10 @@ impl HeapStatusScreen {
 }
 
 impl UiInputHandler for HeapStatusScreen {
-    fn ui_input_handler(
+    async fn ui_input_handler(
         &mut self,
         input: UiInput,
-        ui_channel_publisher: &UiActionChannelPublisher,
+        ui_channel_publisher: &UiActionChannelPublisher<'_>,
     ) {
         match input {
             UiInput::ButtonPress => ui_channel_publisher.publish_immediate(
@@ -94,8 +94,10 @@ impl UiDrawer for HeapStatusScreen {
         count_string.clear();
 
         let max_line_length = display.get_dimensions().0 as usize / font_width as usize;
-        let string_to_print =
-            add_newlines_to_string::<40>("Press button to return to settings", max_line_length);
+        let string_to_print = add_newlines_to_string::<40>(
+            "Press button to return to settings_menu",
+            max_line_length,
+        );
         write!(&mut count_string, "{}", string_to_print).unwrap();
         Text::with_baseline(
             count_string.as_str(),

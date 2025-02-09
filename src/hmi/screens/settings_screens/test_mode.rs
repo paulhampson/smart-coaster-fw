@@ -7,9 +7,9 @@ use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
 use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::text::renderer::TextRenderer;
 use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
-use embedded_graphics::text::renderer::TextRenderer;
 use heapless::String;
 use micromath::F32Ext;
 use sh1106::interface::DisplayInterface;
@@ -21,7 +21,7 @@ pub struct TestModeScreen {
     btn_press_count: u32,
     btn_release_count: u32,
     weight: f32,
-    datetime: NaiveDateTime
+    datetime: NaiveDateTime,
 }
 
 impl TestModeScreen {
@@ -32,7 +32,7 @@ impl TestModeScreen {
             btn_press_count: 0,
             btn_release_count: 0,
             weight: 0.0,
-            datetime: NaiveDateTime::default()
+            datetime: NaiveDateTime::default(),
         }
     }
 
@@ -45,10 +45,10 @@ impl TestModeScreen {
 }
 
 impl UiInputHandler for TestModeScreen {
-    fn ui_input_handler(
+    async fn ui_input_handler(
         &mut self,
         input: UiInput,
-        _ui_channel_publisher: &UiActionChannelPublisher,
+        _ui_channel_publisher: &UiActionChannelPublisher<'_>,
     ) {
         match input {
             UiInput::EncoderClockwise => {
@@ -110,7 +110,7 @@ impl UiDrawer for TestModeScreen {
         write!(&mut count_string, "Press Count = {}", self.btn_press_count).unwrap();
         Text::with_baseline(
             count_string.as_str(),
-            Point::new(0, 2*text_style.line_height() as i32),
+            Point::new(0, 2 * text_style.line_height() as i32),
             text_style,
             Baseline::Top,
         )
@@ -121,7 +121,7 @@ impl UiDrawer for TestModeScreen {
         write!(&mut count_string, "Weight = {:.0}g", self.weight.round()).unwrap();
         Text::with_baseline(
             count_string.as_str(),
-            Point::new(0, 3*text_style.line_height() as i32),
+            Point::new(0, 3 * text_style.line_height() as i32),
             text_style,
             Baseline::Top,
         )
@@ -132,11 +132,11 @@ impl UiDrawer for TestModeScreen {
         write!(&mut count_string, "{}", self.datetime).unwrap();
         Text::with_baseline(
             count_string.as_str(),
-            Point::new(0, 4*text_style.line_height() as i32),
+            Point::new(0, 4 * text_style.line_height() as i32),
             text_style,
             Baseline::Top,
         )
-            .draw(display)
-            .unwrap();
+        .draw(display)
+        .unwrap();
     }
 }

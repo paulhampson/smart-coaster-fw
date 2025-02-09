@@ -2,22 +2,24 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{
     ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
 };
+use crate::application::storage::settings::option_types::MonitoringTargetPeriodOptions;
 use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
 use crate::hmi::rotary_encoder::Direction;
-use crate::hmi::screens::calibration::CalibrationScreens;
-use crate::hmi::screens::heap_status::HeapStatusScreen;
 use crate::hmi::screens::monitoring::MonitoringScreen;
-use crate::hmi::screens::settings::SettingMenu;
-use crate::hmi::screens::test_mode::TestModeScreen;
-use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
+use crate::hmi::screens::settings_menu::SettingMenu;
+use crate::hmi::screens::settings_screens::calibration::CalibrationScreens;
+use crate::hmi::screens::settings_screens::heap_status::HeapStatusScreen;
+use crate::hmi::screens::settings_screens::set_date_time::SetDateTimeScreen;
+use crate::hmi::screens::settings_screens::set_number::SetNumberScreen;
+use crate::hmi::screens::settings_screens::test_mode::TestModeScreen;
+use crate::hmi::screens::{draw_message_screen, settings_menu, UiDrawer, UiInput, UiInputHandler};
+use crate::rtc::accessor::RtcAccessor;
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select3, Either3};
 use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Instant, Ticker};
 use sh1106::mode::GraphicsMode;
-use crate::hmi::screens::set_date_time::SetDateTimeScreen;
-use crate::rtc::accessor::RtcAccessor;
 
 const DEFAULT_BRIGHTNESS: u8 = 128;
 
@@ -39,10 +41,10 @@ where
     heap_status_screen: HeapStatusScreen,
     calibration_screens: CalibrationScreens,
     set_date_time_screen: SetDateTimeScreen,
+    number_entry_screen: SetNumberScreen,
 
     settings: SA,
     rtc_accessor: RtcAccessor,
-
 }
 
 impl<DI, SA> DisplayManager<DI, SA>
@@ -78,7 +80,8 @@ where
         let _ = display
             .set_contrast(display_brightness)
             .map_err(|_| warn!("Failed to set display brightness"));
-        let rtc_accessor = RtcAccessor::new().unwrap_or_else(|_| panic!("Failed to get RTC accessor"));
+        let rtc_accessor =
+            RtcAccessor::new().unwrap_or_else(|_| panic!("Failed to get RTC accessor"));
 
         Self {
             app_channel_subscriber,
@@ -94,17 +97,74 @@ where
             heap_status_screen: HeapStatusScreen::new(),
             calibration_screens: CalibrationScreens::new(),
             set_date_time_screen: SetDateTimeScreen::new(),
+            number_entry_screen: SetNumberScreen::new(
+                "Default",
+                "X",
+                0,
+                0,
+                1000,
+                SettingsAccessorId::MonitoringTargetValue,
+            ),
 
             settings,
-            rtc_accessor
+            rtc_accessor,
         }
+    }
+
+    async fn setup_monitoring_target_value_selection(&mut self) {
+        let properties = SettingsAccessorId::MonitoringTargetValue
+            .get_numeric_properties()
+            .unwrap();
+        let value = if let SettingValue::UInt(value) = self
+            .settings
+            .get_setting(SettingsAccessorId::MonitoringTargetValue)
+            .await
+            .unwrap_or(SettingValue::UInt(0))
+        {
+            value
+        } else {
+            0u32
+        };
+
+        let units = if let Some(SettingValue::SmallUInt(monitoring_target_idx)) = self
+            .settings
+            .get_setting(SettingsAccessorId::MonitoringTargetType)
+            .await
+        {
+            // TODO - fix this, it shouldn't be here - should be part of the stored option, but that got a bit messy
+            match settings_menu::monitoring_options::MonitoringTargetPeriodOptions::monitoring_mode_to_storage_option_mapping(monitoring_target_idx as usize) {
+                    MonitoringTargetPeriodOptions::Daily => {"ml/day"}
+                    MonitoringTargetPeriodOptions::Hourly => {"ml/hour"}
+                }
+        } else {
+            "ml/day"
+        };
+
+        self.number_entry_screen = SetNumberScreen::new(
+            "Target",
+            units,
+            value,
+            properties.minimum_value,
+            properties.maximum_value,
+            SettingsAccessorId::MonitoringTargetValue,
+        );
     }
 
     pub async fn set_display_state(&mut self, display_state: ApplicationState) {
         debug!("Display state: {:?}", display_state);
+
+        if let ApplicationState::NumberEntry(setting_id) = display_state {
+            match setting_id {
+                SettingsAccessorId::MonitoringTargetValue => {
+                    self.setup_monitoring_target_value_selection().await
+                }
+                _ => {}
+            }
+        }
+
         self.display_state = display_state;
         let dt = self.rtc_accessor.get_date_time();
-        self.route_ui_input(UiInput::DateTimeUpdate(dt));
+        self.route_ui_input(UiInput::DateTimeUpdate(dt)).await;
         self.update_now().await;
     }
 
@@ -130,6 +190,7 @@ where
             ApplicationState::HeapStatus => self.heap_status_screen.draw(&mut self.display),
             ApplicationState::Calibration => self.calibration_screens.draw(&mut self.display),
             ApplicationState::SetDateTime => self.set_date_time_screen.draw(&mut self.display),
+            ApplicationState::NumberEntry(_) => self.number_entry_screen.draw(&mut self.display),
         }
 
         let _ = self
@@ -139,29 +200,46 @@ where
         self.last_display_update = Instant::now();
     }
 
-    fn route_ui_input(&mut self, input: UiInput) {
+    async fn route_ui_input(&mut self, input: UiInput) {
         match self.display_state {
             ApplicationState::Startup => {}
             ApplicationState::ErrorScreenWithMessage(_) => {}
 
-            ApplicationState::Settings => self
-                .settings_screen
-                .ui_input_handler(input, &self.ui_action_publisher),
-            ApplicationState::TestScreen => self
-                .test_mode_screen
-                .ui_input_handler(input, &self.ui_action_publisher),
-            ApplicationState::Monitoring => self
-                .monitoring_screen
-                .ui_input_handler(input, &self.ui_action_publisher),
-            ApplicationState::HeapStatus => self
-                .heap_status_screen
-                .ui_input_handler(input, &self.ui_action_publisher),
-            ApplicationState::Calibration => self
-                .calibration_screens
-                .ui_input_handler(input, &self.ui_action_publisher),
-            ApplicationState::SetDateTime => self
-                .set_date_time_screen
-                .ui_input_handler(input, &self.ui_action_publisher),
+            ApplicationState::Settings => {
+                self.settings_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
+            ApplicationState::TestScreen => {
+                self.test_mode_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
+            ApplicationState::Monitoring => {
+                self.monitoring_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
+            ApplicationState::HeapStatus => {
+                self.heap_status_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
+            ApplicationState::Calibration => {
+                self.calibration_screens
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
+            ApplicationState::SetDateTime => {
+                self.set_date_time_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
+            ApplicationState::NumberEntry(_) => {
+                self.number_entry_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
         }
     }
 
@@ -173,7 +251,7 @@ where
             let wait_result = select3(
                 self.app_channel_subscriber.next_message(),
                 update_ticker.next(),
-                self.rtc_accessor.wait_for_next_second()
+                self.rtc_accessor.wait_for_next_second(),
             )
             .await;
             match wait_result {
@@ -187,10 +265,10 @@ where
                                 trace!("Encoder update: {:?}", Debug2Format(&direction));
                                 match direction {
                                     Direction::Clockwise => {
-                                        self.route_ui_input(UiInput::EncoderClockwise)
+                                        self.route_ui_input(UiInput::EncoderClockwise).await
                                     }
                                     Direction::CounterClockwise => {
-                                        self.route_ui_input(UiInput::EncoderCounterClockwise)
+                                        self.route_ui_input(UiInput::EncoderCounterClockwise).await
                                     }
                                     Direction::None => {}
                                 }
@@ -198,8 +276,8 @@ where
                             HmiMessage::PushButtonPressed(is_pressed) => {
                                 debug!("Button pressed {:?} ", is_pressed);
                                 match is_pressed {
-                                    true => self.route_ui_input(UiInput::ButtonPress),
-                                    false => self.route_ui_input(UiInput::ButtonRelease),
+                                    true => self.route_ui_input(UiInput::ButtonPress).await,
+                                    false => self.route_ui_input(UiInput::ButtonRelease).await,
                                 }
                             }
                         },
@@ -231,7 +309,8 @@ where
                                     });
                             } else {
                                 trace!("App data update");
-                                self.route_ui_input(UiInput::ApplicationData(data_update));
+                                self.route_ui_input(UiInput::ApplicationData(data_update))
+                                    .await;
                             }
                         }
                         ApplicationMessage::WeighSystemRequest(..) => {}
@@ -241,7 +320,7 @@ where
                 Either3::Third(dt) => {
                     if self.display_state != ApplicationState::SetDateTime {
                         trace!("DateTime update");
-                        self.route_ui_input(UiInput::DateTimeUpdate(dt));
+                        self.route_ui_input(UiInput::DateTimeUpdate(dt)).await;
                     }
                 }
             }

@@ -1,9 +1,11 @@
-use core::ops::Range;
-use defmt::error;
-use crate::application::storage::settings::settings_store::{wait_for_settings_store_initialisation, BlockingAsyncFlash, StoredSettings, SETTINGS_STORE};
+use crate::application::storage::settings::settings_store::{
+    wait_for_settings_store_initialisation, BlockingAsyncFlash, StoredSettings, SETTINGS_STORE,
+};
 use crate::application::storage::settings::{
     SettingError, SettingValue, SettingsAccessor, SettingsAccessorId,
 };
+use core::ops::Range;
+use defmt::error;
 pub struct FlashSettingsAccessor {}
 
 impl FlashSettingsAccessor {
@@ -35,6 +37,12 @@ impl SettingsAccessor for FlashSettingsAccessor {
             SettingsAccessorId::WeighingSystemBitsToDiscard => settings.get_setting(
                 StoredSettings::WeighingSystemBitsToDiscard(SettingValue::Default).discriminant(),
             ),
+            SettingsAccessorId::MonitoringTargetType => settings.get_setting(
+                StoredSettings::MonitoringTargetType(SettingValue::Default).discriminant(),
+            ),
+            SettingsAccessorId::MonitoringTargetValue => settings.get_setting(
+                StoredSettings::MonitoringTargetValue(SettingValue::Default).discriminant(),
+            ),
         }
     }
 
@@ -44,11 +52,23 @@ impl SettingsAccessor for FlashSettingsAccessor {
         value: SettingValue,
     ) -> Result<(), Self::Error> {
         let setting_obj = match setting {
-            SettingsAccessorId::SystemLedBrightness => { StoredSettings::SystemLedBrightness(value) }
-            SettingsAccessorId::SystemDisplayBrightness => { StoredSettings::SystemDisplayBrightness(value) }
-            SettingsAccessorId::WeighingSystemTareOffset => { StoredSettings::WeighingSystemTareOffset(value) }
-            SettingsAccessorId::WeighingSystemCalibrationGradient => {StoredSettings::WeighingSystemCalibrationGradient(value) }
-            SettingsAccessorId::WeighingSystemBitsToDiscard => {StoredSettings::WeighingSystemBitsToDiscard(value) }
+            SettingsAccessorId::SystemLedBrightness => StoredSettings::SystemLedBrightness(value),
+            SettingsAccessorId::SystemDisplayBrightness => {
+                StoredSettings::SystemDisplayBrightness(value)
+            }
+            SettingsAccessorId::WeighingSystemTareOffset => {
+                StoredSettings::WeighingSystemTareOffset(value)
+            }
+            SettingsAccessorId::WeighingSystemCalibrationGradient => {
+                StoredSettings::WeighingSystemCalibrationGradient(value)
+            }
+            SettingsAccessorId::WeighingSystemBitsToDiscard => {
+                StoredSettings::WeighingSystemBitsToDiscard(value)
+            }
+            SettingsAccessorId::MonitoringTargetType => StoredSettings::MonitoringTargetType(value),
+            SettingsAccessorId::MonitoringTargetValue => {
+                StoredSettings::MonitoringTargetValue(value)
+            }
         };
 
         wait_for_settings_store_initialisation().await;
@@ -57,12 +77,13 @@ impl SettingsAccessor for FlashSettingsAccessor {
     }
 }
 
-
-pub async fn initialise_settings_store(flash: BlockingAsyncFlash, range: Range<u32>, page_size: usize) {
+pub async fn initialise_settings_store(
+    flash: BlockingAsyncFlash,
+    range: Range<u32>,
+    page_size: usize,
+) {
     let mut settings = SETTINGS_STORE.lock().await;
-    settings
-        .initialise(flash, range, page_size)
-        .await;
+    settings.initialise(flash, range, page_size).await;
 }
 
 pub async fn process_save_queue() {
@@ -70,5 +91,5 @@ pub async fn process_save_queue() {
     let _ = settings
         .process_queued_saves()
         .await
-        .map_err(|e| error!("Unable to process queued settings saves - {:?}", e));
+        .map_err(|e| error!("Unable to process queued settings_menu saves - {:?}", e));
 }

@@ -52,8 +52,10 @@ where
         (s.tare_offset, s.calibration_gradient, s.bits_to_discard) =
             s.get_stored_calibration().await;
 
-        debug!("Loaded calibration: tare = {}, gradient = {}, bits to discard = {}",
-            s.tare_offset, s.calibration_gradient, s.bits_to_discard);
+        debug!(
+            "Loaded calibration: tare = {}, gradient = {}, bits to discard = {}",
+            s.tare_offset, s.calibration_gradient, s.bits_to_discard
+        );
 
         if s.bits_to_discard > 0 {
             s.is_stabilized = true;
@@ -105,12 +107,12 @@ where
             match result {
                 SettingValue::SmallUInt(v) => v as usize,
                 _ => {
-                    warn!("Unable to get bits to discard settings");
+                    warn!("Unable to get bits to discard settings_menu");
                     0usize
                 }
             }
         } else {
-            warn!("Unable to get bits to discard settings");
+            warn!("Unable to get bits to discard settings_menu");
             0usize
         };
 

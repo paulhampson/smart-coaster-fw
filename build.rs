@@ -6,7 +6,7 @@
 //! build script becomes required. Additionally, by requesting that
 //! Cargo re-run the build script whenever `memory.x` is changed,
 //! updating `memory.x` ensures a rebuild of the application with the
-//! new memory settings.
+//! new memory settings_menu.
 
 use std::env;
 use std::fs::File;
@@ -32,5 +32,5 @@ fn main() {
     println!("cargo:rustc-link-arg-bins=--nmagic");
     println!("cargo:rustc-link-arg-bins=-Tlink.x");
     println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
-println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
+    println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
 }

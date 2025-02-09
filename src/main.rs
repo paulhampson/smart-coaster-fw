@@ -11,8 +11,8 @@ compile_error!("no board configured - use feature \"flat_board\" or \"pcb_rev1\"
 mod application;
 mod hmi;
 mod led;
-mod weight;
 mod rtc;
+mod weight;
 
 use core::ops::Range;
 use embassy_executor::{Executor, Spawner};
@@ -28,7 +28,7 @@ use crate::hmi::messaging::{
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::{info};
+use defmt::info;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -52,12 +52,12 @@ use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightC
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
-use core::ptr::addr_of_mut;
-use ds323x::{Ds323x};
-use embedded_alloc::LlffHeap as Heap;
 use crate::application::storage;
 use crate::application::storage::settings::accessor::FlashSettingsAccessor;
 use crate::rtc::{RtcControl, SystemRtc};
+use core::ptr::addr_of_mut;
+use ds323x::Ds323x;
+use embedded_alloc::LlffHeap as Heap;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -264,7 +264,8 @@ async fn rtc_task(rtc_resources: RtcResources) {
         rtc_resources.scl_pin,
         rtc_resources.sda_pin,
         I2c1Irqs,
-        Config::default());
+        Config::default(),
+    );
 
     let rtc: SystemRtc = Ds323x::new_ds3231(i2c);
     let mut rtc_control = RtcControl::new(rtc);
@@ -279,7 +280,12 @@ async fn storage_task(storage_resources: StorageResources) {
     );
     let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
 
-    storage::settings::accessor::initialise_settings_store(flash, NVM_FLASH_OFFSET_RANGE, NVM_PAGE_SIZE).await;
+    storage::settings::accessor::initialise_settings_store(
+        flash,
+        NVM_FLASH_OFFSET_RANGE,
+        NVM_PAGE_SIZE,
+    )
+    .await;
 
     loop {
         Timer::after(Duration::from_millis(500)).await;

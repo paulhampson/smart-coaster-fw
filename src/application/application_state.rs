@@ -1,3 +1,4 @@
+use crate::application::storage::settings::SettingsAccessorId;
 use defmt::Format;
 
 #[derive(Debug, Format, Clone, Copy, PartialEq)]
@@ -10,6 +11,7 @@ pub enum ApplicationState {
     HeapStatus,
     Calibration,
     SetDateTime,
+    NumberEntry(SettingsAccessorId),
 }
 
 #[derive(Clone)]

@@ -1,12 +1,12 @@
 use crate::application::application_state::ApplicationState;
 use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
-use crate::hmi::screens::settings::display_brightness_options::DisplayBrightnessOptions;
-use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
+use crate::hmi::screens::settings_menu::display_brightness_options::DisplayBrightnessOptions;
+use crate::hmi::screens::{settings_menu, UiDrawer, UiInput, UiInputHandler};
 use core::marker::PhantomData;
 use defmt::{debug, error};
 use defmt::{warn, Debug2Format};
-use ds323x::{NaiveDateTime};
+use ds323x::NaiveDateTime;
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::BinaryColor;
@@ -18,6 +18,7 @@ use simple_embedded_graphics_menu::{Menu, MenuStyle};
 
 mod display_brightness_options;
 mod led_brightness_options;
+pub(crate) mod monitoring_options;
 
 #[derive(Copy, Clone, Debug)]
 pub enum SettingMenuIdentifier {
@@ -29,6 +30,8 @@ pub enum SettingMenuIdentifier {
     SetLedBrightness,
     DisplayBrightness,
     SetDateTime,
+    SetMonitoringTargetType,
+    SetMonitoringTargetValue,
 }
 
 pub struct SettingMenu<SA>
@@ -52,24 +55,42 @@ where
         }
     }
 
-    async fn build_menu(settings: &SA) -> Menu<'static, BinaryColor, SettingMenuIdentifier> {
-        let heading_style = MonoTextStyle::new(&FONT_7X13_BOLD, BinaryColor::On);
-        let item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-        let highlighted_item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
-
-        let menu_style = MenuStyle::new(
-            BinaryColor::Off,
-            heading_style,
-            item_style,
-            BinaryColor::On,
-            BinaryColor::On,
-            highlighted_item_style,
-            BinaryColor::Off,
+    async fn build_consumption_monitoring_menu(
+        menu: &mut Menu<'_, BinaryColor, SettingMenuIdentifier>,
+        settings: &SA,
+    ) {
+        let monitoring_target_type: u8 = {
+            if let Some(result) = settings
+                .get_setting(SettingsAccessorId::MonitoringTargetType)
+                .await
+            {
+                match result {
+                    SettingValue::SmallUInt(v) => v,
+                    _ => {
+                        warn!("Unable to retrieve monitoring target type");
+                        0
+                    }
+                }
+            } else {
+                0
+            }
+        };
+        menu.add_selector(
+            "Target type",
+            SettingMenuIdentifier::SetMonitoringTargetType,
+            monitoring_options::MonitoringTargetPeriodOptions::option_strings(),
+            Some(monitoring_target_type as usize),
         );
 
-        let mut device_and_system =
-            Menu::new("Device & System", SettingMenuIdentifier::None, menu_style);
-        device_and_system.add_section("LEDs", SettingMenuIdentifier::None);
+        menu.add_action("Target", SettingMenuIdentifier::SetMonitoringTargetValue);
+        menu.add_back("Back", SettingMenuIdentifier::None);
+    }
+
+    async fn build_device_and_system_menu(
+        menu: &mut Menu<'_, BinaryColor, SettingMenuIdentifier>,
+        settings: &SA,
+    ) {
+        menu.add_section("LEDs", SettingMenuIdentifier::None);
 
         {
             let led_brightness: u8 = if let Some(result) = settings
@@ -89,7 +110,7 @@ where
 
             let led_brightness_option =
                 LedBrightnessOptions::from(led_brightness).to_option_index();
-            device_and_system.add_selector(
+            menu.add_selector(
                 "LED Brightness",
                 SettingMenuIdentifier::SetLedBrightness,
                 LedBrightnessOptions::option_strings(),
@@ -97,7 +118,7 @@ where
             );
         }
 
-        device_and_system.add_section("Display", SettingMenuIdentifier::None);
+        menu.add_section("Display", SettingMenuIdentifier::None);
         {
             let display_brightness: u8 = if let Some(result) = settings
                 .get_setting(SettingsAccessorId::SystemDisplayBrightness)
@@ -117,25 +138,85 @@ where
             let display_brightness_option =
                 DisplayBrightnessOptions::from(display_brightness).to_option_index();
 
-            device_and_system.add_selector(
+            menu.add_selector(
                 "Brightness",
                 SettingMenuIdentifier::DisplayBrightness,
                 DisplayBrightnessOptions::option_strings(),
                 Some(display_brightness_option),
             );
         }
-        device_and_system.add_section("System", SettingMenuIdentifier::None);
-        device_and_system.add_action("Set Date/Time", SettingMenuIdentifier::SetDateTime);
-        device_and_system.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
-        device_and_system.add_action("Test Mode", SettingMenuIdentifier::EnterTestScreen);
-        device_and_system.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
-        device_and_system.add_back("Back", SettingMenuIdentifier::None);
+        menu.add_section("System", SettingMenuIdentifier::None);
+        menu.add_action("Set Date/Time", SettingMenuIdentifier::SetDateTime);
+        menu.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
+        menu.add_action("Test Mode", SettingMenuIdentifier::EnterTestScreen);
+        menu.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
+        menu.add_back("Back", SettingMenuIdentifier::None);
+    }
+
+    async fn build_menu(settings: &SA) -> Menu<'static, BinaryColor, SettingMenuIdentifier> {
+        let heading_style = MonoTextStyle::new(&FONT_7X13_BOLD, BinaryColor::On);
+        let item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+        let highlighted_item_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
+
+        let menu_style = MenuStyle::new(
+            BinaryColor::Off,
+            heading_style,
+            item_style,
+            BinaryColor::On,
+            BinaryColor::On,
+            highlighted_item_style,
+            BinaryColor::Off,
+        );
+
+        let mut consumption_monitoring =
+            Menu::new("Drink Monitoring", SettingMenuIdentifier::None, menu_style);
+        Self::build_consumption_monitoring_menu(&mut consumption_monitoring, settings).await;
+
+        let mut device_and_system =
+            Menu::new("Device & System", SettingMenuIdentifier::None, menu_style);
+        Self::build_device_and_system_menu(&mut device_and_system, settings).await;
 
         let mut menu = Menu::new("Settings", SettingMenuIdentifier::Root, menu_style);
+        menu.add_submenu(consumption_monitoring);
         menu.add_submenu(device_and_system);
         menu.add_exit("Exit", SettingMenuIdentifier::None);
 
         menu
+    }
+
+    fn process_multi_options(
+        ui_action_publisher: &UiActionChannelPublisher,
+        id: SettingMenuIdentifier,
+        option_id: usize,
+    ) {
+        debug!(
+            "MultiOption selected: {:?} => {:?}",
+            Debug2Format(&id),
+            Debug2Format(&option_id)
+        );
+        match id {
+            SettingMenuIdentifier::SetLedBrightness => {
+                ui_action_publisher.publish_immediate(
+                    UiActionsMessage::LedBrightnessChangeRequest(
+                        LedBrightnessOptions::option_index_to_brightness(option_id),
+                    ),
+                );
+            }
+            SettingMenuIdentifier::DisplayBrightness => {
+                ui_action_publisher.publish_immediate(
+                    UiActionsMessage::DisplayBrightnessChangeRequest(
+                        DisplayBrightnessOptions::option_index_to_brightness(option_id),
+                    ),
+                );
+            }
+            SettingMenuIdentifier::SetMonitoringTargetType => ui_action_publisher
+                .publish_immediate(UiActionsMessage::MonitoringModeChangeRequest(
+                    settings_menu::monitoring_options::MonitoringTargetPeriodOptions::monitoring_mode_to_storage_option_mapping(
+                        option_id
+                    ),
+                )),
+            _ => {}
+        }
     }
 
     fn process_selection(
@@ -161,31 +242,14 @@ where
                 SettingMenuIdentifier::SetDateTime => ui_action_publisher.publish_immediate(
                     UiActionsMessage::StateChangeRequest(ApplicationState::SetDateTime),
                 ),
+                SettingMenuIdentifier::SetMonitoringTargetValue => ui_action_publisher
+                    .publish_immediate(UiActionsMessage::StateChangeRequest(
+                        ApplicationState::NumberEntry(SettingsAccessorId::MonitoringTargetValue),
+                    )),
                 _ => {}
             },
             SelectedData::MultiOption { id, option_id } => {
-                debug!(
-                    "MultiOption selected: {:?} => {:?}",
-                    Debug2Format(&id),
-                    Debug2Format(&option_id)
-                );
-                match id {
-                    SettingMenuIdentifier::SetLedBrightness => {
-                        ui_action_publisher.publish_immediate(
-                            UiActionsMessage::LedBrightnessChangeRequest(
-                                LedBrightnessOptions::option_index_to_brightness(option_id),
-                            ),
-                        );
-                    }
-                    SettingMenuIdentifier::DisplayBrightness => {
-                        ui_action_publisher.publish_immediate(
-                            UiActionsMessage::DisplayBrightnessChangeRequest(
-                                DisplayBrightnessOptions::option_index_to_brightness(option_id),
-                            ),
-                        );
-                    }
-                    _ => {}
-                }
+                Self::process_multi_options(ui_action_publisher, id, option_id);
             }
             SelectedData::Checkbox { id: _, state: _ } => {}
             SelectedData::Exit { id: _ } => {
@@ -202,7 +266,11 @@ impl<SA> UiInputHandler for SettingMenu<SA>
 where
     SA: SettingsAccessor,
 {
-    fn ui_input_handler(&mut self, input: UiInput, ui_action_publisher: &UiActionChannelPublisher) {
+    async fn ui_input_handler(
+        &mut self,
+        input: UiInput,
+        ui_action_publisher: &UiActionChannelPublisher<'_>,
+    ) {
         match input {
             UiInput::EncoderClockwise => {
                 self.menu.navigate_down();
@@ -217,7 +285,9 @@ where
             }
             UiInput::ButtonRelease => {}
             UiInput::ApplicationData(_) => {}
-            UiInput::DateTimeUpdate(dt) => {self.datetime = dt;}
+            UiInput::DateTimeUpdate(dt) => {
+                self.datetime = dt;
+            }
         }
     }
 }

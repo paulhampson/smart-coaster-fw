@@ -1,6 +1,6 @@
-use ds323x::NaiveDateTime;
 use crate::application::messaging::ApplicationData;
 use crate::hmi::messaging::UiActionChannelPublisher;
+use ds323x::NaiveDateTime;
 use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::{MonoTextStyle, MonoTextStyleBuilder};
@@ -11,12 +11,9 @@ use embedded_graphics::Drawable;
 use heapless::String;
 use sh1106::mode::GraphicsMode;
 
-pub mod calibration;
-pub mod heap_status;
 pub mod monitoring;
-pub mod settings;
-pub mod test_mode;
-pub mod set_date_time;
+pub mod settings_menu;
+pub mod settings_screens;
 
 pub enum UiInput {
     EncoderClockwise,
@@ -24,11 +21,15 @@ pub enum UiInput {
     ButtonPress,
     ButtonRelease,
     ApplicationData(ApplicationData),
-    DateTimeUpdate(NaiveDateTime)
+    DateTimeUpdate(NaiveDateTime),
 }
 
 pub trait UiInputHandler {
-    fn ui_input_handler(&mut self, input: UiInput, ui_action_publisher: &UiActionChannelPublisher);
+    async fn ui_input_handler(
+        &mut self,
+        input: UiInput,
+        ui_action_publisher: &UiActionChannelPublisher,
+    );
 }
 
 pub trait UiDrawer {

@@ -4,6 +4,7 @@ use crate::application::application_state::{
 use crate::application::messaging::{
     ApplicationChannelPublisher, ApplicationData, ApplicationMessage,
 };
+use crate::application::storage::settings::SettingsAccessorId;
 use crate::hmi::messaging::HmiMessage::PushButtonPressed;
 use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiActionsMessage};
 use crate::weight::WeighingSystem;
@@ -164,6 +165,15 @@ where
                         .settings_screen(&mut ui_action_receiver, &mut hmi_subscriber)
                         .await;
                 }
+                ApplicationState::NumberEntry(setting_id) => {
+                    next_state = self
+                        .number_entry_screen(
+                            &mut ui_action_receiver,
+                            &mut hmi_subscriber,
+                            setting_id,
+                        )
+                        .await;
+                }
                 ApplicationState::HeapStatus => {
                     next_state = self
                         .heap_status_screen(&mut ui_action_receiver, &mut hmi_subscriber)
@@ -308,6 +318,9 @@ where
                             ))
                             .await
                     }
+                    UiActionsMessage::MonitoringModeChangeRequest(period_option) => {
+                        // TODO use the period option - pass it to the monitoring functionality
+                    }
                 },
                 Either::Second(hmi_message) => {
                     self.app_publisher
@@ -324,6 +337,36 @@ where
         hmi_subscriber: &mut HmiChannelSubscriber<'_>,
     ) -> ApplicationState {
         self.update_application_state(ApplicationState::SetDateTime)
+            .await;
+        loop {
+            let ui_or_hmi = select(
+                ui_action_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
+            )
+            .await;
+
+            match ui_or_hmi {
+                Either::First(ui_action_message) => {
+                    if let UiActionsMessage::StateChangeRequest(new_state) = ui_action_message {
+                        return new_state;
+                    }
+                }
+                Either::Second(hmi_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
+                }
+            }
+        }
+    }
+
+    async fn number_entry_screen(
+        &mut self,
+        ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+        setting_id: SettingsAccessorId,
+    ) -> ApplicationState {
+        self.update_application_state(ApplicationState::NumberEntry(setting_id))
             .await;
         loop {
             let ui_or_hmi = select(

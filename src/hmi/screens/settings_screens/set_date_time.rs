@@ -95,10 +95,10 @@ impl SetDateTimeScreen {
 }
 
 impl UiInputHandler for SetDateTimeScreen {
-    fn ui_input_handler(
+    async fn ui_input_handler(
         &mut self,
         input: UiInput,
-        ui_channel_publisher: &UiActionChannelPublisher,
+        ui_channel_publisher: &UiActionChannelPublisher<'_>,
     ) {
         match input {
             UiInput::EncoderClockwise => {

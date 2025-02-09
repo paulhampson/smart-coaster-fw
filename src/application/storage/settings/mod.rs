@@ -3,6 +3,7 @@ use defmt::Format;
 use sequential_storage::map::{SerializationError, Value};
 
 pub mod accessor;
+pub mod option_types;
 mod settings_store;
 
 #[derive(Debug, Format)]
@@ -14,13 +15,32 @@ pub enum SettingError {
     SaveQueueFull,
 }
 
-#[derive(Debug, Format, Copy, Clone)]
+pub struct NumericSettingProperties<T> {
+    pub minimum_value: T,
+    pub maximum_value: T,
+}
+
+#[derive(Debug, Format, Copy, Clone, PartialEq)]
 pub enum SettingsAccessorId {
     SystemLedBrightness,
     SystemDisplayBrightness,
     WeighingSystemTareOffset,
     WeighingSystemCalibrationGradient,
     WeighingSystemBitsToDiscard,
+    MonitoringTargetType,
+    MonitoringTargetValue,
+}
+
+impl SettingsAccessorId {
+    pub fn get_numeric_properties(&self) -> Option<NumericSettingProperties<u32>> {
+        match self {
+            SettingsAccessorId::MonitoringTargetValue => Some(NumericSettingProperties::<u32> {
+                minimum_value: 0,
+                maximum_value: 10000,
+            }),
+            _ => None,
+        }
+    }
 }
 
 pub trait SettingsAccessor {
@@ -40,6 +60,7 @@ pub enum SettingValue {
     Default = 0,
     Float(f32),
     SmallUInt(u8),
+    UInt(u32),
 }
 
 impl SettingValue {
@@ -68,6 +89,7 @@ impl Value<'_> for SettingValue {
                 value_buffer[0] = *v;
                 1
             }
+            SettingValue::UInt(v) => v.serialize_into(&mut value_buffer)?,
         };
         let total_serialization_len = data_bytes_count + 1;
 
@@ -103,6 +125,10 @@ impl Value<'_> for SettingValue {
             2 => {
                 let value = value_buffer[0];
                 Ok(SettingValue::SmallUInt(value))
+            }
+            3 => {
+                let value = u32::deserialize_from(value_buffer)?;
+                Ok(SettingValue::UInt(value))
             }
             _ => Err(SerializationError::InvalidFormat),
         }

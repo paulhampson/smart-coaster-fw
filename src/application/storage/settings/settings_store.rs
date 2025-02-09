@@ -15,22 +15,16 @@ use sequential_storage::cache::NoCache;
 use sequential_storage::map;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
-pub type BlockingAsyncFlash = BlockingAsync< Flash<'static, FLASH, flash::Async, { crate::FLASH_SIZE }>>;
+pub type BlockingAsyncFlash =
+    BlockingAsync<Flash<'static, FLASH, flash::Async, { crate::FLASH_SIZE }>>;
 
-pub static SETTINGS_STORE: SettingsManagerMutex<
-    Error,
-    BlockingAsyncFlash,
-> = Mutex::new(SettingsManager::<
-    Error,
-    BlockingAsyncFlash,
->::new());
-
-
+pub static SETTINGS_STORE: SettingsManagerMutex<Error, BlockingAsyncFlash> =
+    Mutex::new(SettingsManager::<Error, BlockingAsyncFlash>::new());
 
 pub type SettingsManagerMutex<E, F> = Mutex<CriticalSectionRawMutex, SettingsManager<E, F>>;
 
 pub async fn wait_for_settings_store_initialisation() {
-    trace!("Checking settings initialisation");
+    trace!("Checking settings_menu initialisation");
     loop {
         {
             let settings = SETTINGS_STORE.lock().await;
@@ -52,6 +46,8 @@ pub enum StoredSettings {
     SystemLedBrightness(SettingValue) = 2,
     SystemDisplayBrightness(SettingValue) = 3,
     WeighingSystemBitsToDiscard(SettingValue) = 4,
+    MonitoringTargetType(SettingValue) = 5,
+    MonitoringTargetValue(SettingValue) = 6,
 }
 
 impl StoredSettings {
@@ -69,6 +65,8 @@ impl StoredSettings {
             StoredSettings::SystemLedBrightness(v) => v.clone(),
             StoredSettings::SystemDisplayBrightness(v) => v.clone(),
             StoredSettings::WeighingSystemBitsToDiscard(v) => v.clone(),
+            StoredSettings::MonitoringTargetType(v) => v.clone(),
+            StoredSettings::MonitoringTargetValue(v) => v.clone(),
         }
     }
 }
@@ -130,7 +128,7 @@ where
         }
 
         if self.settings_cache.iter().all(|(_, v)| v.is_none()) {
-            warn!("No settings loaded on initialisation, erasing storage");
+            warn!("No settings_menu loaded on initialisation, erasing storage");
             let _ = self
                 .clear_data()
                 .await
@@ -154,7 +152,7 @@ where
         sequential_storage::erase_all(flash, storage_range)
             .await
             .map_err(|e| {
-                warn!("Unable to erase settings storage. Error: {:?}", e);
+                warn!("Unable to erase settings_menu storage. Error: {:?}", e);
                 SettingError::EraseError
             })?;
 
@@ -169,7 +167,7 @@ where
         let mut data_buffer = [0; DATA_BUFFER_SIZE];
 
         if !self.is_initialized() {
-            warn!("Trying to save settings before initialisation");
+            warn!("Trying to save settings_menu before initialisation");
             return Err(SettingError::NotInitialized);
         }
 
@@ -212,7 +210,7 @@ where
         let mut data_buffer = [0; DATA_BUFFER_SIZE];
 
         if !(self.flash.is_some() && self.storage_range.is_some()) {
-            warn!("Trying to load settings before initialisation");
+            warn!("Trying to load settings_menu before initialisation");
             return Err(SettingError::NotInitialized);
         }
 

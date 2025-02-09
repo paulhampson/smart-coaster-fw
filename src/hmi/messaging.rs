@@ -1,4 +1,5 @@
 use crate::application::application_state::ApplicationState;
+use crate::application::storage::settings::option_types::MonitoringTargetPeriodOptions;
 use crate::hmi::rotary_encoder::Direction;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
@@ -14,6 +15,7 @@ pub enum UiActionsMessage {
     StateChangeRequest(ApplicationState),
     LedBrightnessChangeRequest(u8),
     DisplayBrightnessChangeRequest(u8),
+    MonitoringModeChangeRequest(MonitoringTargetPeriodOptions),
 }
 
 const CHANNEL_DEPTH: usize = 10;

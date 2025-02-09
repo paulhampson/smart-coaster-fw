@@ -20,10 +20,10 @@ impl CalibrationScreens {
 }
 
 impl UiInputHandler for CalibrationScreens {
-    fn ui_input_handler(
+    async fn ui_input_handler(
         &mut self,
         input: UiInput,
-        _ui_action_publisher: &UiActionChannelPublisher,
+        _ui_action_publisher: &UiActionChannelPublisher<'_>,
     ) {
         match input {
             UiInput::ApplicationData(app_data) => match app_data {

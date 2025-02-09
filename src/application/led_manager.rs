@@ -65,8 +65,9 @@ where
                                 })
                             }
                             ApplicationState::HeapStatus => {}
-                            ApplicationState::Calibration => {},
-                            ApplicationState::SetDateTime => {},
+                            ApplicationState::Calibration => {}
+                            ApplicationState::SetDateTime => {}
+                            ApplicationState::NumberEntry(_) => {}
                         },
 
                         ApplicationMessage::ApplicationDataUpdate(app_data) => match app_data {

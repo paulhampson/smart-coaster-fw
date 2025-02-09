@@ -52,7 +52,11 @@ impl MonitoringScreen {
 }
 
 impl UiInputHandler for MonitoringScreen {
-    fn ui_input_handler(&mut self, input: UiInput, ui_action_publisher: &UiActionChannelPublisher) {
+    async fn ui_input_handler(
+        &mut self,
+        input: UiInput,
+        ui_action_publisher: &UiActionChannelPublisher<'_>,
+    ) {
         match input {
             UiInput::EncoderClockwise => {}
             UiInput::EncoderCounterClockwise => {}

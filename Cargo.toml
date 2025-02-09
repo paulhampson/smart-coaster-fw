@@ -4,6 +4,7 @@ name = "smartcoaster"
 version = "0.1.0"
 resolver = "2"
 
+
 [dependencies]
 defmt = "0.3"
 defmt-rtt = "0.4"
