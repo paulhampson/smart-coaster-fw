@@ -144,9 +144,7 @@ where
 
         self.clear_out_hmi_rx(&mut hmi_subscriber).await;
 
-        let mut next_state = self
-            .settings_screen(&mut ui_action_receiver, &mut hmi_subscriber)
-            .await;
+        let mut next_state = ApplicationState::Monitoring;
         loop {
             match next_state {
                 ApplicationState::Startup | ApplicationState::ErrorScreenWithMessage(_) => {}

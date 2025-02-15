@@ -178,19 +178,29 @@ where
     async fn update_now(&mut self) {
         self.display.clear();
         match self.display_state {
-            ApplicationState::Startup => draw_message_screen(&mut self.display, "Starting up..."),
-
-            ApplicationState::ErrorScreenWithMessage(s) => {
-                draw_message_screen(&mut self.display, s)
+            ApplicationState::Startup => {
+                draw_message_screen(&mut self.display, "Starting up...").unwrap()
             }
 
-            ApplicationState::TestScreen => self.test_mode_screen.draw(&mut self.display),
-            ApplicationState::Settings => self.settings_screen.draw(&mut self.display),
-            ApplicationState::Monitoring => self.monitoring_screen.draw(&mut self.display),
-            ApplicationState::HeapStatus => self.heap_status_screen.draw(&mut self.display),
-            ApplicationState::Calibration => self.calibration_screens.draw(&mut self.display),
-            ApplicationState::SetDateTime => self.set_date_time_screen.draw(&mut self.display),
-            ApplicationState::NumberEntry(_) => self.number_entry_screen.draw(&mut self.display),
+            ApplicationState::ErrorScreenWithMessage(s) => {
+                draw_message_screen(&mut self.display, s).unwrap()
+            }
+
+            ApplicationState::TestScreen => self.test_mode_screen.draw(&mut self.display).unwrap(),
+            ApplicationState::Settings => self.settings_screen.draw(&mut self.display).unwrap(),
+            ApplicationState::Monitoring => self.monitoring_screen.draw(&mut self.display).unwrap(),
+            ApplicationState::HeapStatus => {
+                self.heap_status_screen.draw(&mut self.display).unwrap()
+            }
+            ApplicationState::Calibration => {
+                self.calibration_screens.draw(&mut self.display).unwrap()
+            }
+            ApplicationState::SetDateTime => {
+                self.set_date_time_screen.draw(&mut self.display).unwrap()
+            }
+            ApplicationState::NumberEntry(_) => {
+                self.number_entry_screen.draw(&mut self.display).unwrap()
+            }
         }
 
         let _ = self

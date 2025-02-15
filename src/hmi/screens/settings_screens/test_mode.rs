@@ -3,6 +3,7 @@ use crate::hmi::messaging::UiActionChannelPublisher;
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use core::fmt::Write;
 use ds323x::NaiveDateTime;
+use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
@@ -12,8 +13,6 @@ use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
 use heapless::String;
 use micromath::F32Ext;
-use sh1106::interface::DisplayInterface;
-use sh1106::mode::GraphicsMode;
 
 pub struct TestModeScreen {
     cw_count: u32,
@@ -74,9 +73,9 @@ impl UiInputHandler for TestModeScreen {
 }
 
 impl UiDrawer for TestModeScreen {
-    fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
+    fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        DI: DisplayInterface,
+        D: DrawTarget<Color = BinaryColor>,
     {
         let text_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X10)
@@ -92,8 +91,7 @@ impl UiDrawer for TestModeScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         count_string.clear();
         write!(&mut count_string, "CCW Count = {}", self.ccw_count).unwrap();
@@ -103,8 +101,7 @@ impl UiDrawer for TestModeScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         count_string.clear();
         write!(&mut count_string, "Press Count = {}", self.btn_press_count).unwrap();
@@ -114,8 +111,7 @@ impl UiDrawer for TestModeScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         count_string.clear();
         write!(&mut count_string, "Weight = {:.0}g", self.weight.round()).unwrap();
@@ -125,8 +121,7 @@ impl UiDrawer for TestModeScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         count_string.clear();
         write!(&mut count_string, "{}", self.datetime).unwrap();
@@ -136,7 +131,7 @@ impl UiDrawer for TestModeScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
+        Ok(())
     }
 }

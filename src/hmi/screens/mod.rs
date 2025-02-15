@@ -1,6 +1,7 @@
 use crate::application::messaging::ApplicationData;
 use crate::hmi::messaging::UiActionChannelPublisher;
 use ds323x::NaiveDateTime;
+use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::{MonoTextStyle, MonoTextStyleBuilder};
@@ -9,7 +10,6 @@ use embedded_graphics::text::renderer::TextRenderer;
 use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 use embedded_graphics::Drawable;
 use heapless::String;
-use sh1106::mode::GraphicsMode;
 
 pub mod monitoring;
 pub mod settings_menu;
@@ -33,9 +33,9 @@ pub trait UiInputHandler {
 }
 
 pub trait UiDrawer {
-    fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
+    fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        DI: sh1106::interface::DisplayInterface;
+        D: DrawTarget<Color = BinaryColor>;
 }
 
 const DEFAULT_FONT_WIDTH: usize = 6;
@@ -44,11 +44,11 @@ const DEFAULT_TEXT_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyleBuilder::new
     .text_color(BinaryColor::On)
     .build();
 
-pub fn draw_message_screen<DI>(display: &mut GraphicsMode<DI>, message: &str)
-where
-    DI: sh1106::interface::DisplayInterface,
-{
-    let max_line_length = display.get_dimensions().0 as usize / DEFAULT_FONT_WIDTH;
+pub fn draw_message_screen<D: DrawTarget<Color = BinaryColor>>(
+    display: &mut D,
+    message: &str,
+) -> Result<(), D::Error> {
+    let max_line_length = display.bounding_box().size.width as usize / DEFAULT_FONT_WIDTH;
     let formatted_message = add_newlines_to_string::<100>(message, max_line_length);
     let centred_text_style = TextStyleBuilder::new()
         .alignment(Alignment::Center)
@@ -57,16 +57,16 @@ where
 
     let line_offset_pixels =
         (formatted_message.lines().count() - 1) as i32 * DEFAULT_TEXT_STYLE.line_height() as i32;
-    let x_pos = display.get_dimensions().0 as i32 / 2;
-    let y_pos = display.get_dimensions().1 as i32 / 2 - line_offset_pixels;
+    let x_pos = display.bounding_box().size.width as i32 / 2;
+    let y_pos = display.bounding_box().size.height as i32 / 2 - line_offset_pixels;
     Text::with_text_style(
         &formatted_message,
         Point::new(x_pos, y_pos),
         DEFAULT_TEXT_STYLE,
         centred_text_style,
     )
-    .draw(display)
-    .unwrap();
+    .draw(display)?;
+    Ok(())
 }
 
 pub fn add_newlines_to_string<const S: usize>(input: &str, max_line_length: usize) -> String<S> {

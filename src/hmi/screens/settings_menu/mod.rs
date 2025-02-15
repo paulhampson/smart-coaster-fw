@@ -4,15 +4,15 @@ use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::settings_menu::display_brightness_options::DisplayBrightnessOptions;
 use crate::hmi::screens::{settings_menu, UiDrawer, UiInput, UiInputHandler};
 use core::marker::PhantomData;
-use defmt::{debug, error};
+use defmt::debug;
 use defmt::{warn, Debug2Format};
 use ds323x::NaiveDateTime;
+use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::Drawable;
 use led_brightness_options::LedBrightnessOptions;
-use sh1106::prelude::GraphicsMode;
 use simple_embedded_graphics_menu::items::SelectedData;
 use simple_embedded_graphics_menu::{Menu, MenuStyle};
 
@@ -296,12 +296,10 @@ impl<SA> UiDrawer for SettingMenu<SA>
 where
     SA: SettingsAccessor,
 {
-    fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
+    fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        DI: sh1106::interface::DisplayInterface,
+        D: DrawTarget<Color = BinaryColor>,
     {
-        self.menu
-            .draw(display)
-            .unwrap_or_else(|_| error!("Setting menu draw failed"));
+        self.menu.draw(display)
     }
 }

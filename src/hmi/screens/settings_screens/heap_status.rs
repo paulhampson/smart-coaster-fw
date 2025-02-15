@@ -5,6 +5,7 @@ use crate::hmi::screens::UiInput;
 use crate::hmi::screens::UiInputHandler;
 use crate::hmi::screens::{add_newlines_to_string, UiDrawer};
 use core::fmt::Write;
+use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
@@ -12,8 +13,6 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
 use heapless::String;
-use sh1106::interface::DisplayInterface;
-use sh1106::mode::GraphicsMode;
 
 pub struct HeapStatusScreen {
     heap_free: usize,
@@ -58,9 +57,9 @@ impl UiInputHandler for HeapStatusScreen {
 }
 
 impl UiDrawer for HeapStatusScreen {
-    fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
+    fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        DI: DisplayInterface,
+        D: DrawTarget<Color = BinaryColor>,
     {
         let text_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X10)
@@ -77,8 +76,7 @@ impl UiDrawer for HeapStatusScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         count_string.clear();
         write!(&mut count_string, "Heap Free: {} bytes", self.heap_free).unwrap();
@@ -88,12 +86,11 @@ impl UiDrawer for HeapStatusScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         count_string.clear();
 
-        let max_line_length = display.get_dimensions().0 as usize / font_width as usize;
+        let max_line_length = display.bounding_box().size.width as usize / font_width as usize;
         let string_to_print = add_newlines_to_string::<40>(
             "Press button to return to settings_menu",
             max_line_length,
@@ -105,7 +102,7 @@ impl UiDrawer for HeapStatusScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
+        Ok(())
     }
 }

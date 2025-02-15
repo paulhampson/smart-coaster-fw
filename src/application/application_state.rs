@@ -14,7 +14,7 @@ pub enum ApplicationState {
     NumberEntry(SettingsAccessorId),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum MonitoringStateSubstates {
     WaitingForActivity,
     VesselRemoved,

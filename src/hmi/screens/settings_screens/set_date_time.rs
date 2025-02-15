@@ -10,11 +10,10 @@ use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
 use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::DrawTarget;
 use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
 use heapless::String;
-use sh1106::interface::DisplayInterface;
-use sh1106::mode::GraphicsMode;
 use strum::{EnumIter, IntoEnumIterator};
 
 #[derive(EnumIter, Debug, PartialEq)]
@@ -130,9 +129,9 @@ impl UiInputHandler for SetDateTimeScreen {
 }
 
 impl UiDrawer for SetDateTimeScreen {
-    fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
+    fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        DI: DisplayInterface,
+        D: DrawTarget<Color = BinaryColor>,
     {
         let active_element_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X10)
@@ -160,8 +159,7 @@ impl UiDrawer for SetDateTimeScreen {
             style_to_use,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         let style_to_use = if self.active_element == DateTimeSettingElement::Minute {
             active_element_style
@@ -176,8 +174,7 @@ impl UiDrawer for SetDateTimeScreen {
             style_to_use,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         let style_to_use = if self.active_element == DateTimeSettingElement::Seconds {
             active_element_style
@@ -192,8 +189,7 @@ impl UiDrawer for SetDateTimeScreen {
             style_to_use,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         next_point.x = 0;
         let style_to_use = if self.active_element == DateTimeSettingElement::Year {
@@ -209,8 +205,7 @@ impl UiDrawer for SetDateTimeScreen {
             style_to_use,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         let style_to_use = if self.active_element == DateTimeSettingElement::Month {
             active_element_style
@@ -232,8 +227,7 @@ impl UiDrawer for SetDateTimeScreen {
             style_to_use,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         let style_to_use = if self.active_element == DateTimeSettingElement::Day {
             active_element_style
@@ -248,8 +242,7 @@ impl UiDrawer for SetDateTimeScreen {
             style_to_use,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         next_point.x = 0;
         let style_to_use = if self.active_element == DateTimeSettingElement::Save {
@@ -265,7 +258,7 @@ impl UiDrawer for SetDateTimeScreen {
             style_to_use,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
+        Ok(())
     }
 }

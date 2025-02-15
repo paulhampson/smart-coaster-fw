@@ -11,14 +11,11 @@ use defmt::Debug2Format;
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_6X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{OriginDimensions, Point};
+use embedded_graphics::prelude::{DrawTarget, Point};
 use embedded_graphics::text::renderer::TextRenderer;
 use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 use embedded_graphics::Drawable;
-use embedded_layout::View;
 use heapless::String;
-use sh1106::interface::DisplayInterface;
-use sh1106::mode::GraphicsMode;
 
 #[derive(PartialEq, Debug)]
 enum Element {
@@ -164,9 +161,9 @@ impl UiInputHandler for SetNumberScreen {
 }
 
 impl UiDrawer for SetNumberScreen {
-    fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
+    fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        DI: DisplayInterface,
+        D: DrawTarget<Color = BinaryColor>,
     {
         let active_element_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X10)
@@ -195,7 +192,7 @@ impl UiDrawer for SetNumberScreen {
             .build();
 
         let mut string_buffer = String::<32>::new();
-        let mut next_point = Point::new((display.size().width / 2) as i32, 0);
+        let mut next_point = Point::new((display.bounding_box().size.width / 2) as i32, 0);
 
         string_buffer.clear();
         writeln!(&mut string_buffer, "{}", self.label).unwrap();
@@ -205,16 +202,16 @@ impl UiDrawer for SetNumberScreen {
             label_char_style,
             label_text_style,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         let setting_text_width = (self.num_elements + 1 + self.units.len())
             * text_style.font.character_size.width as usize;
-        let x_offset = ((display.size().width - setting_text_width as u32) / 2) as i32;
+        let x_offset = ((display.bounding_box().size.width - setting_text_width as u32) / 2) as i32;
 
         next_point.x =
             x_offset + (self.num_elements * text_style.font.character_size.width as usize) as i32;
-        next_point.y = ((display.size().height / 2) - text_style.line_height() / 2) as i32;
+        next_point.y =
+            ((display.bounding_box().size.height / 2) - text_style.line_height() / 2) as i32;
 
         // draws right to left because it's easier to mask off each digit
         let mut value_to_display = self.value;
@@ -242,8 +239,7 @@ impl UiDrawer for SetNumberScreen {
                 style_to_use,
                 Baseline::Top,
             )
-            .draw(display)
-            .unwrap();
+            .draw(display)?;
 
             value_to_display /= 10;
             next_point.x -= text_style.font.character_size.width as i32;
@@ -260,11 +256,10 @@ impl UiDrawer for SetNumberScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
         next_point.x = 0;
-        next_point.y = display.size().height as i32;
+        next_point.y = display.bounding_box().size.height as i32;
         let char_style_to_use = if self.current_element == Element::Save {
             active_element_style
         } else {
@@ -281,10 +276,9 @@ impl UiDrawer for SetNumberScreen {
                 .baseline(Baseline::Bottom)
                 .build(),
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
 
-        next_point.x = display.size().width as i32;
+        next_point.x = display.bounding_box().size.width as i32;
         let char_style_to_use = if self.current_element == Element::Cancel {
             active_element_style
         } else {
@@ -301,7 +295,7 @@ impl UiDrawer for SetNumberScreen {
                 .baseline(Baseline::Bottom)
                 .build(),
         )
-        .draw(display)
-        .unwrap();
+        .draw(display)?;
+        Ok(())
     }
 }

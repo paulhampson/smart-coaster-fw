@@ -3,9 +3,9 @@ use crate::application::messaging::ApplicationData;
 use crate::hmi::messaging::UiActionChannelPublisher;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
 use core::fmt::Write;
+use embedded_graphics::draw_target::DrawTarget;
+use embedded_graphics::pixelcolor::BinaryColor;
 use heapless::String;
-use sh1106::interface::DisplayInterface;
-use sh1106::mode::GraphicsMode;
 
 pub struct CalibrationScreens {
     state: CalibrationStateSubstates,
@@ -38,17 +38,15 @@ impl UiInputHandler for CalibrationScreens {
 }
 
 impl UiDrawer for CalibrationScreens {
-    fn draw<DI>(&self, display: &mut GraphicsMode<DI>)
+    fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        DI: DisplayInterface,
+        D: DrawTarget<Color = BinaryColor>,
     {
         match self.state {
             CalibrationStateSubstates::Tare => {
                 draw_message_screen(display, "Remove items from device and press button")
             }
-            CalibrationStateSubstates::Wait => {
-                draw_message_screen(display, "Please wait...");
-            }
+            CalibrationStateSubstates::Wait => draw_message_screen(display, "Please wait..."),
             CalibrationStateSubstates::Calibration(calibration_mass_grams) => {
                 let mut message_string = String::<40>::new();
                 write!(
@@ -57,7 +55,7 @@ impl UiDrawer for CalibrationScreens {
                     calibration_mass_grams
                 )
                 .expect("String too long");
-                draw_message_screen(display, &message_string);
+                draw_message_screen(display, &message_string)
             }
             CalibrationStateSubstates::CalibrationDone => {
                 draw_message_screen(display, "Calibration complete")
