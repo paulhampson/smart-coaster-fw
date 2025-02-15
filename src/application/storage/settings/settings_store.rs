@@ -48,6 +48,7 @@ pub enum StoredSettings {
     WeighingSystemBitsToDiscard(SettingValue) = 4,
     MonitoringTargetType(SettingValue) = 5,
     MonitoringTargetValue(SettingValue) = 6,
+    DisplayTimeoutMinutes(SettingValue) = 7,
 }
 
 impl StoredSettings {
@@ -67,6 +68,7 @@ impl StoredSettings {
             StoredSettings::WeighingSystemBitsToDiscard(v) => v.clone(),
             StoredSettings::MonitoringTargetType(v) => v.clone(),
             StoredSettings::MonitoringTargetValue(v) => v.clone(),
+            StoredSettings::DisplayTimeoutMinutes(v) => v.clone(),
         }
     }
 }

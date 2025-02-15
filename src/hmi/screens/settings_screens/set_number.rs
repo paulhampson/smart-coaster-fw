@@ -135,6 +135,7 @@ impl UiInputHandler for SetNumberScreen {
             }
             UiInput::ButtonPress => match self.current_element {
                 Element::Save => {
+                    // TODO - change this to a generic UI actions message for a settings change
                     let mut settings_accessor = FlashSettingsAccessor::new();
                     settings_accessor
                         .save_setting(self.setting_id_to_save, SettingValue::UInt(self.value))

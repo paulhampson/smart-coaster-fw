@@ -22,6 +22,7 @@ use embassy_time::{Duration, Instant, Ticker};
 use sh1106::mode::GraphicsMode;
 
 const DEFAULT_BRIGHTNESS: u8 = 128;
+const DEFAULT_DISPLAY_TIMEOUT_MINUTES: u8 = 15;
 
 pub struct DisplayManager<DI, SA>
 where
@@ -34,6 +35,7 @@ where
 
     display_state: ApplicationState,
     last_display_update: Instant,
+    display_timeout: Duration,
 
     settings_screen: SettingMenu<SA>,
     test_mode_screen: TestModeScreen,
@@ -75,6 +77,7 @@ where
 
             display_state: ApplicationState::Startup,
             last_display_update: Instant::MIN,
+            display_timeout: Duration::from_secs(30 * 60),
 
             settings_screen: SettingMenu::new(&settings).await,
             test_mode_screen: TestModeScreen::new(),
@@ -95,6 +98,7 @@ where
             rtc_accessor,
         };
         Self::set_display_brightness_from_settings(&mut s).await;
+        s.display_timeout = Self::get_display_timeout_from_settings(&mut s).await;
         s
     }
 
@@ -112,10 +116,26 @@ where
             DEFAULT_BRIGHTNESS
         };
 
-        let _ = self
-            .display
+        self.display
             .set_contrast(display_brightness)
-            .map_err(|_| warn!("Failed to set display brightness"));
+            .unwrap_or_else(|_| warn!("Failed to set display brightness"));
+    }
+
+    async fn get_display_timeout_from_settings(&mut self) -> Duration {
+        let display_timeout: u8 = if let Some(result) = self
+            .settings
+            .get_setting(SettingsAccessorId::DisplayTimeoutMinutes)
+            .await
+        {
+            match result {
+                SettingValue::SmallUInt(v) => v,
+                _ => DEFAULT_DISPLAY_TIMEOUT_MINUTES,
+            }
+        } else {
+            DEFAULT_DISPLAY_TIMEOUT_MINUTES
+        };
+        debug!("Restored display_timeout={:?}", display_timeout);
+        Duration::from_secs(display_timeout as u64 * 60)
     }
 
     async fn setup_monitoring_target_value_selection(&mut self) {
@@ -161,11 +181,8 @@ where
         debug!("Display state: {:?}", display_state);
 
         if let ApplicationState::NumberEntry(setting_id) = display_state {
-            match setting_id {
-                SettingsAccessorId::MonitoringTargetValue => {
-                    self.setup_monitoring_target_value_selection().await
-                }
-                _ => {}
+            if setting_id == SettingsAccessorId::MonitoringTargetValue {
+                self.setup_monitoring_target_value_selection().await
             }
         }
 
@@ -260,7 +277,6 @@ where
     }
 
     pub async fn run(&mut self) {
-        const DISPLAY_OFF_TIMEOUT: Duration = Duration::from_secs(15 * 60);
         self.update_screen().await;
         let mut update_ticker = Ticker::every(Duration::from_millis(200));
         let mut last_activity = Instant::now();
@@ -296,7 +312,7 @@ where
                                     }
                                 }
                                 HmiMessage::PushButtonPressed(is_pressed) => {
-                                    debug!("Button pressed {:?} ", is_pressed);
+                                    trace!("Button pressed {:?} ", is_pressed);
                                     match is_pressed {
                                         true => self.route_ui_input(UiInput::ButtonPress).await,
                                         false => self.route_ui_input(UiInput::ButtonRelease).await,
@@ -309,10 +325,9 @@ where
                             self.set_display_state(new_state).await;
                             last_activity = Instant::now();
                         }
-                        ApplicationMessage::ApplicationDataUpdate(data_update) => {
-                            if let ApplicationData::DisplayBrightness(new_display_brightness) =
-                                data_update
-                            {
+                        ApplicationMessage::ApplicationDataUpdate(data_update) => match data_update
+                        {
+                            ApplicationData::DisplayBrightness(new_display_brightness) => {
                                 last_activity = Instant::now();
                                 trace!("Brightness update: {:?}", new_display_brightness);
                                 self.display
@@ -330,7 +345,25 @@ where
                                             Debug2Format(&e)
                                         );
                                     });
-                            } else {
+                            }
+                            ApplicationData::DisplayTimeout(new_display_timeout) => {
+                                trace!("New display timeout: {:?}", new_display_timeout);
+                                self.display_timeout =
+                                    Duration::from_secs((new_display_timeout * 60) as u64);
+                                self.settings
+                                    .save_setting(
+                                        SettingsAccessorId::DisplayTimeoutMinutes,
+                                        SettingValue::SmallUInt(new_display_timeout),
+                                    )
+                                    .await
+                                    .unwrap_or_else(|e| {
+                                        warn!(
+                                            "Failed to save display timeout: {}",
+                                            Debug2Format(&e)
+                                        );
+                                    });
+                            }
+                            _ => {
                                 trace!("App data update");
                                 if let ApplicationData::MonitoringSubstate(_) = data_update {
                                     last_activity = Instant::now();
@@ -338,7 +371,7 @@ where
                                 self.route_ui_input(UiInput::ApplicationData(data_update))
                                     .await;
                             }
-                        }
+                        },
                         ApplicationMessage::WeighSystemRequest(..) => {}
                     },
                 },
@@ -350,13 +383,16 @@ where
                     }
                 }
             }
-            if last_activity.elapsed() > DISPLAY_OFF_TIMEOUT {
+            if last_activity.elapsed() > self.display_timeout {
                 if !screen_off {
-                    debug!("Display timeout reached - turning display off");
+                    debug!(
+                        "Display timeout reached - turning display off - {} sec",
+                        self.display_timeout.as_secs()
+                    );
                     self.display.clear();
                     self.display
                         .flush()
-                        .unwrap_or_else(|_| debug!("Display flush failed"));
+                        .unwrap_or_else(|_| warn!("Display flush failed"));
                     screen_off = true;
                 }
             } else {

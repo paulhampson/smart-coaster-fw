@@ -25,6 +25,7 @@ pub enum ApplicationData {
     HeapStatus { used: usize, free: usize },
     LedBrightness(u8),
     DisplayBrightness(u8),
+    DisplayTimeout(u8),
 }
 
 const CHANNEL_DEPTH: usize = 10;

@@ -3,7 +3,7 @@ use core::fmt::Write;
 use embedded_graphics::mono_font::ascii::{
     FONT_10X20, FONT_4X6, FONT_5X7, FONT_6X10, FONT_8X13, FONT_9X15,
 };
-use embedded_graphics::mono_font::{MonoFont, MonoTextStyle, MonoTextStyleBuilder};
+use embedded_graphics::mono_font::{MonoFont, MonoTextStyleBuilder};
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{DrawTarget, Point, Size};
 use embedded_graphics::primitives::Rectangle;

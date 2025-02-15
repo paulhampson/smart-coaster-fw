@@ -1,3 +1,28 @@
+pub struct DisplayTimeoutOptions {}
+
+impl DisplayTimeoutOptions {
+    const OPTION_LIST: [u8; 5] = [5, 10, 15, 30, 60];
+    pub const DEFAULT: u8 = 30;
+
+    pub fn option_strings() -> &'static [&'static str] {
+        &["5 min", "10 min", "15 min", "30 min", "60 min"]
+    }
+
+    pub fn option_index_to_minutes(index: usize) -> u8 {
+        if index > Self::OPTION_LIST.len() {
+            Self::DEFAULT
+        } else {
+            Self::OPTION_LIST[index]
+        }
+    }
+    pub fn minutes_to_option_index(minutes: u8) -> usize {
+        Self::OPTION_LIST
+            .iter()
+            .position(|&r| r == minutes)
+            .unwrap_or(4)
+    }
+}
+
 pub enum DisplayBrightnessOptions {
     Low,
     Medium,

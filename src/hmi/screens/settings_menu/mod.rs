@@ -1,7 +1,9 @@
 use crate::application::application_state::ApplicationState;
 use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
-use crate::hmi::screens::settings_menu::display_brightness_options::DisplayBrightnessOptions;
+use crate::hmi::screens::settings_menu::display_options::{
+    DisplayBrightnessOptions, DisplayTimeoutOptions,
+};
 use crate::hmi::screens::{settings_menu, UiDrawer, UiInput, UiInputHandler};
 use core::marker::PhantomData;
 use defmt::debug;
@@ -16,7 +18,7 @@ use led_brightness_options::LedBrightnessOptions;
 use simple_embedded_graphics_menu::items::SelectedData;
 use simple_embedded_graphics_menu::{Menu, MenuStyle};
 
-mod display_brightness_options;
+mod display_options;
 mod led_brightness_options;
 pub(crate) mod monitoring_options;
 
@@ -32,6 +34,7 @@ pub enum SettingMenuIdentifier {
     SetDateTime,
     SetMonitoringTargetType,
     SetMonitoringTargetValue,
+    DisplayTimeout,
 }
 
 pub struct SettingMenu<SA>
@@ -145,6 +148,34 @@ where
                 Some(display_brightness_option),
             );
         }
+
+        {
+            let display_timeout: u8 = if let Some(result) = settings
+                .get_setting(SettingsAccessorId::DisplayTimeoutMinutes)
+                .await
+            {
+                match result {
+                    SettingValue::SmallUInt(v) => v,
+                    _ => {
+                        warn!("Unable to retrieve display timeout setting");
+                        DisplayTimeoutOptions::DEFAULT
+                    }
+                }
+            } else {
+                DisplayTimeoutOptions::DEFAULT
+            };
+
+            let display_timeout_option =
+                DisplayTimeoutOptions::minutes_to_option_index(display_timeout);
+
+            menu.add_selector(
+                "Display timeout",
+                SettingMenuIdentifier::DisplayTimeout,
+                DisplayTimeoutOptions::option_strings(),
+                Some(display_timeout_option),
+            );
+        }
+
         menu.add_section("System", SettingMenuIdentifier::None);
         menu.add_action("Set Date/Time", SettingMenuIdentifier::SetDateTime);
         menu.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
@@ -215,7 +246,19 @@ where
                         option_id
                     ),
                 )),
-            _ => {}
+            SettingMenuIdentifier::DisplayTimeout => {
+                ui_action_publisher.publish_immediate(UiActionsMessage::DisplayTimeoutChangeRequest(
+                    DisplayTimeoutOptions::option_index_to_minutes(option_id),
+                ))
+            }
+
+            SettingMenuIdentifier::None => {}
+            SettingMenuIdentifier::Root => {}
+            SettingMenuIdentifier::EnterTestScreen => {}
+            SettingMenuIdentifier::EnterHeapStatusScreen => {}
+            SettingMenuIdentifier::DoCalibration => {}
+            SettingMenuIdentifier::SetDateTime => {}
+            SettingMenuIdentifier::SetMonitoringTargetValue => {}
         }
     }
 

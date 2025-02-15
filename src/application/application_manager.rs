@@ -319,6 +319,13 @@ where
                     UiActionsMessage::MonitoringModeChangeRequest(_period_option) => {
                         // TODO use the period option - pass it to the monitoring functionality
                     }
+                    UiActionsMessage::DisplayTimeoutChangeRequest(new_timeout) => {
+                        self.app_publisher
+                            .publish(ApplicationMessage::ApplicationDataUpdate(
+                                ApplicationData::DisplayTimeout(new_timeout),
+                            ))
+                            .await
+                    }
                 },
                 Either::Second(hmi_message) => {
                     self.app_publisher

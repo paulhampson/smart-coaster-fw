@@ -43,6 +43,9 @@ impl SettingsAccessor for FlashSettingsAccessor {
             SettingsAccessorId::MonitoringTargetValue => settings.get_setting(
                 StoredSettings::MonitoringTargetValue(SettingValue::Default).discriminant(),
             ),
+            SettingsAccessorId::DisplayTimeoutMinutes => settings.get_setting(
+                StoredSettings::DisplayTimeoutMinutes(SettingValue::Default).discriminant(),
+            ),
         }
     }
 
@@ -68,6 +71,9 @@ impl SettingsAccessor for FlashSettingsAccessor {
             SettingsAccessorId::MonitoringTargetType => StoredSettings::MonitoringTargetType(value),
             SettingsAccessorId::MonitoringTargetValue => {
                 StoredSettings::MonitoringTargetValue(value)
+            }
+            SettingsAccessorId::DisplayTimeoutMinutes => {
+                StoredSettings::DisplayTimeoutMinutes(value)
             }
         };
 

@@ -29,6 +29,7 @@ pub enum SettingsAccessorId {
     WeighingSystemBitsToDiscard,
     MonitoringTargetType,
     MonitoringTargetValue,
+    DisplayTimeoutMinutes,
 }
 
 impl SettingsAccessorId {
@@ -46,7 +47,13 @@ impl SettingsAccessorId {
 pub trait SettingsAccessor {
     type Error: Debug;
 
+    /// Getting required setting from the settings storage. Will return None if it is not available
+    /// in the storage. Expects to wait until the storage has been initialised before getting the
+    /// value. Thread safe.
     async fn get_setting(&self, id: SettingsAccessorId) -> Option<SettingValue>;
+
+    /// Save setting value to the settings storage. Will pass back a storage error if it is unable
+    /// to complete the save action. Thread safe.
     async fn save_setting(
         &mut self,
         setting: SettingsAccessorId,

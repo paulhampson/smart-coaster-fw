@@ -16,6 +16,7 @@ pub enum UiActionsMessage {
     LedBrightnessChangeRequest(u8),
     DisplayBrightnessChangeRequest(u8),
     MonitoringModeChangeRequest(MonitoringTargetPeriodOptions),
+    DisplayTimeoutChangeRequest(u8),
 }
 
 const CHANNEL_DEPTH: usize = 10;
