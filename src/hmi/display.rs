@@ -65,25 +65,10 @@ where
             .flush()
             .map_err(|_| error!("Failed to flush display"));
 
-        let display_brightness: u8 = if let Some(result) = settings
-            .get_setting(SettingsAccessorId::SystemDisplayBrightness)
-            .await
-        {
-            match result {
-                SettingValue::SmallUInt(v) => v,
-                _ => DEFAULT_BRIGHTNESS,
-            }
-        } else {
-            DEFAULT_BRIGHTNESS
-        };
-
-        let _ = display
-            .set_contrast(display_brightness)
-            .map_err(|_| warn!("Failed to set display brightness"));
         let rtc_accessor =
             RtcAccessor::new().unwrap_or_else(|_| panic!("Failed to get RTC accessor"));
 
-        Self {
+        let mut s = Self {
             app_channel_subscriber,
             ui_action_publisher,
             display,
@@ -108,7 +93,29 @@ where
 
             settings,
             rtc_accessor,
-        }
+        };
+        Self::set_display_brightness_from_settings(&mut s).await;
+        s
+    }
+
+    async fn set_display_brightness_from_settings(&mut self) {
+        let display_brightness: u8 = if let Some(result) = self
+            .settings
+            .get_setting(SettingsAccessorId::SystemDisplayBrightness)
+            .await
+        {
+            match result {
+                SettingValue::SmallUInt(v) => v,
+                _ => DEFAULT_BRIGHTNESS,
+            }
+        } else {
+            DEFAULT_BRIGHTNESS
+        };
+
+        let _ = self
+            .display
+            .set_contrast(display_brightness)
+            .map_err(|_| warn!("Failed to set display brightness"));
     }
 
     async fn setup_monitoring_target_value_selection(&mut self) {
@@ -203,10 +210,9 @@ where
             }
         }
 
-        let _ = self
-            .display
+        self.display
             .flush()
-            .map_err(|_| error!("Display flush failed"));
+            .unwrap_or_else(|_| error!("Display flush failed"));
         self.last_display_update = Instant::now();
     }
 
@@ -254,8 +260,11 @@ where
     }
 
     pub async fn run(&mut self) {
+        const DISPLAY_OFF_TIMEOUT: Duration = Duration::from_secs(15 * 60);
         self.update_screen().await;
         let mut update_ticker = Ticker::every(Duration::from_millis(200));
+        let mut last_activity = Instant::now();
+        let mut screen_off = false;
 
         loop {
             let wait_result = select3(
@@ -270,48 +279,52 @@ where
                         warn! {"Display lost {} messages from HMI channel", count}
                     }
                     WaitResult::Message(message) => match message {
-                        ApplicationMessage::HmiInput(hmi_message) => match hmi_message {
-                            HmiMessage::EncoderUpdate(direction) => {
-                                trace!("Encoder update: {:?}", Debug2Format(&direction));
-                                match direction {
-                                    Direction::Clockwise => {
-                                        self.route_ui_input(UiInput::EncoderClockwise).await
+                        ApplicationMessage::HmiInput(hmi_message) => {
+                            last_activity = Instant::now();
+                            match hmi_message {
+                                HmiMessage::EncoderUpdate(direction) => {
+                                    trace!("Encoder update: {:?}", Debug2Format(&direction));
+                                    match direction {
+                                        Direction::Clockwise => {
+                                            self.route_ui_input(UiInput::EncoderClockwise).await
+                                        }
+                                        Direction::CounterClockwise => {
+                                            self.route_ui_input(UiInput::EncoderCounterClockwise)
+                                                .await
+                                        }
+                                        Direction::None => {}
                                     }
-                                    Direction::CounterClockwise => {
-                                        self.route_ui_input(UiInput::EncoderCounterClockwise).await
+                                }
+                                HmiMessage::PushButtonPressed(is_pressed) => {
+                                    debug!("Button pressed {:?} ", is_pressed);
+                                    match is_pressed {
+                                        true => self.route_ui_input(UiInput::ButtonPress).await,
+                                        false => self.route_ui_input(UiInput::ButtonRelease).await,
                                     }
-                                    Direction::None => {}
                                 }
                             }
-                            HmiMessage::PushButtonPressed(is_pressed) => {
-                                debug!("Button pressed {:?} ", is_pressed);
-                                match is_pressed {
-                                    true => self.route_ui_input(UiInput::ButtonPress).await,
-                                    false => self.route_ui_input(UiInput::ButtonRelease).await,
-                                }
-                            }
-                        },
+                        }
                         ApplicationMessage::ApplicationStateUpdate(new_state) => {
                             trace!("Set display state");
                             self.set_display_state(new_state).await;
+                            last_activity = Instant::now();
                         }
                         ApplicationMessage::ApplicationDataUpdate(data_update) => {
                             if let ApplicationData::DisplayBrightness(new_display_brightness) =
                                 data_update
                             {
+                                last_activity = Instant::now();
                                 trace!("Brightness update: {:?}", new_display_brightness);
-                                let _ = self
-                                    .display
+                                self.display
                                     .set_contrast(new_display_brightness)
-                                    .map_err(|_| warn!("Failed to set display brightness"));
-                                let _ = self
-                                    .settings
+                                    .unwrap_or_else(|_| warn!("Failed to set display brightness"));
+                                self.settings
                                     .save_setting(
                                         SettingsAccessorId::SystemDisplayBrightness,
                                         SettingValue::SmallUInt(new_display_brightness),
                                     )
                                     .await
-                                    .map_err(|e| {
+                                    .unwrap_or_else(|e| {
                                         warn!(
                                             "Failed to save display brightness: {}",
                                             Debug2Format(&e)
@@ -319,6 +332,9 @@ where
                                     });
                             } else {
                                 trace!("App data update");
+                                if let ApplicationData::MonitoringSubstate(_) = data_update {
+                                    last_activity = Instant::now();
+                                }
                                 self.route_ui_input(UiInput::ApplicationData(data_update))
                                     .await;
                             }
@@ -334,7 +350,19 @@ where
                     }
                 }
             }
-            self.update_screen().await;
+            if last_activity.elapsed() > DISPLAY_OFF_TIMEOUT {
+                if !screen_off {
+                    debug!("Display timeout reached - turning display off");
+                    self.display.clear();
+                    self.display
+                        .flush()
+                        .unwrap_or_else(|_| debug!("Display flush failed"));
+                    screen_off = true;
+                }
+            } else {
+                screen_off = false;
+                self.update_screen().await;
+            }
         }
     }
 }
