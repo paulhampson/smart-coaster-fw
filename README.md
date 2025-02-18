@@ -1,6 +1,7 @@
 # Smart Coaster - Firmware
 
-This is the code repository for the smart coaster firmware.
+This is the code repository for the smart coaster firmware. The hardware design for the device can be found at
+https://github.com/paulhampson/smart-coaster-hw
 
 ## Setting up for development
 
