@@ -1,0 +1,1 @@
+file target/thumbv6m-none-eabi/release/smartcoaster
