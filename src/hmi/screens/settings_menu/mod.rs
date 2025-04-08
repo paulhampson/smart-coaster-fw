@@ -196,7 +196,6 @@ where
         menu.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
         menu.add_action("Test Mode", SettingMenuIdentifier::EnterTestScreen);
         menu.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
-        menu.add_action("About", SettingMenuIdentifier::AboutScreen);
         menu.add_back("Back", SettingMenuIdentifier::None);
     }
 
@@ -226,6 +225,7 @@ where
         let mut menu = Menu::new("Settings", SettingMenuIdentifier::Root, menu_style);
         menu.add_submenu(consumption_monitoring);
         menu.add_submenu(device_and_system);
+        menu.add_action("About", SettingMenuIdentifier::AboutScreen);
         menu.add_exit("Exit", SettingMenuIdentifier::None);
 
         menu

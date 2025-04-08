@@ -16,8 +16,9 @@ use crate::application::application_state::ApplicationState;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::{
     draw_message_screen, draw_message_screen_no_reformat, UiDrawer, UiInput, UiInputHandler,
-    DEFAULT_TEXT_STYLE,
+    DEFAULT_FONT_WIDTH, DEFAULT_TEXT_STYLE,
 };
+use alloc::borrow::ToOwned;
 use core::cmp::min;
 use core::fmt::Write;
 use embedded_graphics::draw_target::DrawTarget;
@@ -25,24 +26,55 @@ use embedded_graphics::geometry::AnchorY;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{DrawTargetExt, Point};
 use embedded_graphics::text::renderer::TextRenderer;
+use embedded_graphics::text::Alignment;
 use embedded_layout::View;
 use heapless::String;
+
+const REPOSITORY_PREFIX: &str = "Repository: ";
+const REPOSITORY_SUFFIX: &str = "   ";
 
 pub struct AboutScreen {
     start_entry_index: usize,
     max_entries: usize,
 
     repository_url_scroll_pos: usize,
+    repository_url_string: String<80>,
 }
 
 impl AboutScreen {
     pub fn new() -> Self {
-        Self {
+        let s = Self {
             start_entry_index: 0,
             max_entries: 4,
 
             repository_url_scroll_pos: 0,
+            repository_url_string: (REPOSITORY_PREFIX.to_owned()
+                + built_info::PKG_REPOSITORY
+                + REPOSITORY_SUFFIX)
+                .parse()
+                .unwrap(),
+        };
+        s
+    }
+
+    /// Manage updates on each re-draw. This function currently assumes that the top level
+    /// display width is the same as the width the line display area is going to get. We need
+    /// to do this here because the draw function is (rightly) not allowed to modify data.
+    pub fn update_pre_draw_actions<D>(&mut self, display: &D)
+    where
+        D: DrawTarget<Color = BinaryColor>,
+    {
+        self.repository_url_scroll_pos += 1;
+        if self.repository_url_scroll_pos >= self.repository_url_string.len() {
+            self.repository_url_scroll_pos = 0;
         }
+    }
+
+    fn calc_scroll_text_substring(screen_width: u32, scroll_pos: usize) -> (usize, usize) {
+        (
+            scroll_pos,
+            scroll_pos + (screen_width as usize / DEFAULT_FONT_WIDTH),
+        )
     }
 
     fn line_draw<D>(&self, display: &mut D, index: usize) -> Result<(), D::Error>
@@ -59,7 +91,7 @@ impl AboutScreen {
                     built_info::PKG_VERSION,
                 )
                 .expect("String too long");
-                draw_message_screen_no_reformat(display, &message_string)
+                draw_message_screen_no_reformat(display, &message_string, Alignment::Center)
             }
             1 => {
                 let dirty_indicator = if built_info::GIT_DIRTY.unwrap_or(true) {
@@ -74,16 +106,23 @@ impl AboutScreen {
                     dirty_indicator
                 )
                 .expect("String too long");
-                draw_message_screen_no_reformat(display, &message_string)
+                draw_message_screen_no_reformat(display, &message_string, Alignment::Center)
             }
             2 => {
                 write!(message_string, "License: {}", built_info::PKG_LICENSE,)
                     .expect("String too long");
-                draw_message_screen_no_reformat(display, &message_string)
+                draw_message_screen_no_reformat(display, &message_string, Alignment::Left)
             }
             3 => {
-                write!(message_string, "{}", built_info::PKG_REPOSITORY).expect("String too long");
-                draw_message_screen_no_reformat(display, &message_string)
+                let (start_str_idx, end_str_idx) = Self::calc_scroll_text_substring(
+                    display.bounding_box().size.width,
+                    self.repository_url_scroll_pos,
+                );
+                let capped_end_str_idx = min(end_str_idx, self.repository_url_string.len());
+                let sub_string_to_display =
+                    &self.repository_url_string[start_str_idx..capped_end_str_idx];
+                write!(message_string, "{}", sub_string_to_display).expect("String too long");
+                draw_message_screen_no_reformat(display, &message_string, Alignment::Left)
             }
             _ => draw_message_screen(display, "Unknown page index"),
         }
@@ -130,7 +169,7 @@ impl UiDrawer for AboutScreen {
         let mut line_draw_area =
             display_size.resized_height(DEFAULT_TEXT_STYLE.line_height(), AnchorY::Top);
 
-        for (line_count, line_index) in (self.start_entry_index..end_line).enumerate() {
+        for line_index in self.start_entry_index..end_line {
             let mut line_display = display.cropped(&line_draw_area);
             self.line_draw(&mut line_display, line_index)?;
             line_draw_area =

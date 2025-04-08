@@ -242,7 +242,10 @@ where
             ApplicationState::NumberEntry(_) => {
                 self.number_entry_screen.draw(&mut self.display).unwrap()
             }
-            ApplicationState::AboutScreen => self.about_screen.draw(&mut self.display).unwrap(),
+            ApplicationState::AboutScreen => {
+                self.about_screen.update_pre_draw_actions(&self.display);
+                self.about_screen.draw(&mut self.display).unwrap()
+            }
         }
 
         self.display
