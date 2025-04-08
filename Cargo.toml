@@ -1,8 +1,10 @@
 [package]
 edition = "2021"
-name = "smartcoaster"
+name = "Smartcoaster"
 version = "0.1.0"
 resolver = "2"
+authors = ["Paul Hampson"]
+license = "GPL-3.0"
 
 
 [dependencies]
@@ -61,6 +63,9 @@ lto = 'fat' # for call stack analysis support
 
 [build]
 rustflags = ["-Z emit-stack-sizes"]
+
+[build-dependencies]
+built = { version = "0.7", features = ["git2"] }
 
 [features]
 default = ["pcb_rev1"]

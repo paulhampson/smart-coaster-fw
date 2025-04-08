@@ -64,17 +64,24 @@ pub fn draw_message_screen<D: DrawTarget<Color = BinaryColor>>(
 ) -> Result<(), D::Error> {
     let max_line_length = display.bounding_box().size.width as usize / DEFAULT_FONT_WIDTH;
     let formatted_message = add_newlines_to_string::<100>(message, max_line_length);
+    draw_message_screen_no_reformat(display, &formatted_message)
+}
+
+pub fn draw_message_screen_no_reformat<D: DrawTarget<Color = BinaryColor>>(
+    display: &mut D,
+    message: &str,
+) -> Result<(), D::Error> {
     let centred_text_style = TextStyleBuilder::new()
         .alignment(Alignment::Center)
         .baseline(Baseline::Middle)
         .build();
 
     let line_offset_pixels =
-        (formatted_message.lines().count() - 1) as i32 * DEFAULT_TEXT_STYLE.line_height() as i32;
+        (message.lines().count() - 1) as i32 * DEFAULT_TEXT_STYLE.line_height() as i32;
     let x_pos = display.bounding_box().size.width as i32 / 2;
     let y_pos = display.bounding_box().size.height as i32 / 2 - line_offset_pixels;
     Text::with_text_style(
-        &formatted_message,
+        &message,
         Point::new(x_pos, y_pos),
         DEFAULT_TEXT_STYLE,
         centred_text_style,

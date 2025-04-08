@@ -14,6 +14,7 @@
 
 use crate::hmi::screens::{UiDrawer, UiInputHandler};
 
+pub mod about;
 pub mod calibration;
 pub mod heap_status;
 pub mod set_date_time;

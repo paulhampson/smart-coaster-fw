@@ -60,6 +60,12 @@ where
                                     repetitions: 1.0,
                                 })
                             }
+                            ApplicationState::AboutScreen => {
+                                self.led_control.set_mode(LedArrayMode::RainbowWheel {
+                                    speed: 0.5,
+                                    repetitions: 1.0,
+                                })
+                            }
                             ApplicationState::ErrorScreenWithMessage(_) => {
                                 self.led_control.set_mode(LedArrayMode::Pulse {
                                     colour: RGB8::new(255, 0, 0),

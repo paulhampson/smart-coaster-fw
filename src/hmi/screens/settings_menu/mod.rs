@@ -49,6 +49,7 @@ pub enum SettingMenuIdentifier {
     SetMonitoringTargetType,
     SetMonitoringTargetValue,
     DisplayTimeout,
+    AboutScreen,
 }
 
 pub struct SettingMenu<SA>
@@ -195,6 +196,7 @@ where
         menu.add_action("Calibration", SettingMenuIdentifier::DoCalibration);
         menu.add_action("Test Mode", SettingMenuIdentifier::EnterTestScreen);
         menu.add_action("Heap Status", SettingMenuIdentifier::EnterHeapStatusScreen);
+        menu.add_action("About", SettingMenuIdentifier::AboutScreen);
         menu.add_back("Back", SettingMenuIdentifier::None);
     }
 
@@ -273,6 +275,7 @@ where
             SettingMenuIdentifier::DoCalibration => {}
             SettingMenuIdentifier::SetDateTime => {}
             SettingMenuIdentifier::SetMonitoringTargetValue => {}
+            SettingMenuIdentifier::AboutScreen => {}
         }
     }
 
@@ -303,6 +306,9 @@ where
                     .publish_immediate(UiActionsMessage::StateChangeRequest(
                         ApplicationState::NumberEntry(SettingsAccessorId::MonitoringTargetValue),
                     )),
+                SettingMenuIdentifier::AboutScreen => ui_action_publisher.publish_immediate(
+                    UiActionsMessage::StateChangeRequest(ApplicationState::AboutScreen),
+                ),
                 _ => {}
             },
             SelectedData::MultiOption { id, option_id } => {

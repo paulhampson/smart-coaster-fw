@@ -22,6 +22,7 @@ use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
 use crate::hmi::rotary_encoder::Direction;
 use crate::hmi::screens::monitoring::MonitoringScreen;
 use crate::hmi::screens::settings_menu::SettingMenu;
+use crate::hmi::screens::settings_screens::about::AboutScreen;
 use crate::hmi::screens::settings_screens::calibration::CalibrationScreens;
 use crate::hmi::screens::settings_screens::heap_status::HeapStatusScreen;
 use crate::hmi::screens::settings_screens::set_date_time::SetDateTimeScreen;
@@ -58,6 +59,7 @@ where
     calibration_screens: CalibrationScreens,
     set_date_time_screen: SetDateTimeScreen,
     number_entry_screen: SetNumberScreen,
+    about_screen: AboutScreen,
 
     settings: SA,
     rtc_accessor: RtcAccessor,
@@ -107,6 +109,7 @@ where
                 1000,
                 SettingsAccessorId::MonitoringTargetValue,
             ),
+            about_screen: AboutScreen::new(),
 
             settings,
             rtc_accessor,
@@ -239,6 +242,7 @@ where
             ApplicationState::NumberEntry(_) => {
                 self.number_entry_screen.draw(&mut self.display).unwrap()
             }
+            ApplicationState::AboutScreen => self.about_screen.draw(&mut self.display).unwrap(),
         }
 
         self.display
@@ -284,6 +288,11 @@ where
             }
             ApplicationState::NumberEntry(_) => {
                 self.number_entry_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
+            ApplicationState::AboutScreen => {
+                self.about_screen
                     .ui_input_handler(input, &self.ui_action_publisher)
                     .await
             }
