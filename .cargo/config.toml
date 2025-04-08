@@ -3,6 +3,7 @@ runner = "probe-rs run --chip RP2040 --speed 4000"
 
 [build]
 target = "thumbv6m-none-eabi"
+# rustflags = ["-Z emit-stack-sizes"]
 
 [env]
 DEFMT_LOG = "debug"

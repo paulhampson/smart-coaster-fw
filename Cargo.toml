@@ -5,6 +5,7 @@ version = "0.1.0"
 resolver = "2"
 authors = ["Paul Hampson"]
 license = "GPL-3.0"
+repository = "https://github.com/paulhampson/smart-coaster-fw"
 
 
 [dependencies]
@@ -61,8 +62,6 @@ embedded-icon = { version = "0.0.1", features = ["32px", "48px", "24px", "iconoi
 debug = 2
 lto = 'fat' # for call stack analysis support
 
-[build]
-rustflags = ["-Z emit-stack-sizes"]
 
 [build-dependencies]
 built = { version = "0.7", features = ["git2"] }
