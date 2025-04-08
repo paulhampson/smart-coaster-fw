@@ -12,8 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::storage;
-
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MonitoringTargetPeriodOptions {
     Daily,
     Hourly,
@@ -25,27 +24,27 @@ impl MonitoringTargetPeriodOptions {
         &["Daily", "Hourly"]
     }
 
-    pub fn monitoring_mode_to_storage_option_mapping(
-        option_idx: usize,
-    ) -> storage::settings::option_types::MonitoringTargetPeriodOptions {
-        match option_idx {
-            0 => storage::settings::option_types::MonitoringTargetPeriodOptions::Daily,
-            1 => storage::settings::option_types::MonitoringTargetPeriodOptions::Hourly,
-            _ => panic!("Invalid monitoring target period"),
-        }
-    }
-
-    pub fn to_option_index(&self) -> usize {
-        match self {
-            MonitoringTargetPeriodOptions::Daily => 0,
-            MonitoringTargetPeriodOptions::Hourly => 1,
-        }
-    }
-
-    pub fn to_units(&self) -> &'static str {
+    pub fn units(&self) -> &'static str {
         match self {
             MonitoringTargetPeriodOptions::Daily => "ml/day",
             MonitoringTargetPeriodOptions::Hourly => "ml/hour",
+        }
+    }
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            MonitoringTargetPeriodOptions::Daily => "Daily Target",
+            MonitoringTargetPeriodOptions::Hourly => "Hourly Target",
+        }
+    }
+}
+
+impl From<usize> for MonitoringTargetPeriodOptions {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => Self::Daily,
+            1 => Self::Hourly,
+            _ => panic!("Invalid monitoring target period"),
         }
     }
 }

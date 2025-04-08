@@ -43,7 +43,6 @@ pub enum DisplayBrightnessOptions {
     High,
 }
 
-#[allow(dead_code)]
 impl DisplayBrightnessOptions {
     const LOW: u8 = 0;
     const MEDIUM: u8 = 128;

@@ -13,12 +13,13 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::ApplicationState;
-use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::settings_menu::display_options::{
     DisplayBrightnessOptions, DisplayTimeoutOptions,
 };
-use crate::hmi::screens::{settings_menu, UiDrawer, UiInput, UiInputHandler};
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
+use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use core::marker::PhantomData;
 use defmt::debug;
 use defmt::{warn, Debug2Format};
@@ -258,15 +259,13 @@ where
             }
             SettingMenuIdentifier::SetMonitoringTargetType => ui_action_publisher
                 .publish_immediate(UiActionsMessage::MonitoringModeChangeRequest(
-                    settings_menu::monitoring_options::MonitoringTargetPeriodOptions::monitoring_mode_to_storage_option_mapping(
-                        option_id
-                    ),
+                    MonitoringTargetPeriodOptions::from(option_id),
                 )),
-            SettingMenuIdentifier::DisplayTimeout => {
-                ui_action_publisher.publish_immediate(UiActionsMessage::DisplayTimeoutChangeRequest(
+            SettingMenuIdentifier::DisplayTimeout => ui_action_publisher.publish_immediate(
+                UiActionsMessage::DisplayTimeoutChangeRequest(
                     DisplayTimeoutOptions::option_index_to_minutes(option_id),
-                ))
-            }
+                ),
+            ),
 
             SettingMenuIdentifier::None => {}
             SettingMenuIdentifier::Root => {}
@@ -304,7 +303,7 @@ where
                 ),
                 SettingMenuIdentifier::SetMonitoringTargetValue => ui_action_publisher
                     .publish_immediate(UiActionsMessage::StateChangeRequest(
-                        ApplicationState::NumberEntry(SettingsAccessorId::MonitoringTargetValue),
+                        ApplicationState::NumberEntry(SettingsAccessorId::MonitoringTargetDaily),
                     )),
                 SettingMenuIdentifier::AboutScreen => ui_action_publisher.publish_immediate(
                     UiActionsMessage::StateChangeRequest(ApplicationState::AboutScreen),

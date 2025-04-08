@@ -12,12 +12,13 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use chrono::Timelike;
 use core::fmt::Debug;
+use core::future::Future;
 use defmt::Format;
 use sequential_storage::map::{SerializationError, Value};
 
 pub mod accessor;
-pub mod option_types;
 mod settings_store;
 
 #[derive(Debug, Format)]
@@ -42,16 +43,22 @@ pub enum SettingsAccessorId {
     WeighingSystemCalibrationGradient,
     WeighingSystemBitsToDiscard,
     MonitoringTargetType,
-    MonitoringTargetValue,
+    MonitoringTargetDaily,
     DisplayTimeoutMinutes,
+    MonitoringDayEnd,
+    MonitoringTargetHourly,
 }
 
 impl SettingsAccessorId {
     pub fn get_numeric_properties(&self) -> Option<NumericSettingProperties<u32>> {
         match self {
-            SettingsAccessorId::MonitoringTargetValue => Some(NumericSettingProperties::<u32> {
+            SettingsAccessorId::MonitoringTargetDaily => Some(NumericSettingProperties::<u32> {
                 minimum_value: 0,
                 maximum_value: 10000,
+            }),
+            SettingsAccessorId::MonitoringTargetHourly => Some(NumericSettingProperties::<u32> {
+                minimum_value: 0,
+                maximum_value: 1000,
             }),
             _ => None,
         }
@@ -64,15 +71,18 @@ pub trait SettingsAccessor {
     /// Getting required setting from the settings storage. Will return None if it is not available
     /// in the storage. Expects to wait until the storage has been initialised before getting the
     /// value. Thread safe.
-    async fn get_setting(&self, id: SettingsAccessorId) -> Option<SettingValue>;
+    fn get_setting(
+        &self,
+        id: SettingsAccessorId,
+    ) -> impl Future<Output = Option<SettingValue>> + Send;
 
     /// Save setting value to the settings storage. Will pass back a storage error if it is unable
     /// to complete the save action. Thread safe.
-    async fn save_setting(
+    fn save_setting(
         &mut self,
         setting: SettingsAccessorId,
         value: SettingValue,
-    ) -> Result<(), Self::Error>;
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
 #[repr(u8)]
@@ -82,6 +92,7 @@ pub enum SettingValue {
     Float(f32),
     SmallUInt(u8),
     UInt(u32),
+    Time(chrono::NaiveTime),
 }
 
 impl SettingValue {
@@ -108,9 +119,18 @@ impl Value<'_> for SettingValue {
             SettingValue::Float(v) => v.serialize_into(&mut value_buffer)?,
             SettingValue::SmallUInt(v) => {
                 value_buffer[0] = *v;
-                1
+                1 // bytes used
             }
             SettingValue::UInt(v) => v.serialize_into(&mut value_buffer)?,
+            SettingValue::Time(v) => {
+                value_buffer[0] = v.hour() as u8;
+                value_buffer[1] = v.minute() as u8;
+                value_buffer[2] = v.second() as u8;
+                let nanos = v.nanosecond();
+                value_buffer[3..7].copy_from_slice(&nanos.to_le_bytes());
+                // Return the number of bytes used
+                7
+            }
         };
         let total_serialization_len = data_bytes_count + 1;
 
@@ -144,12 +164,36 @@ impl Value<'_> for SettingValue {
                 Ok(SettingValue::Float(value))
             }
             2 => {
+                if value_buffer.len() < 1 {
+                    return Err(SerializationError::BufferTooSmall);
+                }
                 let value = value_buffer[0];
                 Ok(SettingValue::SmallUInt(value))
             }
             3 => {
                 let value = u32::deserialize_from(value_buffer)?;
                 Ok(SettingValue::UInt(value))
+            }
+            4 => {
+                if value_buffer.len() < 7 {
+                    return Err(SerializationError::BufferTooSmall);
+                }
+
+                // Extract hour, minute, second
+                let hour = value_buffer[0] as u32;
+                let minute = value_buffer[1] as u32;
+                let second = value_buffer[2] as u32;
+
+                // Extract nanoseconds
+                let mut nano_bytes = [0u8; 4];
+                nano_bytes.copy_from_slice(&value_buffer[3..7]);
+                let nano = u32::from_le_bytes(nano_bytes);
+
+                // Create NaiveTime
+                match chrono::NaiveTime::from_hms_nano_opt(hour, minute, second, nano) {
+                    Some(time) => Ok(SettingValue::Time(time)),
+                    None => Err(SerializationError::InvalidFormat),
+                }
             }
             _ => Err(SerializationError::InvalidFormat),
         }

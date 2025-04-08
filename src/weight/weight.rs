@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::weight::interface::AsyncStrainGaugeInterface;
 use crate::weight::WeighingSystem;
 use core::cmp::max;

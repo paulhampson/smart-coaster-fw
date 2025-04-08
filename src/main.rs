@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #![no_main]
 extern crate alloc;
 
@@ -26,6 +25,7 @@ mod application;
 mod hmi;
 mod led;
 mod rtc;
+pub mod storage;
 mod weight;
 
 use core::ops::Range;
@@ -66,16 +66,15 @@ use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightC
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
-use crate::application::storage;
-use crate::application::storage::settings::accessor::FlashSettingsAccessor;
+use crate::application::drink_monitoring::DrinkMonitoring;
 use crate::rtc::{RtcControl, SystemRtc};
 use core::ptr::addr_of_mut;
 use ds323x::Ds323x;
 use embedded_alloc::LlffHeap as Heap;
+use storage::settings::accessor::FlashSettingsAccessor;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
-
 static HMI_CHANNEL: HmiChannel = PubSubChannel::new();
 static UI_ACTION_CHANNEL: UiActionChannel = PubSubChannel::new();
 static WEIGHT_CHANNEL: WeightChannel = PubSubChannel::new();
@@ -269,6 +268,18 @@ fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) 
             heap,
         ))
         .unwrap();
+
+    let drink_monitor_ws = WeighingSystemOverChannel::new(
+        WEIGHT_CHANNEL.subscriber().unwrap(),
+        APP_CHANNEL.publisher().unwrap(),
+    );
+    spawner
+        .spawn(drink_monitor_task(
+            APP_CHANNEL.publisher().unwrap(),
+            UI_ACTION_CHANNEL.subscriber().unwrap(),
+            drink_monitor_ws,
+        ))
+        .unwrap();
 }
 
 #[embassy_executor::task]
@@ -404,4 +415,14 @@ async fn application_task(
     application_manager
         .run(ui_action_channel_receiver, hmi_channel_receiver)
         .await;
+}
+
+#[embassy_executor::task]
+async fn drink_monitor_task(
+    app_channel_sender: ApplicationChannelPublisher<'static>,
+    ui_action_channel_receiver: UiActionChannelSubscriber<'static>,
+    weight_interface: WeighingSystemOverChannel,
+) {
+    let mut drink_monitor = DrinkMonitoring::new(app_channel_sender, weight_interface);
+    drink_monitor.run(ui_action_channel_receiver).await;
 }

@@ -52,10 +52,10 @@ embedded-layout = "0.4.1"
 simple-embedded-graphics-menu = { git = "https://github.com/paulhampson/simple-embedded-graphics-menu.git" }
 sequential-storage = { version = "4.0.1", features = ["defmt-03"] }
 embedded-storage-async = "0.4.1"
-enum-map = "2.7.3"
+#enum-map = "2.7.3"
 strum = { version = "0.27", default-features = false, features = ["derive"] }
 ds323x = "0.6.0"
-chrono = { version = "0.4.39", default-features = false }
+chrono = { version = "0.4.40", default-features = false, features = ["serde"] }
 embedded-icon = { version = "0.0.1", features = ["32px", "48px", "24px", "iconoir", "mdi"] }
 
 [profile.release]

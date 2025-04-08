@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use defmt::{warn, Debug2Format};
 use embassy_rp::pio::Instance;
 use embassy_rp::pio_programs::ws2812::PioWs2812;

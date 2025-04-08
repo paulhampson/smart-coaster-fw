@@ -12,12 +12,10 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::storage::settings::settings_store::{
+use crate::storage::settings::settings_store::{
     wait_for_settings_store_initialisation, BlockingAsyncFlash, StoredSettings, SETTINGS_STORE,
 };
-use crate::application::storage::settings::{
-    SettingError, SettingValue, SettingsAccessor, SettingsAccessorId,
-};
+use crate::storage::settings::{SettingError, SettingValue, SettingsAccessor, SettingsAccessorId};
 use core::ops::Range;
 use defmt::error;
 pub struct FlashSettingsAccessor {}
@@ -54,11 +52,17 @@ impl SettingsAccessor for FlashSettingsAccessor {
             SettingsAccessorId::MonitoringTargetType => settings.get_setting(
                 StoredSettings::MonitoringTargetType(SettingValue::Default).discriminant(),
             ),
-            SettingsAccessorId::MonitoringTargetValue => settings.get_setting(
-                StoredSettings::MonitoringTargetValue(SettingValue::Default).discriminant(),
+            SettingsAccessorId::MonitoringTargetDaily => settings.get_setting(
+                StoredSettings::MonitoringTargetDaily(SettingValue::Default).discriminant(),
             ),
             SettingsAccessorId::DisplayTimeoutMinutes => settings.get_setting(
                 StoredSettings::DisplayTimeoutMinutes(SettingValue::Default).discriminant(),
+            ),
+            SettingsAccessorId::MonitoringDayEnd => settings.get_setting(
+                StoredSettings::MonitoringDayEnd(SettingValue::Default).discriminant(),
+            ),
+            SettingsAccessorId::MonitoringTargetHourly => settings.get_setting(
+                StoredSettings::MonitoringTargetHourly(SettingValue::Default).discriminant(),
             ),
         }
     }
@@ -83,11 +87,15 @@ impl SettingsAccessor for FlashSettingsAccessor {
                 StoredSettings::WeighingSystemBitsToDiscard(value)
             }
             SettingsAccessorId::MonitoringTargetType => StoredSettings::MonitoringTargetType(value),
-            SettingsAccessorId::MonitoringTargetValue => {
-                StoredSettings::MonitoringTargetValue(value)
+            SettingsAccessorId::MonitoringTargetDaily => {
+                StoredSettings::MonitoringTargetDaily(value)
             }
             SettingsAccessorId::DisplayTimeoutMinutes => {
                 StoredSettings::DisplayTimeoutMinutes(value)
+            }
+            SettingsAccessorId::MonitoringDayEnd => StoredSettings::MonitoringDayEnd(value),
+            SettingsAccessorId::MonitoringTargetHourly => {
+                StoredSettings::MonitoringTargetHourly(value)
             }
         };
 

@@ -13,8 +13,8 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::ApplicationState;
-use crate::application::storage::settings::option_types::MonitoringTargetPeriodOptions;
 use crate::hmi::rotary_encoder::Direction;
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 
@@ -34,7 +34,7 @@ pub enum UiActionsMessage {
 }
 
 const CHANNEL_DEPTH: usize = 10;
-const CHANNEL_SUBS: usize = 1;
+const CHANNEL_SUBS: usize = 2;
 const CHANNEL_PUBS: usize = 1;
 
 pub type HmiChannel =

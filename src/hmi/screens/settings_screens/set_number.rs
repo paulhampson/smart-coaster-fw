@@ -13,11 +13,11 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::ApplicationState;
-use crate::application::storage::settings::accessor::FlashSettingsAccessor;
-use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::settings_screens::SettingScreen;
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
+use crate::storage::settings::accessor::FlashSettingsAccessor;
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use core::cmp::{max, min, PartialEq};
 use core::fmt::Write;
 use defmt::error;

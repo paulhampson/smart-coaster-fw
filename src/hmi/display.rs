@@ -16,11 +16,10 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{
     ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
 };
-use crate::application::storage::settings::option_types::MonitoringTargetPeriodOptions;
-use crate::application::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
 use crate::hmi::rotary_encoder::Direction;
 use crate::hmi::screens::monitoring::MonitoringScreen;
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::hmi::screens::settings_menu::SettingMenu;
 use crate::hmi::screens::settings_screens::about::AboutScreen;
 use crate::hmi::screens::settings_screens::calibration::CalibrationScreens;
@@ -28,8 +27,9 @@ use crate::hmi::screens::settings_screens::heap_status::HeapStatusScreen;
 use crate::hmi::screens::settings_screens::set_date_time::SetDateTimeScreen;
 use crate::hmi::screens::settings_screens::set_number::SetNumberScreen;
 use crate::hmi::screens::settings_screens::test_mode::TestModeScreen;
-use crate::hmi::screens::{draw_message_screen, settings_menu, UiDrawer, UiInput, UiInputHandler};
+use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
 use crate::rtc::accessor::RtcAccessor;
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select3, Either3};
 use embassy_sync::pubsub::WaitResult;
@@ -58,7 +58,7 @@ where
     heap_status_screen: HeapStatusScreen,
     calibration_screens: CalibrationScreens,
     set_date_time_screen: SetDateTimeScreen,
-    number_entry_screen: SetNumberScreen,
+    number_setting_screen: SetNumberScreen,
     about_screen: AboutScreen,
 
     settings: SA,
@@ -101,13 +101,14 @@ where
             heap_status_screen: HeapStatusScreen::new(),
             calibration_screens: CalibrationScreens::new(),
             set_date_time_screen: SetDateTimeScreen::new(),
-            number_entry_screen: SetNumberScreen::new(
+            number_setting_screen: SetNumberScreen::new(
+                // set some default values, these are changed as required
                 "Default",
                 "X",
                 0,
                 0,
                 1000,
-                SettingsAccessorId::MonitoringTargetValue,
+                SettingsAccessorId::MonitoringTargetDaily,
             ),
             about_screen: AboutScreen::new(),
 
@@ -156,12 +157,10 @@ where
     }
 
     async fn setup_monitoring_target_value_selection(&mut self) {
-        let properties = SettingsAccessorId::MonitoringTargetValue
-            .get_numeric_properties()
-            .unwrap();
-        let value = if let SettingValue::UInt(value) = self
+        // get target type
+        let monitoring_target_id = if let SettingValue::UInt(value) = self
             .settings
-            .get_setting(SettingsAccessorId::MonitoringTargetValue)
+            .get_setting(SettingsAccessorId::MonitoringTargetType)
             .await
             .unwrap_or(SettingValue::UInt(0))
         {
@@ -169,28 +168,52 @@ where
         } else {
             0u32
         };
+        let monitoring_target = MonitoringTargetPeriodOptions::from(monitoring_target_id as usize);
 
-        let units = if let Some(SettingValue::SmallUInt(monitoring_target_idx)) = self
-            .settings
-            .get_setting(SettingsAccessorId::MonitoringTargetType)
-            .await
-        {
-            // TODO - fix this, it shouldn't be here - should be part of the stored option, but that got a bit messy
-            match settings_menu::monitoring_options::MonitoringTargetPeriodOptions::monitoring_mode_to_storage_option_mapping(monitoring_target_idx as usize) {
-                    MonitoringTargetPeriodOptions::Daily => {"ml/day"}
-                    MonitoringTargetPeriodOptions::Hourly => {"ml/hour"}
-                }
-        } else {
-            "ml/day"
-        };
+        // get target properties and value
+        let value;
+        let properties;
+        match monitoring_target {
+            MonitoringTargetPeriodOptions::Daily => {
+                properties = SettingsAccessorId::MonitoringTargetDaily
+                    .get_numeric_properties()
+                    .unwrap();
+                value = if let SettingValue::UInt(value) = self
+                    .settings
+                    .get_setting(SettingsAccessorId::MonitoringTargetDaily)
+                    .await
+                    .unwrap_or(SettingValue::UInt(0))
+                {
+                    value
+                } else {
+                    0u32
+                };
+            }
+            MonitoringTargetPeriodOptions::Hourly => {
+                properties = SettingsAccessorId::MonitoringTargetHourly
+                    .get_numeric_properties()
+                    .unwrap();
+                value = if let SettingValue::UInt(value) = self
+                    .settings
+                    .get_setting(SettingsAccessorId::MonitoringTargetHourly)
+                    .await
+                    .unwrap_or(SettingValue::UInt(0))
+                {
+                    value
+                } else {
+                    0u32
+                };
+            }
+        }
 
-        self.number_entry_screen = SetNumberScreen::new(
-            "Target",
-            units,
+        // setup number screen
+        self.number_setting_screen = SetNumberScreen::new(
+            monitoring_target.title(),
+            monitoring_target.units(),
             value,
             properties.minimum_value,
             properties.maximum_value,
-            SettingsAccessorId::MonitoringTargetValue,
+            SettingsAccessorId::MonitoringTargetDaily,
         );
     }
 
@@ -198,7 +221,7 @@ where
         debug!("Display state: {:?}", display_state);
 
         if let ApplicationState::NumberEntry(setting_id) = display_state {
-            if setting_id == SettingsAccessorId::MonitoringTargetValue {
+            if setting_id == SettingsAccessorId::MonitoringTargetDaily {
                 self.setup_monitoring_target_value_selection().await
             }
         }
@@ -240,7 +263,7 @@ where
                 self.set_date_time_screen.draw(&mut self.display).unwrap()
             }
             ApplicationState::NumberEntry(_) => {
-                self.number_entry_screen.draw(&mut self.display).unwrap()
+                self.number_setting_screen.draw(&mut self.display).unwrap()
             }
             ApplicationState::AboutScreen => {
                 self.about_screen.update_pre_draw_actions(&self.display);
@@ -290,7 +313,7 @@ where
                     .await
             }
             ApplicationState::NumberEntry(_) => {
-                self.number_entry_screen
+                self.number_setting_screen
                     .ui_input_handler(input, &self.ui_action_publisher)
                     .await
             }

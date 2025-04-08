@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::storage::settings::{SettingError, SettingValue};
+use crate::storage::settings::{SettingError, SettingValue};
 use core::ops::Range;
 use defmt::{debug, trace, warn, Debug2Format};
 use embassy_embedded_hal::adapter::BlockingAsync;
@@ -61,8 +61,10 @@ pub enum StoredSettings {
     SystemDisplayBrightness(SettingValue) = 3,
     WeighingSystemBitsToDiscard(SettingValue) = 4,
     MonitoringTargetType(SettingValue) = 5,
-    MonitoringTargetValue(SettingValue) = 6,
+    MonitoringTargetDaily(SettingValue) = 6,
     DisplayTimeoutMinutes(SettingValue) = 7,
+    MonitoringDayEnd(SettingValue) = 8,
+    MonitoringTargetHourly(SettingValue) = 9,
 }
 
 impl StoredSettings {
@@ -81,8 +83,10 @@ impl StoredSettings {
             StoredSettings::SystemDisplayBrightness(v) => v.clone(),
             StoredSettings::WeighingSystemBitsToDiscard(v) => v.clone(),
             StoredSettings::MonitoringTargetType(v) => v.clone(),
-            StoredSettings::MonitoringTargetValue(v) => v.clone(),
+            StoredSettings::MonitoringTargetDaily(v) => v.clone(),
             StoredSettings::DisplayTimeoutMinutes(v) => v.clone(),
+            StoredSettings::MonitoringDayEnd(v) => v.clone(),
+            StoredSettings::MonitoringTargetHourly(v) => v.clone(),
         }
     }
 }

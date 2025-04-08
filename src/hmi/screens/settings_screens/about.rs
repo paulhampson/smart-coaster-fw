@@ -60,7 +60,7 @@ impl AboutScreen {
     /// Manage updates on each re-draw. This function currently assumes that the top level
     /// display width is the same as the width the line display area is going to get. We need
     /// to do this here because the draw function is (rightly) not allowed to modify data.
-    pub fn update_pre_draw_actions<D>(&mut self, display: &D)
+    pub fn update_pre_draw_actions<D>(&mut self, _display: &D)
     where
         D: DrawTarget<Color = BinaryColor>,
     {
