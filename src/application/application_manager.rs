@@ -13,16 +13,18 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::{ApplicationState, CalibrationStateSubstates};
+use crate::application::messaging::ApplicationData::MonitoringUpdate;
 use crate::application::messaging::{
     ApplicationChannelPublisher, ApplicationData, ApplicationMessage,
 };
+use crate::drink_monitor::messaging::DrinkMonitorChannelSubscriber;
 use crate::hmi::messaging::HmiMessage::PushButtonPressed;
 use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiActionsMessage};
 use crate::storage::settings::SettingsAccessorId;
 use crate::weight::WeighingSystem;
 use crate::Heap;
 use defmt::debug;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::{Duration, Instant, Timer};
 
 pub struct ApplicationManager<WS> {
@@ -92,6 +94,7 @@ where
         &mut self,
         mut ui_action_receiver: UiActionChannelSubscriber<'_>,
         mut hmi_subscriber: HmiChannelSubscriber<'_>,
+        mut drink_monitor_receiver: DrinkMonitorChannelSubscriber<'_>,
     ) {
         self.update_application_state(ApplicationState::Startup)
             .await;
@@ -104,7 +107,11 @@ where
                 ApplicationState::Startup | ApplicationState::ErrorScreenWithMessage(_) => {}
                 ApplicationState::Monitoring => {
                     next_state = self
-                        .coaster_activity_monitoring(&mut ui_action_receiver, &mut hmi_subscriber)
+                        .coaster_activity_monitoring(
+                            &mut ui_action_receiver,
+                            &mut hmi_subscriber,
+                            &mut drink_monitor_receiver,
+                        )
                         .await;
                 }
                 ApplicationState::TestScreen => {
@@ -193,26 +200,35 @@ where
         &mut self,
         ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
         hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+        drink_monitor_subscriber: &mut DrinkMonitorChannelSubscriber<'_>,
     ) -> ApplicationState {
         self.update_application_state(ApplicationState::Monitoring)
             .await;
 
         loop {
-            let ui_or_hmi = select(
+            let ui_or_hmi = select3(
                 ui_action_subscriber.next_message_pure(),
                 hmi_subscriber.next_message_pure(),
+                drink_monitor_subscriber.next_message_pure(),
             )
             .await;
 
             match ui_or_hmi {
-                Either::First(ui_action_message) => {
+                Either3::First(ui_action_message) => {
                     if let UiActionsMessage::StateChangeRequest(new_state) = ui_action_message {
                         return new_state;
                     }
                 }
-                Either::Second(hmi_message) => {
+                Either3::Second(hmi_message) => {
                     self.app_publisher
                         .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
+                }
+                Either3::Third(drink_monitor_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::ApplicationDataUpdate(MonitoringUpdate(
+                            drink_monitor_message,
+                        )))
                         .await;
                 }
             }

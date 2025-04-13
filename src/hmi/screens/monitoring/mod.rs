@@ -20,9 +20,7 @@ use crate::drink_monitor::drink_monitoring::MonitoringStateSubstates;
 use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
-use crate::hmi::screens::{
-    draw_message_screen, UiDrawer, UiInput, UiInputHandler, DEFAULT_TEXT_STYLE,
-};
+use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
 use chrono::NaiveDateTime;
 use core::fmt::Write;
 use embedded_graphics::draw_target::DrawTarget;

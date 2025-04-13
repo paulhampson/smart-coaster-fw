@@ -1,9 +1,7 @@
-use crate::application::application_state::ApplicationState;
 use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitoringUpdate};
-use crate::hmi::messaging::{UiActionChannelSubscriber, UiActionsMessage};
 use crate::weight::WeighingSystem;
 use defmt::{debug, error, trace};
-use embassy_futures::select::{select, select3, Either, Either3};
+use embassy_futures::select::{select, Either};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;

@@ -1,7 +1,4 @@
-use crate::application::application_state::ApplicationState;
 use crate::drink_monitor::drink_monitoring::MonitoringStateSubstates;
-use crate::hmi::rotary_encoder::Direction;
-use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 

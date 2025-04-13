@@ -68,7 +68,9 @@ use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
 use crate::drink_monitor::drink_monitoring::DrinkMonitoring;
-use crate::drink_monitor::messaging::{DrinkMonitorChannel, DrinkMonitorChannelPublisher};
+use crate::drink_monitor::messaging::{
+    DrinkMonitorChannel, DrinkMonitorChannelPublisher, DrinkMonitorChannelSubscriber,
+};
 use crate::rtc::{RtcControl, SystemRtc};
 use core::ptr::addr_of_mut;
 use ds323x::Ds323x;
@@ -267,6 +269,7 @@ fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) 
             APP_CHANNEL.publisher().unwrap(),
             HMI_CHANNEL.subscriber().unwrap(),
             UI_ACTION_CHANNEL.subscriber().unwrap(),
+            DRINK_MONITOR_CHANNEL.subscriber().unwrap(),
             ws,
             heap,
         ))
@@ -409,13 +412,18 @@ async fn application_task(
     app_channel_sender: ApplicationChannelPublisher<'static>,
     hmi_channel_receiver: HmiChannelSubscriber<'static>,
     ui_action_channel_receiver: UiActionChannelSubscriber<'static>,
+    drink_monitor_receiver: DrinkMonitorChannelSubscriber<'static>,
     weight_interface: WeighingSystemOverChannel,
     heap: &'static Heap,
 ) {
     let mut application_manager =
         ApplicationManager::new(app_channel_sender, weight_interface, heap);
     application_manager
-        .run(ui_action_channel_receiver, hmi_channel_receiver)
+        .run(
+            ui_action_channel_receiver,
+            hmi_channel_receiver,
+            drink_monitor_receiver,
+        )
         .await;
 }
 
