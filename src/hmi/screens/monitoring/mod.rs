@@ -146,7 +146,9 @@ impl MonitoringScreen {
                 .draw(display)?;
             }
             MonitoringStateSubstates::Error(error_message) => {
-                todo!("{}", error_message);
+                let mut string_buffer = String::<100>::new();
+                write!(string_buffer, "Error: {}", error_message).unwrap();
+                draw_message_screen(display, string_buffer.as_str())?;
             }
         }
         Ok(())
