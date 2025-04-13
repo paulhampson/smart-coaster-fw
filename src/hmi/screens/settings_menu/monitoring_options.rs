@@ -39,12 +39,34 @@ impl MonitoringTargetPeriodOptions {
     }
 }
 
-impl From<usize> for MonitoringTargetPeriodOptions {
-    fn from(value: usize) -> Self {
+impl TryFrom<usize> for MonitoringTargetPeriodOptions {
+    type Error = ();
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
-            0 => Self::Daily,
-            1 => Self::Hourly,
+            0 => Ok(Self::Daily),
+            1 => Ok(Self::Hourly),
             _ => panic!("Invalid monitoring target period"),
+        }
+    }
+}
+
+impl TryFrom<u8> for MonitoringTargetPeriodOptions {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Daily),
+            1 => Ok(Self::Hourly),
+            _ => panic!("Invalid monitoring target period"),
+        }
+    }
+}
+
+impl From<MonitoringTargetPeriodOptions> for u8 {
+    fn from(value: MonitoringTargetPeriodOptions) -> Self {
+        match value {
+            MonitoringTargetPeriodOptions::Daily => 0,
+            MonitoringTargetPeriodOptions::Hourly => 1,
         }
     }
 }

@@ -259,7 +259,7 @@ where
             }
             SettingMenuIdentifier::SetMonitoringTargetType => ui_action_publisher
                 .publish_immediate(UiActionsMessage::MonitoringModeChangeRequest(
-                    MonitoringTargetPeriodOptions::from(option_id),
+                    MonitoringTargetPeriodOptions::try_from(option_id).unwrap(),
                 )),
             SettingMenuIdentifier::DisplayTimeout => ui_action_publisher.publish_immediate(
                 UiActionsMessage::DisplayTimeoutChangeRequest(

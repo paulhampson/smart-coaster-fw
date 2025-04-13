@@ -1,7 +1,13 @@
+use crate::application::messaging::{
+    ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
+};
 use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitoringUpdate};
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
+use crate::storage::settings::accessor::FlashSettingsAccessor;
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::weight::WeighingSystem;
-use defmt::{debug, error, trace};
-use embassy_futures::select::{select, Either};
+use defmt::{debug, error, trace, warn, Debug2Format};
+use embassy_futures::select::{select3, Either3};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
@@ -118,9 +124,19 @@ where
         consumption_rate
     }
 
+    async fn update_monitoring_mode(&mut self, mode: MonitoringTargetPeriodOptions) {
+        self.drink_monitor_publisher
+            .publish(DrinkMonitoringUpdate::TargetMode(mode))
+            .await;
+    }
+
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
     /// how much fluid has been added and consumed. Report the consumption rate.
-    pub async fn run(&mut self) {
+    pub async fn run(
+        &mut self,
+        mut application_channel_subscriber: ApplicationChannelSubscriber<'_>,
+        mut settings: FlashSettingsAccessor,
+    ) {
         const MINIMUM_DELTA_FOR_STATE_CHANGE: f32 = 10.0;
         let mut last_stable_weight = self.get_stabilised_weight().await;
         let mut vessel_placed_weight = last_stable_weight;
@@ -131,13 +147,14 @@ where
         debug!("Drink monitoring running");
 
         loop {
-            let weight_update_or_consumption_tick = select(
+            let weight_update_or_consumption_tick_or_app_data = select3(
                 self.wait_for_weight_activity(),
                 consumption_update_ticker.next(),
+                application_channel_subscriber.next_message_pure(),
             )
             .await;
-            match weight_update_or_consumption_tick {
-                Either::First(_) => {
+            match weight_update_or_consumption_tick_or_app_data {
+                Either3::First(_) => {
                     let new_stable_weight = self.get_stabilised_weight().await;
                     let stable_delta = new_stable_weight - last_stable_weight;
 
@@ -151,7 +168,6 @@ where
                         let consumption_rate = self
                             .update_consumption_rate(monitoring_start_time, total_consumption)
                             .await;
-
                         vessel_placed_weight = new_stable_weight;
                         trace!("New placed weight {}", vessel_placed_weight);
                         debug!("Consumption = {} ml", consumption);
@@ -173,11 +189,35 @@ where
                     }
                     last_stable_weight = new_stable_weight;
                 }
-                Either::Second(_) => {
+                Either3::Second(_) => {
                     let consumption_rate = self
                         .update_consumption_rate(monitoring_start_time, total_consumption)
                         .await;
                     debug!("Consumption rate = {} ml/hr", consumption_rate.round());
+                }
+                Either3::Third(app_message) => {
+                    if let ApplicationMessage::ApplicationDataUpdate(app_data) = app_message {
+                        match app_data {
+                            ApplicationData::MonitoringMode(mode) => {
+                                settings
+                                    .save_setting(
+                                        SettingsAccessorId::MonitoringTargetType,
+                                        SettingValue::SmallUInt(mode.into()),
+                                    )
+                                    .await
+                                    .unwrap_or_else(|e| {
+                                        warn!(
+                                            "Failed to store monitoring type: {:?}",
+                                            Debug2Format(&e)
+                                        )
+                                    });
+                                self.update_monitoring_mode(mode).await;
+                                // TODO: recalculate targets to send out
+                            }
+                            ApplicationData::MonitoringTarget(target) => {}
+                            _ => {}
+                        }
+                    }
                 }
             }
         }

@@ -282,6 +282,7 @@ fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) 
     spawner
         .spawn(drink_monitor_task(
             DRINK_MONITOR_CHANNEL.publisher().unwrap(),
+            APP_CHANNEL.subscriber().unwrap(),
             drink_monitor_ws,
         ))
         .unwrap();
@@ -430,8 +431,12 @@ async fn application_task(
 #[embassy_executor::task]
 async fn drink_monitor_task(
     drink_monitor_publisher: DrinkMonitorChannelPublisher<'static>,
+    application_channel_subscriber: ApplicationChannelSubscriber<'static>,
     weight_interface: WeighingSystemOverChannel,
 ) {
+    let settings = FlashSettingsAccessor::new();
     let mut drink_monitor = DrinkMonitoring::new(drink_monitor_publisher, weight_interface);
-    drink_monitor.run().await;
+    drink_monitor
+        .run(application_channel_subscriber, settings)
+        .await;
 }

@@ -158,9 +158,35 @@ where
 
     async fn setup_monitoring_target_value_selection(&mut self) {
         // get target type
-        let monitoring_target_id = if let SettingValue::UInt(value) = self
+        let monitoring_target_id = if let SettingValue::SmallUInt(value) = self
             .settings
             .get_setting(SettingsAccessorId::MonitoringTargetType)
+            .await
+            .unwrap_or(SettingValue::SmallUInt(0))
+        {
+            value
+        } else {
+            0u8
+        };
+        let monitoring_target =
+            MonitoringTargetPeriodOptions::try_from(monitoring_target_id as usize).unwrap();
+
+        // get target properties and value
+
+        let accessor_id;
+        match monitoring_target {
+            MonitoringTargetPeriodOptions::Daily => {
+                accessor_id = SettingsAccessorId::MonitoringTargetDaily;
+            }
+            MonitoringTargetPeriodOptions::Hourly => {
+                accessor_id = SettingsAccessorId::MonitoringTargetHourly;
+            }
+        }
+
+        let properties = accessor_id.get_numeric_properties().unwrap();
+        let value = if let SettingValue::UInt(value) = self
+            .settings
+            .get_setting(accessor_id)
             .await
             .unwrap_or(SettingValue::UInt(0))
         {
@@ -168,43 +194,6 @@ where
         } else {
             0u32
         };
-        let monitoring_target = MonitoringTargetPeriodOptions::from(monitoring_target_id as usize);
-
-        // get target properties and value
-        let value;
-        let properties;
-        match monitoring_target {
-            MonitoringTargetPeriodOptions::Daily => {
-                properties = SettingsAccessorId::MonitoringTargetDaily
-                    .get_numeric_properties()
-                    .unwrap();
-                value = if let SettingValue::UInt(value) = self
-                    .settings
-                    .get_setting(SettingsAccessorId::MonitoringTargetDaily)
-                    .await
-                    .unwrap_or(SettingValue::UInt(0))
-                {
-                    value
-                } else {
-                    0u32
-                };
-            }
-            MonitoringTargetPeriodOptions::Hourly => {
-                properties = SettingsAccessorId::MonitoringTargetHourly
-                    .get_numeric_properties()
-                    .unwrap();
-                value = if let SettingValue::UInt(value) = self
-                    .settings
-                    .get_setting(SettingsAccessorId::MonitoringTargetHourly)
-                    .await
-                    .unwrap_or(SettingValue::UInt(0))
-                {
-                    value
-                } else {
-                    0u32
-                };
-            }
-        }
 
         // setup number screen
         self.number_setting_screen = SetNumberScreen::new(
@@ -213,7 +202,7 @@ where
             value,
             properties.minimum_value,
             properties.maximum_value,
-            SettingsAccessorId::MonitoringTargetDaily,
+            accessor_id,
         );
     }
 

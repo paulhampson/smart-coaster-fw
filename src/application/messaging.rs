@@ -15,6 +15,7 @@
 use crate::application::application_state::{ApplicationState, CalibrationStateSubstates};
 use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::messaging::HmiMessage;
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::weight::messaging::WeightRequest;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
@@ -36,10 +37,12 @@ pub enum ApplicationData {
     DisplayBrightness(u8),
     DisplayTimeout(u8),
     MonitoringUpdate(DrinkMonitoringUpdate),
+    MonitoringMode(MonitoringTargetPeriodOptions),
+    MonitoringTarget(u32),
 }
 
 const CHANNEL_DEPTH: usize = 10;
-const CHANNEL_SUBS: usize = 3;
+const CHANNEL_SUBS: usize = 4;
 const CHANNEL_PUBS: usize = 4; // (1) application manager, (2) WeighingSystemOverChannel, (3) DrinkMonitoring
 
 pub type ApplicationChannel = PubSubChannel<

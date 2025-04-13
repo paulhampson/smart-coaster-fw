@@ -321,8 +321,19 @@ where
                             ))
                             .await
                     }
-                    UiActionsMessage::MonitoringModeChangeRequest(_period_option) => {
-                        // TODO use the period option - pass it to the monitoring functionality
+                    UiActionsMessage::MonitoringModeChangeRequest(period_option) => {
+                        self.app_publisher
+                            .publish(ApplicationMessage::ApplicationDataUpdate(
+                                ApplicationData::MonitoringMode(period_option),
+                            ))
+                            .await;
+                    }
+                    UiActionsMessage::MonitoringTargetChangeRequest(target) => {
+                        self.app_publisher
+                            .publish(ApplicationMessage::ApplicationDataUpdate(
+                                ApplicationData::MonitoringTarget(target),
+                            ))
+                            .await;
                     }
                     UiActionsMessage::DisplayTimeoutChangeRequest(new_timeout) => {
                         self.app_publisher

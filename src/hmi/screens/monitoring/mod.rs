@@ -20,6 +20,7 @@ use crate::drink_monitor::drink_monitoring::MonitoringStateSubstates;
 use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
 use chrono::NaiveDateTime;
 use core::fmt::Write;
@@ -42,6 +43,9 @@ pub struct MonitoringScreen {
     consumption: f32,
     consumption_rate: f32,
     total_consumed: f32,
+    target_rate: f32,
+    target_consumption: f32,
+    target_mode: MonitoringTargetPeriodOptions,
     state: MonitoringStateSubstates,
 
     datetime: NaiveDateTime,
@@ -53,6 +57,9 @@ impl MonitoringScreen {
             consumption: 0.0,
             consumption_rate: 0.0,
             total_consumed: 0.0,
+            target_rate: 0.0,
+            target_consumption: 0.0,
+            target_mode: MonitoringTargetPeriodOptions::Daily,
             state: MonitoringStateSubstates::WaitingForActivity,
             datetime: NaiveDateTime::default(),
         }
@@ -72,6 +79,15 @@ impl MonitoringScreen {
                 }
                 DrinkMonitoringUpdate::UpdateMonitoringSubstate(new_state) => {
                     self.state = new_state;
+                }
+                DrinkMonitoringUpdate::TargetRate(new_target_rate) => {
+                    self.target_rate = new_target_rate;
+                }
+                DrinkMonitoringUpdate::TargetConsumption(new_target_consumption) => {
+                    self.target_consumption = new_target_consumption;
+                }
+                DrinkMonitoringUpdate::TargetMode(new_target_mode) => {
+                    self.target_mode = new_target_mode;
                 }
             }
         }
@@ -125,10 +141,10 @@ impl MonitoringScreen {
 
                 match self.state {
                     MonitoringStateSubstates::VesselPlaced => {
-                        write!(string_buffer, "Vessel placed\n").unwrap();
+                        writeln!(string_buffer, "Vessel placed").unwrap();
                     }
                     MonitoringStateSubstates::VesselRemoved => {
-                        write!(string_buffer, "Vessel removed\n").unwrap();
+                        writeln!(string_buffer, "Vessel removed").unwrap();
                     }
                     _ => {}
                 };

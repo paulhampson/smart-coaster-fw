@@ -1,4 +1,5 @@
 use crate::drink_monitor::drink_monitoring::MonitoringStateSubstates;
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 
@@ -7,6 +8,9 @@ pub enum DrinkMonitoringUpdate {
     Consumption(f32),
     ConsumptionRate(f32),
     TotalConsumed(f32),
+    TargetRate(f32),
+    TargetConsumption(f32),
+    TargetMode(MonitoringTargetPeriodOptions),
     UpdateMonitoringSubstate(MonitoringStateSubstates),
 }
 
