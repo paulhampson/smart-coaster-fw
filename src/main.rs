@@ -22,6 +22,7 @@ compile_error!("cannot configure for flat_board and pcb_rev1 at the same time");
 compile_error!("no board configured - use feature \"flat_board\" or \"pcb_rev1\"");
 
 mod application;
+mod drink_monitor;
 mod hmi;
 mod led;
 mod rtc;
@@ -66,7 +67,8 @@ use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightC
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
-use crate::application::drink_monitoring::DrinkMonitoring;
+use crate::drink_monitor::drink_monitoring::DrinkMonitoring;
+use crate::drink_monitor::messaging::{DrinkMonitorChannel, DrinkMonitorChannelPublisher};
 use crate::rtc::{RtcControl, SystemRtc};
 use core::ptr::addr_of_mut;
 use ds323x::Ds323x;
@@ -79,6 +81,7 @@ static HMI_CHANNEL: HmiChannel = PubSubChannel::new();
 static UI_ACTION_CHANNEL: UiActionChannel = PubSubChannel::new();
 static WEIGHT_CHANNEL: WeightChannel = PubSubChannel::new();
 static APP_CHANNEL: ApplicationChannel = PubSubChannel::new();
+static DRINK_MONITOR_CHANNEL: DrinkMonitorChannel = PubSubChannel::new();
 
 const CORE1_STACK_SIZE: usize = 16 * 1024;
 const HEAP_SIZE: usize = 16 * 1024;
@@ -275,8 +278,7 @@ fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) 
     );
     spawner
         .spawn(drink_monitor_task(
-            APP_CHANNEL.publisher().unwrap(),
-            UI_ACTION_CHANNEL.subscriber().unwrap(),
+            DRINK_MONITOR_CHANNEL.publisher().unwrap(),
             drink_monitor_ws,
         ))
         .unwrap();
@@ -419,10 +421,9 @@ async fn application_task(
 
 #[embassy_executor::task]
 async fn drink_monitor_task(
-    app_channel_sender: ApplicationChannelPublisher<'static>,
-    ui_action_channel_receiver: UiActionChannelSubscriber<'static>,
+    drink_monitor_publisher: DrinkMonitorChannelPublisher<'static>,
     weight_interface: WeighingSystemOverChannel,
 ) {
-    let mut drink_monitor = DrinkMonitoring::new(app_channel_sender, weight_interface);
-    drink_monitor.run(ui_action_channel_receiver).await;
+    let mut drink_monitor = DrinkMonitoring::new(drink_monitor_publisher, weight_interface);
+    drink_monitor.run().await;
 }

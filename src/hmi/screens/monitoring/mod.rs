@@ -14,11 +14,15 @@
 
 mod top_status_bar;
 
-use crate::application::application_state::{ApplicationState, MonitoringStateSubstates};
+use crate::application::application_state::ApplicationState;
 use crate::application::messaging::ApplicationData;
+use crate::drink_monitor::drink_monitoring::MonitoringStateSubstates;
+use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
-use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
+use crate::hmi::screens::{
+    draw_message_screen, UiDrawer, UiInput, UiInputHandler, DEFAULT_TEXT_STYLE,
+};
 use chrono::NaiveDateTime;
 use core::fmt::Write;
 use embedded_graphics::draw_target::DrawTarget;
@@ -57,20 +61,21 @@ impl MonitoringScreen {
     }
 
     fn process_application_data(&mut self, data: ApplicationData) {
-        match data {
-            ApplicationData::Consumption(new_consumption) => {
-                self.consumption = new_consumption;
+        if let ApplicationData::MonitoringUpdate(update) = data {
+            match update {
+                DrinkMonitoringUpdate::Consumption(new_consumption) => {
+                    self.consumption = new_consumption;
+                }
+                DrinkMonitoringUpdate::ConsumptionRate(new_consumption_rate) => {
+                    self.consumption_rate = new_consumption_rate;
+                }
+                DrinkMonitoringUpdate::TotalConsumed(new_total_consumed) => {
+                    self.total_consumed = new_total_consumed;
+                }
+                DrinkMonitoringUpdate::UpdateMonitoringSubstate(new_state) => {
+                    self.state = new_state;
+                }
             }
-            ApplicationData::ConsumptionRate(new_consumption_rate) => {
-                self.consumption_rate = new_consumption_rate;
-            }
-            ApplicationData::TotalConsumed(new_total_consumed) => {
-                self.total_consumed = new_total_consumed;
-            }
-            ApplicationData::MonitoringSubstate(new_state) => {
-                self.state = new_state;
-            }
-            _ => {}
         }
     }
 }
@@ -140,6 +145,9 @@ impl MonitoringScreen {
                 )
                 .draw(display)?;
             }
+            MonitoringStateSubstates::Error(error_message) => {
+                todo!("{}", error_message);
+            }
         }
         Ok(())
     }
@@ -170,6 +178,9 @@ impl MonitoringScreen {
             }
             MonitoringStateSubstates::VesselRemoved | MonitoringStateSubstates::VesselPlaced => {
                 self.draw_active_content(&mut content_display)?
+            }
+            MonitoringStateSubstates::Error(message) => {
+                self.draw_error(&mut content_display, message)?
             }
         }
         Ok(())
@@ -210,11 +221,7 @@ impl MonitoringScreen {
     where
         D: DrawTarget<Color = BinaryColor>,
     {
-        let bottom_bar_height = 0;
-        let mut main_area_display = display.cropped(&display.bounding_box().resized_height(
-            display.bounding_box().size.height - bottom_bar_height,
-            AnchorY::Top,
-        ));
+        let main_area_display = display;
 
         let left_icon_area_width = main_area_display.bounding_box().size.width / 3;
         let mut left_icon_display = main_area_display.cropped(
@@ -320,6 +327,37 @@ impl MonitoringScreen {
             text_style,
         )
         .draw(&mut right_display_area)?;
+
+        Ok(())
+    }
+
+    fn draw_error<D>(&self, display: &mut D, message: &str) -> Result<(), D::Error>
+    where
+        D: DrawTarget<Color = BinaryColor>,
+    {
+        let left_icon_area_width = display.bounding_box().size.width / 3;
+        let mut left_icon_display = display.cropped(
+            &display
+                .bounding_box()
+                .resized_width(left_icon_area_width, AnchorX::Left),
+        );
+
+        let icon = embedded_icon::mdi::size32px::AlertCircleOutline::new(BinaryColor::On);
+        let mut icon_location = left_icon_display.bounding_box().center();
+        icon_location.x -= (icon.size().width / 2) as i32;
+        icon_location.y -= (icon.size().height / 2) as i32;
+        Image::new(&icon, icon_location).draw(&mut left_icon_display)?;
+
+        let text_to_icon_padding = 5;
+        let right_text_area_width =
+            display.bounding_box().size.width - left_icon_area_width - text_to_icon_padding;
+        let mut right_text_display = display.cropped(
+            &display
+                .bounding_box()
+                .resized_width(right_text_area_width, AnchorX::Right),
+        );
+
+        draw_message_screen(&mut right_text_display, message)?;
 
         Ok(())
     }

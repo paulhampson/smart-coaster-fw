@@ -1,18 +1,24 @@
-use crate::application::application_state::{ApplicationState, MonitoringStateSubstates};
-use crate::application::messaging::{
-    ApplicationChannelPublisher, ApplicationData, ApplicationMessage,
-};
+use crate::application::application_state::ApplicationState;
+use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitoringUpdate};
 use crate::hmi::messaging::{UiActionChannelSubscriber, UiActionsMessage};
 use crate::weight::WeighingSystem;
-use defmt::{debug, trace};
-use embassy_futures::select::{select3, Either3};
+use defmt::{debug, error, trace};
+use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
 
+#[derive(Clone, PartialEq, Copy, Debug)]
+pub enum MonitoringStateSubstates {
+    WaitingForActivity,
+    VesselRemoved,
+    VesselPlaced,
+    Error(&'static str),
+}
+
 pub struct DrinkMonitoring<WS> {
     weighing_system: WS,
-    app_publisher: ApplicationChannelPublisher<'static>,
+    drink_monitor_publisher: DrinkMonitorChannelPublisher<'static>,
 }
 
 impl<WS> DrinkMonitoring<WS>
@@ -21,28 +27,31 @@ where
 {
     const STABILISED_WEIGHT_MAX_DELTA: f32 = 5.0;
 
-    pub fn new(app_publisher: ApplicationChannelPublisher<'static>, weighing_system: WS) -> Self {
+    pub fn new(
+        drink_monitor_publisher: DrinkMonitorChannelPublisher<'static>,
+        weighing_system: WS,
+    ) -> Self {
         Self {
-            app_publisher,
+            drink_monitor_publisher,
             weighing_system,
         }
     }
 
     async fn manage_error(&mut self, message: &'static str) -> ! {
-        self.app_publisher
-            .publish(ApplicationMessage::ApplicationStateUpdate(
-                ApplicationState::ErrorScreenWithMessage(message),
+        self.drink_monitor_publisher
+            .publish(DrinkMonitoringUpdate::UpdateMonitoringSubstate(
+                MonitoringStateSubstates::Error(message),
             ))
             .await;
+        error!("{}", message);
         loop {
+            // TODO - error recovery?
             Timer::after(Duration::from_secs(1)).await;
         }
     }
 
-    async fn send_application_data_update(&mut self, d: ApplicationData) {
-        self.app_publisher
-            .publish(ApplicationMessage::ApplicationDataUpdate(d))
-            .await;
+    async fn send_monitoring_update(&mut self, d: DrinkMonitoringUpdate) {
+        self.drink_monitor_publisher.publish(d).await;
     }
 
     async fn get_weight_reading_managed_error(&mut self) -> f32 {
@@ -91,10 +100,8 @@ where
     }
 
     async fn update_monitoring_substate(&mut self, state: MonitoringStateSubstates) {
-        self.app_publisher
-            .publish(ApplicationMessage::ApplicationDataUpdate(
-                ApplicationData::MonitoringSubstate(state),
-            ))
+        self.drink_monitor_publisher
+            .publish(DrinkMonitoringUpdate::UpdateMonitoringSubstate(state))
             .await;
     }
 
@@ -108,17 +115,14 @@ where
             1.0,
         );
         let consumption_rate = total_consumption / elapsed_time_in_hours;
-        self.send_application_data_update(ApplicationData::ConsumptionRate(consumption_rate))
+        self.send_monitoring_update(DrinkMonitoringUpdate::ConsumptionRate(consumption_rate))
             .await;
         consumption_rate
     }
 
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
     /// how much fluid has been added and consumed. Report the consumption rate.
-    pub async fn run(
-        &mut self,
-        mut ui_action_receiver: UiActionChannelSubscriber<'_>,
-    ) -> ApplicationState {
+    pub async fn run(&mut self) {
         const MINIMUM_DELTA_FOR_STATE_CHANGE: f32 = 10.0;
         let mut last_stable_weight = self.get_stabilised_weight().await;
         let mut vessel_placed_weight = last_stable_weight;
@@ -129,14 +133,13 @@ where
         debug!("Drink monitoring running");
 
         loop {
-            let activity_or_ticker_or_ui_action = select3(
+            let weight_update_or_consumption_tick = select(
                 self.wait_for_weight_activity(),
                 consumption_update_ticker.next(),
-                ui_action_receiver.next_message_pure(),
             )
             .await;
-            match activity_or_ticker_or_ui_action {
-                Either3::First(_) => {
+            match weight_update_or_consumption_tick {
+                Either::First(_) => {
                     let new_stable_weight = self.get_stabilised_weight().await;
                     let stable_delta = new_stable_weight - last_stable_weight;
 
@@ -156,12 +159,12 @@ where
                         debug!("Consumption = {} ml", consumption);
                         debug!("Total consumption = {} ml", total_consumption);
                         debug!("Consumption rate = {} ml/hr", consumption_rate.round());
-                        self.send_application_data_update(ApplicationData::Consumption(f32::max(
+                        self.send_monitoring_update(DrinkMonitoringUpdate::Consumption(f32::max(
                             0.0,
                             consumption,
                         )))
                         .await;
-                        self.send_application_data_update(ApplicationData::TotalConsumed(
+                        self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(
                             f32::max(0.0, total_consumption),
                         ))
                         .await;
@@ -172,16 +175,12 @@ where
                     }
                     last_stable_weight = new_stable_weight;
                 }
-                Either3::Second(_) => {
+                Either::Second(_) => {
                     let consumption_rate = self
                         .update_consumption_rate(monitoring_start_time, total_consumption)
                         .await;
                     debug!("Consumption rate = {} ml/hr", consumption_rate.round());
                 }
-                Either3::Third(ui_action_message) => match ui_action_message {
-                    UiActionsMessage::StateChangeRequest(new_state) => return new_state,
-                    _ => {}
-                },
             }
         }
     }

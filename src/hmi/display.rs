@@ -414,7 +414,7 @@ where
                             }
                             _ => {
                                 trace!("App data update");
-                                if let ApplicationData::MonitoringSubstate(_) = data_update {
+                                if let ApplicationData::MonitoringUpdate(_) = data_update {
                                     last_activity = Instant::now();
                                 }
                                 self.route_ui_input(UiInput::ApplicationData(data_update))

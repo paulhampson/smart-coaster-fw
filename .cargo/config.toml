@@ -1,5 +1,5 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --chip RP2040 --speed 4000"
+runner = "probe-rs run --chip RP2040 --speed 10000"
 
 [build]
 target = "thumbv6m-none-eabi"

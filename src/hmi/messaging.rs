@@ -13,6 +13,7 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::ApplicationState;
+use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::rotary_encoder::Direction;
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

@@ -12,9 +12,8 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::application_state::{
-    ApplicationState, CalibrationStateSubstates, MonitoringStateSubstates,
-};
+use crate::application::application_state::{ApplicationState, CalibrationStateSubstates};
+use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::messaging::HmiMessage;
 use crate::weight::messaging::WeightRequest;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -31,15 +30,12 @@ pub enum ApplicationMessage {
 #[derive(Clone)]
 pub enum ApplicationData {
     Weight(f32),
-    Consumption(f32),
-    ConsumptionRate(f32),
-    TotalConsumed(f32),
-    MonitoringSubstate(MonitoringStateSubstates),
     CalibrationSubstate(CalibrationStateSubstates),
     HeapStatus { used: usize, free: usize },
     LedBrightness(u8),
     DisplayBrightness(u8),
     DisplayTimeout(u8),
+    MonitoringUpdate(DrinkMonitoringUpdate),
 }
 
 const CHANNEL_DEPTH: usize = 10;

@@ -29,13 +29,6 @@ pub enum ApplicationState {
     AboutScreen,
 }
 
-#[derive(Clone, PartialEq)]
-pub enum MonitoringStateSubstates {
-    WaitingForActivity,
-    VesselRemoved,
-    VesselPlaced,
-}
-
 #[derive(Clone)]
 pub enum CalibrationStateSubstates {
     Tare,
