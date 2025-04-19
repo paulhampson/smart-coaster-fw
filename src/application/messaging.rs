@@ -15,7 +15,6 @@
 use crate::application::application_state::{ApplicationState, CalibrationStateSubstates};
 use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::messaging::HmiMessage;
-use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::weight::messaging::WeightRequest;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};

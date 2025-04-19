@@ -4,7 +4,7 @@ use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeri
 use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::messaging::SettingsMessage;
 use crate::storage::settings::monitor::FlashSettingsMonitor;
-use crate::storage::settings::{SettingValue, SettingsAccessorId};
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::weight::WeighingSystem;
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select4, Either4};
@@ -23,6 +23,9 @@ pub enum MonitoringStateSubstates {
 pub struct DrinkMonitoring<WS> {
     weighing_system: WS,
     drink_monitor_publisher: DrinkMonitorChannelPublisher<'static>,
+    hourly_consumption_target: f32,
+    daily_consumption_target: u32,
+    target_mode: MonitoringTargetPeriodOptions,
 }
 
 impl<WS> DrinkMonitoring<WS>
@@ -38,6 +41,9 @@ where
         Self {
             drink_monitor_publisher,
             weighing_system,
+            hourly_consumption_target: 0.0,
+            daily_consumption_target: 0,
+            target_mode: MonitoringTargetPeriodOptions::Hourly,
         }
     }
 
@@ -121,16 +127,66 @@ where
         let consumption_rate = total_consumption / elapsed_time_in_hours;
         self.send_monitoring_update(DrinkMonitoringUpdate::ConsumptionRate(consumption_rate))
             .await;
+        debug!("Consumption rate = {} ml/hr", consumption_rate.round());
         consumption_rate
     }
 
-    fn update_target() {}
+    fn update_hourly_target(&mut self) {
+        match self.target_mode {
+            MonitoringTargetPeriodOptions::Daily => {
+                self.hourly_consumption_target = self.daily_consumption_target as f32 / 24.0;
+                debug!(
+                    "Hourly target (calc'd from daily) is now {}",
+                    self.hourly_consumption_target
+                );
+            }
+            MonitoringTargetPeriodOptions::Hourly => {
+                // no calculation required.
+                debug!("Hourly target is {}", self.hourly_consumption_target);
+            }
+        }
+    }
 
-    async fn update_monitoring_mode(&mut self, mode: MonitoringTargetPeriodOptions) {
+    /// Sets internal monitoring mode state and retrieves associated target values.
+    async fn update_monitoring_mode(
+        &mut self,
+        mode: MonitoringTargetPeriodOptions,
+        settings: &FlashSettingsAccessor,
+    ) {
+        self.target_mode = mode;
         self.drink_monitor_publisher
             .publish(DrinkMonitoringUpdate::TargetMode(mode))
             .await;
-        // TODO recalculate rates etc
+
+        match self.target_mode {
+            MonitoringTargetPeriodOptions::Hourly => {
+                let hourly_setting = settings
+                    .get_setting(SettingsAccessorId::MonitoringTargetHourly)
+                    .await;
+                if let Some(SettingValue::UInt(hourly_target)) = hourly_setting {
+                    self.hourly_consumption_target = hourly_target as f32;
+                } else {
+                    warn!(
+                        "Unable to get expected data for hourly target: {}",
+                        Debug2Format(&hourly_setting)
+                    );
+                }
+            }
+            MonitoringTargetPeriodOptions::Daily => {
+                let daily_setting = settings
+                    .get_setting(SettingsAccessorId::MonitoringTargetDaily)
+                    .await;
+                if let Some(SettingValue::UInt(daily_target)) = daily_setting {
+                    self.daily_consumption_target = daily_target;
+                } else {
+                    warn!(
+                        "Unable to get expected data for daily target: {}",
+                        Debug2Format(&daily_setting)
+                    );
+                }
+            }
+        }
+        self.update_hourly_target();
     }
 
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
@@ -138,7 +194,7 @@ where
     pub async fn run(
         &mut self,
         mut application_channel_subscriber: ApplicationChannelSubscriber<'_>,
-        mut settings: FlashSettingsAccessor,
+        settings: FlashSettingsAccessor,
     ) {
         const MINIMUM_DELTA_FOR_STATE_CHANGE: f32 = 10.0;
         let mut last_stable_weight = self.get_stabilised_weight().await;
@@ -147,6 +203,21 @@ where
         let monitoring_start_time = Instant::now();
         let mut consumption_update_ticker = Ticker::every(Duration::from_secs(60));
         let mut settings_monitor = FlashSettingsMonitor::new();
+
+        // initialise from stored settings
+        let mode_from_settings = settings
+            .get_setting(SettingsAccessorId::MonitoringTargetType)
+            .await;
+        if let Some(SettingValue::SmallUInt(mode_id)) = mode_from_settings {
+            let mode = mode_id.try_into().unwrap();
+            debug!("Monitoring mode initialised to: {}", Debug2Format(&mode));
+            self.update_monitoring_mode(mode, &settings).await;
+        } else {
+            panic!(
+                "Unexpected monitoring mode initialisation data: {:?}",
+                &mode_from_settings
+            );
+        }
 
         loop {
             let weight_update_or_consumption_tick_or_app_data = select4(
@@ -168,14 +239,12 @@ where
                         if consumption > 0.0 {
                             total_consumption += consumption;
                         }
-                        let consumption_rate = self
-                            .update_consumption_rate(monitoring_start_time, total_consumption)
+                        self.update_consumption_rate(monitoring_start_time, total_consumption)
                             .await;
                         vessel_placed_weight = new_stable_weight;
                         trace!("New placed weight {}", vessel_placed_weight);
                         debug!("Consumption = {} ml", consumption);
                         debug!("Total consumption = {} ml", total_consumption);
-                        debug!("Consumption rate = {} ml/hr", consumption_rate.round());
                         self.send_monitoring_update(DrinkMonitoringUpdate::Consumption(f32::max(
                             0.0,
                             consumption,
@@ -193,17 +262,37 @@ where
                     last_stable_weight = new_stable_weight;
                 }
                 Either4::Second(_) => {
-                    let consumption_rate = self
-                        .update_consumption_rate(monitoring_start_time, total_consumption)
+                    self.update_consumption_rate(monitoring_start_time, total_consumption)
                         .await;
-                    debug!("Consumption rate = {} ml/hr", consumption_rate.round());
+                    self.update_hourly_target();
                 }
                 Either4::Third(_app_message) => {}
                 Either4::Fourth(setting_message) => {
                     if let SettingsMessage::Change(changed_setting) = setting_message {
                         match changed_setting.setting_id {
-                            SettingsAccessorId::MonitoringTargetHourly => {}
-                            SettingsAccessorId::MonitoringTargetDaily => {}
+                            SettingsAccessorId::MonitoringTargetHourly => {
+                                if let SettingValue::UInt(new_hourly_target) = changed_setting.value
+                                {
+                                    self.hourly_consumption_target = new_hourly_target as f32;
+                                    debug!("Hourly target is now {}", new_hourly_target);
+                                } else {
+                                    warn!(
+                                        "Expected setting value for MonitoringTargetHourly: {}",
+                                        Debug2Format(&changed_setting.value)
+                                    );
+                                }
+                            }
+                            SettingsAccessorId::MonitoringTargetDaily => {
+                                if let SettingValue::UInt(new_daily_target) = changed_setting.value
+                                {
+                                    self.daily_consumption_target = new_daily_target;
+                                } else {
+                                    warn!(
+                                        "Expected setting value for MonitoringTargetDaily: {}",
+                                        Debug2Format(&changed_setting.value)
+                                    );
+                                }
+                            }
                             SettingsAccessorId::MonitoringTargetType => {
                                 if let SettingValue::SmallUInt(mode_id) = changed_setting.value {
                                     let new_mode = mode_id.try_into().unwrap();
@@ -211,7 +300,7 @@ where
                                         "Monitoring mode changed to: {}",
                                         Debug2Format(&new_mode)
                                     );
-                                    self.update_monitoring_mode(new_mode).await;
+                                    self.update_monitoring_mode(new_mode, &settings).await;
                                 } else {
                                     warn!(
                                         "Unexpected MonitoringTargetType setting value: {}",
