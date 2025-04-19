@@ -42,7 +42,7 @@ pub trait UiInputHandler {
     async fn ui_input_handler(
         &mut self,
         input: UiInput,
-        ui_action_publisher: &UiActionChannelPublisher,
+        ui_action_publisher: &UiActionChannelPublisher<'static>,
     );
 }
 

@@ -13,12 +13,12 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::ApplicationState;
-use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
+use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::settings_menu::display_options::{
     DisplayBrightnessOptions, DisplayTimeoutOptions,
 };
-use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
+use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use core::marker::PhantomData;
 use defmt::debug;
@@ -232,8 +232,8 @@ where
         menu
     }
 
-    fn process_multi_options(
-        ui_action_publisher: &UiActionChannelPublisher,
+    async fn process_multi_options(
+        ui_action_publisher: &UiActionChannelPublisher<'static>,
         id: SettingMenuIdentifier,
         option_id: usize,
     ) {
@@ -242,30 +242,37 @@ where
             Debug2Format(&id),
             Debug2Format(&option_id)
         );
+        let mut settings = FlashSettingsAccessor::new();
         match id {
             SettingMenuIdentifier::SetLedBrightness => {
-                ui_action_publisher.publish_immediate(
-                    UiActionsMessage::LedBrightnessChangeRequest(
-                        LedBrightnessOptions::option_index_to_brightness(option_id),
-                    ),
-                );
+                // TODO change this to a direct setting write and then publish change through settings channel
+                ui_action_publisher.publish_immediate(UiRequestMessage::ChangeLedBrightness(
+                    LedBrightnessOptions::option_index_to_brightness(option_id),
+                ));
             }
             SettingMenuIdentifier::DisplayBrightness => {
-                ui_action_publisher.publish_immediate(
-                    UiActionsMessage::DisplayBrightnessChangeRequest(
-                        DisplayBrightnessOptions::option_index_to_brightness(option_id),
-                    ),
-                );
+                // TODO change this to a direct setting write and then publish change through settings channel
+                ui_action_publisher.publish_immediate(UiRequestMessage::ChangeDisplayBrightness(
+                    DisplayBrightnessOptions::option_index_to_brightness(option_id),
+                ));
             }
-            SettingMenuIdentifier::SetMonitoringTargetType => ui_action_publisher
-                .publish_immediate(UiActionsMessage::MonitoringModeChangeRequest(
-                    MonitoringTargetPeriodOptions::try_from(option_id).unwrap(),
-                )),
-            SettingMenuIdentifier::DisplayTimeout => ui_action_publisher.publish_immediate(
-                UiActionsMessage::DisplayTimeoutChangeRequest(
+            SettingMenuIdentifier::SetMonitoringTargetType => {
+                settings
+                    .save_setting(
+                        SettingsAccessorId::MonitoringTargetType,
+                        SettingValue::SmallUInt(option_id as u8),
+                    )
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to store monitoring type: {:?}", Debug2Format(&e))
+                    });
+            }
+            SettingMenuIdentifier::DisplayTimeout => {
+                // TODO change this to a direct setting write and then publish change through settings channel
+                ui_action_publisher.publish_immediate(UiRequestMessage::ChangeDisplayTimeout(
                     DisplayTimeoutOptions::option_index_to_minutes(option_id),
-                ),
-            ),
+                ))
+            }
 
             SettingMenuIdentifier::None => {}
             SettingMenuIdentifier::Root => {}
@@ -278,46 +285,45 @@ where
         }
     }
 
-    fn process_selection(
+    async fn process_selection(
         &self,
         selection_data: SelectedData<SettingMenuIdentifier>,
-        ui_action_publisher: &UiActionChannelPublisher,
+        ui_action_publisher: &UiActionChannelPublisher<'static>,
     ) {
         match selection_data {
             SelectedData::Action { id: identifier } => match identifier {
                 SettingMenuIdentifier::EnterTestScreen => {
-                    ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                    ui_action_publisher.publish_immediate(UiRequestMessage::ChangeState(
                         ApplicationState::TestScreen,
                     ));
                 }
                 SettingMenuIdentifier::EnterHeapStatusScreen => {
-                    ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                    ui_action_publisher.publish_immediate(UiRequestMessage::ChangeState(
                         ApplicationState::HeapStatus,
                     ));
                 }
                 SettingMenuIdentifier::DoCalibration => ui_action_publisher.publish_immediate(
-                    UiActionsMessage::StateChangeRequest(ApplicationState::Calibration),
+                    UiRequestMessage::ChangeState(ApplicationState::Calibration),
                 ),
                 SettingMenuIdentifier::SetDateTime => ui_action_publisher.publish_immediate(
-                    UiActionsMessage::StateChangeRequest(ApplicationState::SetDateTime),
+                    UiRequestMessage::ChangeState(ApplicationState::SetDateTime),
                 ),
                 SettingMenuIdentifier::SetMonitoringTargetValue => ui_action_publisher
-                    .publish_immediate(UiActionsMessage::StateChangeRequest(
+                    .publish_immediate(UiRequestMessage::ChangeState(
                         ApplicationState::NumberEntry(SettingsAccessorId::MonitoringTargetDaily),
                     )),
                 SettingMenuIdentifier::AboutScreen => ui_action_publisher.publish_immediate(
-                    UiActionsMessage::StateChangeRequest(ApplicationState::AboutScreen),
+                    UiRequestMessage::ChangeState(ApplicationState::AboutScreen),
                 ),
                 _ => {}
             },
             SelectedData::MultiOption { id, option_id } => {
-                Self::process_multi_options(ui_action_publisher, id, option_id);
+                Self::process_multi_options(ui_action_publisher, id, option_id).await;
             }
             SelectedData::Checkbox { id: _, state: _ } => {}
             SelectedData::Exit { id: _ } => {
-                ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
-                    ApplicationState::Monitoring,
-                ));
+                ui_action_publisher
+                    .publish_immediate(UiRequestMessage::ChangeState(ApplicationState::Monitoring));
             }
             _ => {}
         }
@@ -331,7 +337,7 @@ where
     async fn ui_input_handler(
         &mut self,
         input: UiInput,
-        ui_action_publisher: &UiActionChannelPublisher<'_>,
+        ui_action_publisher: &UiActionChannelPublisher<'static>,
     ) {
         match input {
             UiInput::EncoderClockwise => {
@@ -342,7 +348,8 @@ where
             }
             UiInput::ButtonPress => {
                 if let Some(select_result) = self.menu.select_item() {
-                    self.process_selection(select_result, ui_action_publisher);
+                    self.process_selection(select_result, ui_action_publisher)
+                        .await;
                 }
             }
             UiInput::ButtonRelease => {}

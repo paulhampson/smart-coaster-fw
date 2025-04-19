@@ -157,7 +157,6 @@ where
     }
 
     async fn setup_monitoring_target_value_selection(&mut self) {
-        // get target type
         let monitoring_target_id = if let SettingValue::SmallUInt(value) = self
             .settings
             .get_setting(SettingsAccessorId::MonitoringTargetType)
@@ -171,17 +170,10 @@ where
         let monitoring_target =
             MonitoringTargetPeriodOptions::try_from(monitoring_target_id as usize).unwrap();
 
-        // get target properties and value
-
-        let accessor_id;
-        match monitoring_target {
-            MonitoringTargetPeriodOptions::Daily => {
-                accessor_id = SettingsAccessorId::MonitoringTargetDaily;
-            }
-            MonitoringTargetPeriodOptions::Hourly => {
-                accessor_id = SettingsAccessorId::MonitoringTargetHourly;
-            }
-        }
+        let accessor_id = match monitoring_target {
+            MonitoringTargetPeriodOptions::Daily => SettingsAccessorId::MonitoringTargetDaily,
+            MonitoringTargetPeriodOptions::Hourly => SettingsAccessorId::MonitoringTargetHourly,
+        };
 
         let properties = accessor_id.get_numeric_properties().unwrap();
         let value = if let SettingValue::UInt(value) = self
@@ -195,7 +187,6 @@ where
             0u32
         };
 
-        // setup number screen
         self.number_setting_screen = SetNumberScreen::new(
             monitoring_target.title(),
             monitoring_target.units(),

@@ -14,7 +14,7 @@
 
 use crate::application::application_state::ApplicationState;
 use crate::application::messaging::ApplicationData;
-use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
+use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::UiInput;
 use crate::hmi::screens::UiInputHandler;
 use crate::hmi::screens::{add_newlines_to_string, UiDrawer};
@@ -59,9 +59,8 @@ impl UiInputHandler for HeapStatusScreen {
         ui_channel_publisher: &UiActionChannelPublisher<'_>,
     ) {
         match input {
-            UiInput::ButtonPress => ui_channel_publisher.publish_immediate(
-                UiActionsMessage::StateChangeRequest(ApplicationState::Settings),
-            ),
+            UiInput::ButtonPress => ui_channel_publisher
+                .publish_immediate(UiRequestMessage::ChangeState(ApplicationState::Settings)),
             UiInput::ApplicationData(data) => {
                 self.process_app_data(data);
             }

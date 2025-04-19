@@ -12,12 +12,14 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::storage::settings::messaging::{SettingData, SettingsMessage};
 use crate::storage::settings::settings_store::{
     wait_for_settings_store_initialisation, BlockingAsyncFlash, StoredSettings, SETTINGS_STORE,
 };
 use crate::storage::settings::{SettingError, SettingValue, SettingsAccessor, SettingsAccessorId};
 use core::ops::Range;
 use defmt::error;
+
 pub struct FlashSettingsAccessor {}
 
 impl FlashSettingsAccessor {
@@ -101,7 +103,15 @@ impl SettingsAccessor for FlashSettingsAccessor {
 
         wait_for_settings_store_initialisation().await;
         let mut settings = SETTINGS_STORE.lock().await;
-        settings.queue_settings_save(setting_obj)
+        settings.queue_settings_save(setting_obj)?;
+
+        let setting_data = SettingData {
+            setting_id: setting,
+            value,
+        };
+        settings.alert_system(SettingsMessage::Change(setting_data));
+
+        Ok(())
     }
 }
 

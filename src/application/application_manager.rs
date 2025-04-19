@@ -19,7 +19,7 @@ use crate::application::messaging::{
 };
 use crate::drink_monitor::messaging::DrinkMonitorChannelSubscriber;
 use crate::hmi::messaging::HmiMessage::PushButtonPressed;
-use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiActionsMessage};
+use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiRequestMessage};
 use crate::storage::settings::SettingsAccessorId;
 use crate::weight::WeighingSystem;
 use crate::Heap;
@@ -215,7 +215,7 @@ where
 
             match ui_or_hmi {
                 Either3::First(ui_action_message) => {
-                    if let UiActionsMessage::StateChangeRequest(new_state) = ui_action_message {
+                    if let UiRequestMessage::ChangeState(new_state) = ui_action_message {
                         return new_state;
                     }
                 }
@@ -304,38 +304,24 @@ where
 
             match ui_or_hmi {
                 Either::First(ui_action_message) => match ui_action_message {
-                    UiActionsMessage::StateChangeRequest(new_state) => {
+                    UiRequestMessage::ChangeState(new_state) => {
                         return new_state;
                     }
-                    UiActionsMessage::LedBrightnessChangeRequest(new_brightness) => {
+                    UiRequestMessage::ChangeLedBrightness(new_brightness) => {
                         self.app_publisher
                             .publish(ApplicationMessage::ApplicationDataUpdate(
                                 ApplicationData::LedBrightness(new_brightness),
                             ))
                             .await
                     }
-                    UiActionsMessage::DisplayBrightnessChangeRequest(new_brightness) => {
+                    UiRequestMessage::ChangeDisplayBrightness(new_brightness) => {
                         self.app_publisher
                             .publish(ApplicationMessage::ApplicationDataUpdate(
                                 ApplicationData::DisplayBrightness(new_brightness),
                             ))
                             .await
                     }
-                    UiActionsMessage::MonitoringModeChangeRequest(period_option) => {
-                        self.app_publisher
-                            .publish(ApplicationMessage::ApplicationDataUpdate(
-                                ApplicationData::MonitoringMode(period_option),
-                            ))
-                            .await;
-                    }
-                    UiActionsMessage::MonitoringTargetChangeRequest(target) => {
-                        self.app_publisher
-                            .publish(ApplicationMessage::ApplicationDataUpdate(
-                                ApplicationData::MonitoringTarget(target),
-                            ))
-                            .await;
-                    }
-                    UiActionsMessage::DisplayTimeoutChangeRequest(new_timeout) => {
+                    UiRequestMessage::ChangeDisplayTimeout(new_timeout) => {
                         self.app_publisher
                             .publish(ApplicationMessage::ApplicationDataUpdate(
                                 ApplicationData::DisplayTimeout(new_timeout),
@@ -368,7 +354,7 @@ where
 
             match ui_or_hmi {
                 Either::First(ui_action_message) => {
-                    if let UiActionsMessage::StateChangeRequest(new_state) = ui_action_message {
+                    if let UiRequestMessage::ChangeState(new_state) = ui_action_message {
                         return new_state;
                     }
                 }
@@ -397,7 +383,7 @@ where
 
             match ui_or_hmi {
                 Either::First(ui_action_message) => {
-                    if let UiActionsMessage::StateChangeRequest(new_state) = ui_action_message {
+                    if let UiRequestMessage::ChangeState(new_state) = ui_action_message {
                         return new_state;
                     }
                 }
@@ -433,7 +419,7 @@ where
 
             match ui_or_hmi {
                 Either::First(ui_action_message) => match ui_action_message {
-                    UiActionsMessage::StateChangeRequest(new_state) => {
+                    UiRequestMessage::ChangeState(new_state) => {
                         return new_state;
                     }
                     _ => {}
@@ -464,7 +450,7 @@ where
 
             match ui_or_hmi {
                 Either::First(ui_action_message) => {
-                    if let UiActionsMessage::StateChangeRequest(new_state) = ui_action_message {
+                    if let UiRequestMessage::ChangeState(new_state) = ui_action_message {
                         return new_state;
                     }
                 }

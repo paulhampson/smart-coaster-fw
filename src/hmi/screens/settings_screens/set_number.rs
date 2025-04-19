@@ -13,7 +13,7 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::ApplicationState;
-use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
+use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::settings_screens::SettingScreen;
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use crate::storage::settings::accessor::FlashSettingsAccessor;
@@ -149,7 +149,6 @@ impl UiInputHandler for SetNumberScreen {
             }
             UiInput::ButtonPress => match self.current_element {
                 Element::Save => {
-                    // TODO - change this to a generic UI actions message for a settings change
                     let mut settings_accessor = FlashSettingsAccessor::new();
                     settings_accessor
                         .save_setting(self.setting_id_to_save, SettingValue::UInt(self.value))
@@ -157,12 +156,12 @@ impl UiInputHandler for SetNumberScreen {
                         .unwrap_or_else(|e| {
                             error!("Failed to save setting value - {}", Debug2Format(&e))
                         });
-                    ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                    ui_action_publisher.publish_immediate(UiRequestMessage::ChangeState(
                         ApplicationState::Settings,
                     ));
                 }
                 Element::Cancel => {
-                    ui_action_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                    ui_action_publisher.publish_immediate(UiRequestMessage::ChangeState(
                         ApplicationState::Settings,
                     ));
                 }

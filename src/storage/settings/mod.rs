@@ -19,6 +19,8 @@ use defmt::Format;
 use sequential_storage::map::{SerializationError, Value};
 
 pub mod accessor;
+pub mod messaging;
+pub mod monitor;
 mod settings_store;
 
 #[derive(Debug, Format)]
@@ -77,7 +79,8 @@ pub trait SettingsAccessor {
     ) -> impl Future<Output = Option<SettingValue>> + Send;
 
     /// Save setting value to the settings storage. Will pass back a storage error if it is unable
-    /// to complete the save action. Thread safe.
+    /// to complete the save action. Also notifies interested parties the setting has been changed.
+    /// Thread safe.
     fn save_setting(
         &mut self,
         setting: SettingsAccessorId,
@@ -86,7 +89,7 @@ pub trait SettingsAccessor {
 }
 
 #[repr(u8)]
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum SettingValue {
     Default = 0,
     Float(f32),

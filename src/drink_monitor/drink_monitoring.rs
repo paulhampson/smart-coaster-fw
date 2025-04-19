@@ -1,13 +1,13 @@
-use crate::application::messaging::{
-    ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
-};
+use crate::application::messaging::ApplicationChannelSubscriber;
 use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitoringUpdate};
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::storage::settings::accessor::FlashSettingsAccessor;
-use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use crate::storage::settings::messaging::SettingsMessage;
+use crate::storage::settings::monitor::FlashSettingsMonitor;
+use crate::storage::settings::{SettingValue, SettingsAccessorId};
 use crate::weight::WeighingSystem;
 use defmt::{debug, error, trace, warn, Debug2Format};
-use embassy_futures::select::{select3, Either3};
+use embassy_futures::select::{select4, Either4};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
@@ -124,10 +124,13 @@ where
         consumption_rate
     }
 
+    fn update_target() {}
+
     async fn update_monitoring_mode(&mut self, mode: MonitoringTargetPeriodOptions) {
         self.drink_monitor_publisher
             .publish(DrinkMonitoringUpdate::TargetMode(mode))
             .await;
+        // TODO recalculate rates etc
     }
 
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
@@ -143,18 +146,18 @@ where
         let mut total_consumption = 0.0;
         let monitoring_start_time = Instant::now();
         let mut consumption_update_ticker = Ticker::every(Duration::from_secs(60));
-
-        debug!("Drink monitoring running");
+        let mut settings_monitor = FlashSettingsMonitor::new();
 
         loop {
-            let weight_update_or_consumption_tick_or_app_data = select3(
+            let weight_update_or_consumption_tick_or_app_data = select4(
                 self.wait_for_weight_activity(),
                 consumption_update_ticker.next(),
                 application_channel_subscriber.next_message_pure(),
+                settings_monitor.listen_for_changes_ignore_lag(),
             )
             .await;
             match weight_update_or_consumption_tick_or_app_data {
-                Either3::First(_) => {
+                Either4::First(_) => {
                     let new_stable_weight = self.get_stabilised_weight().await;
                     let stable_delta = new_stable_weight - last_stable_weight;
 
@@ -189,32 +192,33 @@ where
                     }
                     last_stable_weight = new_stable_weight;
                 }
-                Either3::Second(_) => {
+                Either4::Second(_) => {
                     let consumption_rate = self
                         .update_consumption_rate(monitoring_start_time, total_consumption)
                         .await;
                     debug!("Consumption rate = {} ml/hr", consumption_rate.round());
                 }
-                Either3::Third(app_message) => {
-                    if let ApplicationMessage::ApplicationDataUpdate(app_data) = app_message {
-                        match app_data {
-                            ApplicationData::MonitoringMode(mode) => {
-                                settings
-                                    .save_setting(
-                                        SettingsAccessorId::MonitoringTargetType,
-                                        SettingValue::SmallUInt(mode.into()),
-                                    )
-                                    .await
-                                    .unwrap_or_else(|e| {
-                                        warn!(
-                                            "Failed to store monitoring type: {:?}",
-                                            Debug2Format(&e)
-                                        )
-                                    });
-                                self.update_monitoring_mode(mode).await;
-                                // TODO: recalculate targets to send out
+                Either4::Third(_app_message) => {}
+                Either4::Fourth(setting_message) => {
+                    if let SettingsMessage::Change(changed_setting) = setting_message {
+                        match changed_setting.setting_id {
+                            SettingsAccessorId::MonitoringTargetHourly => {}
+                            SettingsAccessorId::MonitoringTargetDaily => {}
+                            SettingsAccessorId::MonitoringTargetType => {
+                                if let SettingValue::SmallUInt(mode_id) = changed_setting.value {
+                                    let new_mode = mode_id.try_into().unwrap();
+                                    debug!(
+                                        "Monitoring mode changed to: {}",
+                                        Debug2Format(&new_mode)
+                                    );
+                                    self.update_monitoring_mode(new_mode).await;
+                                } else {
+                                    warn!(
+                                        "Unexpected MonitoringTargetType setting value: {}",
+                                        Debug2Format(&changed_setting.value)
+                                    );
+                                }
                             }
-                            ApplicationData::MonitoringTarget(target) => {}
                             _ => {}
                         }
                     }

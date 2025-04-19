@@ -13,7 +13,7 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::ApplicationState;
-use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
+use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use crate::rtc;
 use chrono::{Datelike, Month, Timelike};
@@ -123,7 +123,7 @@ impl UiInputHandler for SetDateTimeScreen {
             UiInput::ButtonPress => {
                 if self.active_element == DateTimeSettingElement::Save {
                     rtc::accessor::set_date_time(self.local_datetime);
-                    ui_channel_publisher.publish_immediate(UiActionsMessage::StateChangeRequest(
+                    ui_channel_publisher.publish_immediate(UiRequestMessage::ChangeState(
                         ApplicationState::Settings,
                     ))
                 } else {

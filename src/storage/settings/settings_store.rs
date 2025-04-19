@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::storage::settings::messaging::SettingsMessage;
+use crate::storage::settings::messaging::{SettingsChannelPublisher, SETTINGS_CHANNEL};
 use crate::storage::settings::{SettingError, SettingValue};
 use core::ops::Range;
 use defmt::{debug, trace, warn, Debug2Format};
@@ -106,6 +108,7 @@ where
     >,
     settings_initialised: bool,
     save_queue: Queue<StoredSettings, 5>,
+    settings_publisher: Option<SettingsChannelPublisher<'static>>,
 }
 
 const DATA_BUFFER_SIZE: usize = 128;
@@ -123,10 +126,12 @@ where
             settings_cache: FnvIndexMap::new(),
             settings_initialised: false,
             save_queue: Queue::new(),
+            settings_publisher: None,
         }
     }
 
     pub async fn initialise(&mut self, flash: F, storage_range: Range<u32>, _page_size: usize) {
+        self.settings_publisher = Some(SETTINGS_CHANNEL.publisher().unwrap());
         self.flash = Some(flash);
         self.storage_range = Some(storage_range);
         debug!(
@@ -263,5 +268,11 @@ where
         self.save_queue
             .enqueue(setting)
             .map_err(|_| SettingError::SaveQueueFull)
+    }
+
+    pub fn alert_system(&mut self, message: SettingsMessage) {
+        if let Some(publisher) = &self.settings_publisher {
+            publisher.publish_immediate(message);
+        }
     }
 }

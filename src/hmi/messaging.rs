@@ -14,7 +14,6 @@
 
 use crate::application::application_state::ApplicationState;
 use crate::hmi::rotary_encoder::Direction;
-use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 
@@ -25,13 +24,11 @@ pub enum HmiMessage {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum UiActionsMessage {
-    StateChangeRequest(ApplicationState),
-    LedBrightnessChangeRequest(u8),
-    DisplayBrightnessChangeRequest(u8),
-    MonitoringModeChangeRequest(MonitoringTargetPeriodOptions),
-    DisplayTimeoutChangeRequest(u8),
-    MonitoringTargetChangeRequest(u32),
+pub enum UiRequestMessage {
+    ChangeState(ApplicationState),
+    ChangeLedBrightness(u8),
+    ChangeDisplayBrightness(u8),
+    ChangeDisplayTimeout(u8),
 }
 
 const CHANNEL_DEPTH: usize = 10;
@@ -47,7 +44,7 @@ pub type HmiChannelPublisher<'a> =
 
 pub type UiActionChannel = PubSubChannel<
     CriticalSectionRawMutex,
-    UiActionsMessage,
+    UiRequestMessage,
     CHANNEL_DEPTH,
     CHANNEL_SUBS,
     CHANNEL_PUBS,
@@ -55,7 +52,7 @@ pub type UiActionChannel = PubSubChannel<
 pub type UiActionChannelSubscriber<'a> = Subscriber<
     'a,
     CriticalSectionRawMutex,
-    UiActionsMessage,
+    UiRequestMessage,
     CHANNEL_DEPTH,
     CHANNEL_SUBS,
     CHANNEL_PUBS,
@@ -63,7 +60,7 @@ pub type UiActionChannelSubscriber<'a> = Subscriber<
 pub type UiActionChannelPublisher<'a> = Publisher<
     'a,
     CriticalSectionRawMutex,
-    UiActionsMessage,
+    UiRequestMessage,
     CHANNEL_DEPTH,
     CHANNEL_SUBS,
     CHANNEL_PUBS,

@@ -13,7 +13,7 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::application::application_state::ApplicationState;
-use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
+use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::{
     draw_message_screen, draw_message_screen_no_reformat, UiDrawer, UiInput, UiInputHandler,
     DEFAULT_FONT_WIDTH, DEFAULT_TEXT_STYLE,
@@ -138,9 +138,8 @@ impl UiInputHandler for AboutScreen {
         match input {
             UiInput::EncoderClockwise => self.start_entry_index += 1,
             UiInput::EncoderCounterClockwise => self.start_entry_index -= 1,
-            UiInput::ButtonPress => ui_action_publisher.publish_immediate(
-                UiActionsMessage::StateChangeRequest(ApplicationState::Settings),
-            ),
+            UiInput::ButtonPress => ui_action_publisher
+                .publish_immediate(UiRequestMessage::ChangeState(ApplicationState::Settings)),
             _ => {}
         }
         if self.start_entry_index >= self.max_entries {

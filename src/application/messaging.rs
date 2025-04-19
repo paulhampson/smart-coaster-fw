@@ -37,8 +37,6 @@ pub enum ApplicationData {
     DisplayBrightness(u8),
     DisplayTimeout(u8),
     MonitoringUpdate(DrinkMonitoringUpdate),
-    MonitoringMode(MonitoringTargetPeriodOptions),
-    MonitoringTarget(u32),
 }
 
 const CHANNEL_DEPTH: usize = 10;

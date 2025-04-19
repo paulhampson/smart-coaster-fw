@@ -18,7 +18,7 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::ApplicationData;
 use crate::drink_monitor::drink_monitoring::MonitoringStateSubstates;
 use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
-use crate::hmi::messaging::{UiActionChannelPublisher, UiActionsMessage};
+use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
@@ -103,9 +103,8 @@ impl UiInputHandler for MonitoringScreen {
         match input {
             UiInput::EncoderClockwise => {}
             UiInput::EncoderCounterClockwise => {}
-            UiInput::ButtonPress => ui_action_publisher.publish_immediate(
-                UiActionsMessage::StateChangeRequest(ApplicationState::Settings),
-            ),
+            UiInput::ButtonPress => ui_action_publisher
+                .publish_immediate(UiRequestMessage::ChangeState(ApplicationState::Settings)),
             UiInput::ButtonRelease => {}
             UiInput::ApplicationData(data) => self.process_application_data(data),
             UiInput::DateTimeUpdate(dt) => self.datetime = dt,
