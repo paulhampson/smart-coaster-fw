@@ -5,14 +5,6 @@ https://github.com/paulhampson/smart-coaster-hw
 
 ## Setting up for development
 
-### Submodules
-
-Don't forget your submodules
-
-```bash
-git submodules update --init --recursive
-```
-
 ### Rust
 
 Steps:
