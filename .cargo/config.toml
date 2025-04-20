@@ -8,6 +8,7 @@ target = "thumbv6m-none-eabi"
 [env]
 DEFMT_LOG = "debug"
 # Module based logging:
-#"smartcoaster::application::drink_monitoring=trace"
-#"smartcoaster::weight::weight=trace"
-# "smartcoaster::hmi::display=trace"
+# "Smartcoaster::application::led_manager=trace,Smartcoaster::drink_monitor=trace"
+# "Smartcoaster::drink_monitor=trace"
+# "Smartcoaster::weight::weight=trace"
+# "Smartcoaster::hmi::display=trace"

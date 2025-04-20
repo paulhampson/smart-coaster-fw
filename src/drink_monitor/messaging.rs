@@ -21,15 +21,15 @@ use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 pub enum DrinkMonitoringUpdate {
     Consumption(f32),
     ConsumptionRate(f32),
-    TotalConsumed(f32),
     TargetRate(f32),
+    TotalConsumed(f32),
     TargetConsumption(f32),
     TargetMode(MonitoringTargetPeriodOptions),
     UpdateMonitoringSubstate(MonitoringStateSubstates),
 }
 
 const CHANNEL_DEPTH: usize = 10;
-const CHANNEL_SUBS: usize = 1;
+const CHANNEL_SUBS: usize = 2;
 const CHANNEL_PUBS: usize = 1;
 
 pub type DrinkMonitorChannel = PubSubChannel<

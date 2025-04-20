@@ -1,4 +1,3 @@
-#![no_std]
 // Copyright (C) 2025 Paul Hampson
 //
 // This program is free software: you can redistribute it and/or modify it under
@@ -12,6 +11,7 @@
 //
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
+#![no_std]
 #![no_main]
 extern crate alloc;
 
@@ -239,6 +239,7 @@ fn core0_main(spawner: Spawner, resources: Core0Resources) {
         .spawn(led_task(
             resources.led_control,
             APP_CHANNEL.subscriber().unwrap(),
+            DRINK_MONITOR_CHANNEL.subscriber().unwrap(),
         ))
         .unwrap();
     spawner
@@ -370,6 +371,7 @@ async fn display_task(
 async fn led_task(
     led_pio_resources: LedControlResources,
     application_subscriber: ApplicationChannelSubscriber<'static>,
+    drink_monitor_subscriber: DrinkMonitorChannelSubscriber<'static>,
 ) {
     let _led_power_en_output = Output::new(led_pio_resources.led_power_en, Level::High);
 
@@ -387,7 +389,11 @@ async fn led_task(
     let settings = FlashSettingsAccessor::new();
     let led_control = LedController::new(pio_ws2812, settings).await;
 
-    let mut led_manager = LedManager::new(led_control, application_subscriber);
+    let mut led_manager = LedManager::new(
+        led_control,
+        application_subscriber,
+        drink_monitor_subscriber,
+    );
     led_manager.run().await;
 }
 

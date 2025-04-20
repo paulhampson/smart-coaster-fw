@@ -75,6 +75,7 @@ where
     }
 
     async fn send_monitoring_update(&mut self, d: DrinkMonitoringUpdate) {
+        trace!("Sending {}", Debug2Format(&d));
         self.drink_monitor_publisher.publish(d).await;
     }
 
@@ -145,7 +146,7 @@ where
         consumption_rate
     }
 
-    fn update_hourly_target(&mut self) {
+    async fn update_hourly_target(&mut self) {
         match self.target_mode {
             MonitoringTargetPeriodOptions::Daily => {
                 self.hourly_consumption_target = self.daily_consumption_target as f32 / 24.0;
@@ -159,6 +160,10 @@ where
                 debug!("Hourly target is {}", self.hourly_consumption_target);
             }
         }
+        self.send_monitoring_update(DrinkMonitoringUpdate::TargetRate(
+            self.hourly_consumption_target,
+        ))
+        .await;
     }
 
     /// Sets internal monitoring mode state and retrieves associated target values.
@@ -200,7 +205,7 @@ where
                 }
             }
         }
-        self.update_hourly_target();
+        self.update_hourly_target().await;
     }
 
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
@@ -278,7 +283,7 @@ where
                 Either4::Second(_) => {
                     self.update_consumption_rate(monitoring_start_time, total_consumption)
                         .await;
-                    self.update_hourly_target();
+                    self.update_hourly_target().await;
                 }
                 Either4::Third(_app_message) => {}
                 Either4::Fourth(setting_message) => {
@@ -288,6 +293,7 @@ where
                                 if let SettingValue::UInt(new_hourly_target) = changed_setting.value
                                 {
                                     self.hourly_consumption_target = new_hourly_target as f32;
+                                    self.update_hourly_target().await;
                                     debug!("Hourly target is now {}", new_hourly_target);
                                 } else {
                                     warn!(
@@ -300,6 +306,7 @@ where
                                 if let SettingValue::UInt(new_daily_target) = changed_setting.value
                                 {
                                     self.daily_consumption_target = new_daily_target;
+                                    self.update_hourly_target().await;
                                 } else {
                                     warn!(
                                         "Expected setting value for MonitoringTargetDaily: {}",
