@@ -133,6 +133,11 @@ where
                         )
                         .await;
                 }
+                ApplicationState::TimeEntry(setting_id) => {
+                    next_state = self
+                        .time_entry_screen(&mut ui_action_receiver, &mut hmi_subscriber, setting_id)
+                        .await;
+                }
                 ApplicationState::HeapStatus => {
                     next_state = self
                         .heap_status_screen(&mut ui_action_receiver, &mut hmi_subscriber)
@@ -424,6 +429,36 @@ where
                     }
                     _ => {}
                 },
+                Either::Second(hmi_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
+                }
+            }
+        }
+    }
+
+    async fn time_entry_screen(
+        &mut self,
+        ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+        setting_id: SettingsAccessorId,
+    ) -> ApplicationState {
+        self.update_application_state(ApplicationState::TimeEntry(setting_id))
+            .await;
+        loop {
+            let ui_or_hmi = select(
+                ui_action_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
+            )
+            .await;
+
+            match ui_or_hmi {
+                Either::First(ui_action_message) => {
+                    if let UiRequestMessage::ChangeState(new_state) = ui_action_message {
+                        return new_state;
+                    }
+                }
                 Either::Second(hmi_message) => {
                     self.app_publisher
                         .publish(ApplicationMessage::HmiInput(hmi_message))

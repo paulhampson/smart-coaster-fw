@@ -47,7 +47,7 @@ pub enum SettingsAccessorId {
     MonitoringTargetType,
     MonitoringTargetDaily,
     DisplayTimeoutMinutes,
-    MonitoringDayEnd,
+    MonitoringDailyTargetTime,
     MonitoringTargetHourly,
     MonitoringDisplayIndex,
 }

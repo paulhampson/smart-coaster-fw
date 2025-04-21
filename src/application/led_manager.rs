@@ -25,7 +25,6 @@ use smart_leds::RGB8;
 
 const UPDATES_PER_SECOND: u64 = 30;
 
-
 pub struct LedManager<LC> {
     led_control: LC,
     app_channel: ApplicationChannelSubscriber<'static>,
@@ -100,6 +99,7 @@ where
                                 ApplicationState::Calibration => {}
                                 ApplicationState::SetDateTime => {}
                                 ApplicationState::NumberEntry(_) => {}
+                                ApplicationState::TimeEntry(_) => {}
                             }
                         }
 

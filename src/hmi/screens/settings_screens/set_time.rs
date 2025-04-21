@@ -17,7 +17,8 @@ use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
-use core::cmp::{max, min, PartialEq};
+use chrono::{NaiveTime, TimeDelta, Timelike};
+use core::cmp::PartialEq;
 use core::fmt::Write;
 use defmt::error;
 use defmt::Debug2Format;
@@ -32,94 +33,81 @@ use heapless::String;
 
 #[derive(PartialEq, Debug)]
 enum Element {
-    NumberEntryPosition(usize),
+    Hour,
+    Minute,
     Save,
     Cancel,
 }
 
 impl Element {
-    pub fn next_element(&self, max_elements: usize) -> Self {
+    pub fn next_element(&self) -> Self {
         match self {
-            Element::NumberEntryPosition(position) => {
-                let next_position = position + 1;
-                if next_position >= max_elements {
-                    Element::Save
-                } else {
-                    Element::NumberEntryPosition(next_position)
-                }
-            }
+            Element::Hour => Element::Minute,
+            Element::Minute => Element::Save,
             Element::Save => Element::Cancel,
-            Element::Cancel => Element::NumberEntryPosition(0),
+            Element::Cancel => Element::Hour,
         }
     }
 
-    pub fn previous_element(&self, max_elements: usize) -> Self {
+    pub fn previous_element(&self) -> Self {
         match self {
-            Element::NumberEntryPosition(position) => {
-                if *position == 0 {
-                    Element::Cancel
-                } else {
-                    Element::NumberEntryPosition(position - 1)
-                }
-            }
+            Element::Hour => Element::Cancel,
+            Element::Minute => Element::Hour,
             Element::Cancel => Element::Save,
-            Element::Save => Element::NumberEntryPosition(max_elements - 1),
+            Element::Save => Element::Minute,
         }
     }
 }
 
-pub struct SetNumberScreen {
+pub struct SetTimeScreen {
     label: &'static str,
-    units: &'static str,
-    value: u32,
-    max: u32,
-    min: u32,
+    value: NaiveTime,
     setting_id_to_save: SettingsAccessorId,
-    num_elements: usize,
     current_element: Element,
     element_active: bool,
 }
 
-impl SetNumberScreen {
+impl SetTimeScreen {
     pub fn new(
         label: &'static str,
-        units: &'static str,
-        value: u32,
-        min: u32,
-        max: u32,
+        value: NaiveTime,
         setting_id_to_save: SettingsAccessorId,
     ) -> Self {
-        let num_elements = (max.ilog10() + 1) as usize;
         Self {
             label,
-            units,
             value,
-            max,
-            min,
             setting_id_to_save,
-            num_elements,
-            current_element: Element::NumberEntryPosition(0),
+            current_element: Element::Hour,
             element_active: false,
         }
     }
 
-    fn increase_value(&mut self, element: usize) {
-        let position = self.num_elements - element - 1;
-        let new_value = self.value + 10u32.pow(position as u32);
-        self.value = min(new_value, self.max);
+    fn increase_value(&mut self) {
+        match self.current_element {
+            Element::Hour => {
+                (self.value, _) = self.value.overflowing_add_signed(TimeDelta::hours(1));
+            }
+            Element::Minute => {
+                (self.value, _) = self.value.overflowing_add_signed(TimeDelta::minutes(1));
+            }
+            _ => {}
+        }
     }
 
-    fn decrease_value(&mut self, element: usize) {
-        let position = self.num_elements - element - 1;
-        let mut new_value = self.value - 10u32.pow(position as u32);
-        if new_value > self.max {
-            new_value = 0;
+    fn decrease_value(&mut self) {
+        match self.current_element {
+            Element::Hour => {
+                (self.value, _) = self.value.overflowing_sub_signed(TimeDelta::hours(1));
+            }
+            Element::Minute => {
+                (self.value, _) = self.value.overflowing_sub_signed(TimeDelta::minutes(1));
+            }
+            _ => {}
         }
-        self.value = max(new_value, self.min);
     }
 }
 
-impl UiInputHandler for SetNumberScreen {
+impl UiInputHandler for SetTimeScreen {
     async fn ui_input_handler(
         &mut self,
         input: UiInput,
@@ -128,27 +116,23 @@ impl UiInputHandler for SetNumberScreen {
         match input {
             UiInput::EncoderClockwise => {
                 if self.element_active {
-                    if let Element::NumberEntryPosition(position) = self.current_element {
-                        self.increase_value(position);
-                    }
+                    self.increase_value();
                 } else {
-                    self.current_element = self.current_element.next_element(self.num_elements);
+                    self.current_element = self.current_element.next_element();
                 }
             }
             UiInput::EncoderCounterClockwise => {
                 if self.element_active {
-                    if let Element::NumberEntryPosition(position) = self.current_element {
-                        self.decrease_value(position);
-                    }
+                    self.decrease_value();
                 } else {
-                    self.current_element = self.current_element.previous_element(self.num_elements);
+                    self.current_element = self.current_element.previous_element();
                 }
             }
             UiInput::ButtonPress => match self.current_element {
                 Element::Save => {
                     let settings_accessor = FlashSettingsAccessor::new();
                     settings_accessor
-                        .save_setting(self.setting_id_to_save, SettingValue::UInt(self.value))
+                        .save_setting(self.setting_id_to_save, SettingValue::Time(self.value))
                         .await
                         .unwrap_or_else(|e| {
                             error!("Failed to save setting value - {}", Debug2Format(&e))
@@ -171,7 +155,7 @@ impl UiInputHandler for SetNumberScreen {
     }
 }
 
-impl UiDrawer for SetNumberScreen {
+impl UiDrawer for SetTimeScreen {
     fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
         D: DrawTarget<Color = BinaryColor>,
@@ -188,6 +172,11 @@ impl UiDrawer for SetNumberScreen {
             .underline()
             .build();
 
+        let text_style = MonoTextStyleBuilder::new()
+            .font(&FONT_8X13)
+            .text_color(BinaryColor::On)
+            .build();
+
         let label_char_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X13_BOLD)
             .text_color(BinaryColor::On)
@@ -197,14 +186,10 @@ impl UiDrawer for SetNumberScreen {
             .baseline(Baseline::Top)
             .build();
 
-        let text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_8X13)
-            .text_color(BinaryColor::On)
-            .build();
-
         let mut string_buffer = String::<32>::new();
-        let mut next_point = Point::new((display.bounding_box().size.width / 2) as i32, 0);
 
+        // label
+        let mut next_point = Point::new((display.bounding_box().size.width / 2) as i32, 0);
         string_buffer.clear();
         writeln!(&mut string_buffer, "{}", self.label).unwrap();
         next_point = Text::with_text_style(
@@ -215,60 +200,60 @@ impl UiDrawer for SetNumberScreen {
         )
         .draw(display)?;
 
-        let setting_text_width = (self.num_elements + 1 + self.units.len())
-            * text_style.font.character_size.width as usize;
-        let x_offset = ((display.bounding_box().size.width - setting_text_width as u32) / 2) as i32;
+        // HH:MM
+        let setting_character_count = 5;
+        let setting_text_width =
+            setting_character_count * text_style.font.character_size.width as i32;
+        let x_offset = display.bounding_box().center().x - (setting_text_width / 2);
 
-        next_point.x =
-            x_offset + (self.num_elements * text_style.font.character_size.width as usize) as i32;
-        next_point.y =
-            ((display.bounding_box().size.height / 2) - text_style.line_height() / 2) as i32;
-
-        // draws right to left because it's easier to mask off each digit
-        let mut value_to_display = self.value;
-        for element_idx in (0..self.num_elements).rev() {
-            let style_to_use = if let Element::NumberEntryPosition(position) = self.current_element
-            {
-                if position == element_idx {
-                    if self.element_active {
-                        active_element_style
-                    } else {
-                        hover_element_style
-                    }
-                } else {
-                    text_style
-                }
-            } else {
-                text_style
-            };
-
-            string_buffer.clear();
-            write!(&mut string_buffer, "{}", value_to_display % 10).unwrap();
-            Text::with_baseline(
-                string_buffer.as_str(),
-                next_point,
-                style_to_use,
-                Baseline::Top,
-            )
-            .draw(display)?;
-
-            value_to_display /= 10;
-            next_point.x -= text_style.font.character_size.width as i32;
-        }
-
-        next_point.x = x_offset
-            + ((self.num_elements + 2) * text_style.font.character_size.width as usize) as i32;
+        next_point.x = x_offset;
+        next_point.y = (display.bounding_box().center().y) - text_style.line_height() as i32 / 2;
 
         string_buffer.clear();
-        write!(&mut string_buffer, "{}", self.units).unwrap();
-        next_point = Text::with_baseline(
+        write!(&mut string_buffer, "{:02}", self.value.hour()).unwrap();
+
+        let style_to_use = if let Element::Hour = self.current_element {
+            if self.element_active {
+                active_element_style
+            } else {
+                hover_element_style
+            }
+        } else {
+            text_style
+        };
+        Text::with_baseline(
             string_buffer.as_str(),
             next_point,
-            text_style,
+            style_to_use,
             Baseline::Top,
         )
         .draw(display)?;
 
+        next_point.x += text_style.font.character_size.width as i32 * 2;
+        Text::with_baseline(":", next_point, text_style, Baseline::Top).draw(display)?;
+
+        next_point.x += text_style.font.character_size.width as i32;
+        string_buffer.clear();
+        write!(&mut string_buffer, "{:02}", self.value.minute()).unwrap();
+
+        let style_to_use = if let Element::Minute = self.current_element {
+            if self.element_active {
+                active_element_style
+            } else {
+                hover_element_style
+            }
+        } else {
+            text_style
+        };
+        Text::with_baseline(
+            string_buffer.as_str(),
+            next_point,
+            style_to_use,
+            Baseline::Top,
+        )
+        .draw(display)?;
+
+        // save & cancel buttons
         next_point.x = 0;
         next_point.y = display.bounding_box().size.height as i32;
         let char_style_to_use = if self.current_element == Element::Save {

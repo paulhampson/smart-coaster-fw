@@ -26,10 +26,12 @@ use crate::hmi::screens::settings_screens::calibration::CalibrationScreens;
 use crate::hmi::screens::settings_screens::heap_status::HeapStatusScreen;
 use crate::hmi::screens::settings_screens::set_date_time::SetDateTimeScreen;
 use crate::hmi::screens::settings_screens::set_number::SetNumberScreen;
+use crate::hmi::screens::settings_screens::set_time::SetTimeScreen;
 use crate::hmi::screens::settings_screens::test_mode::TestModeScreen;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
 use crate::rtc::accessor::RtcAccessor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use chrono::NaiveTime;
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select3, Either3};
 use embassy_sync::pubsub::WaitResult;
@@ -59,6 +61,7 @@ where
     calibration_screens: CalibrationScreens,
     set_date_time_screen: SetDateTimeScreen,
     number_setting_screen: SetNumberScreen,
+    time_entry_screen: SetTimeScreen,
     about_screen: AboutScreen,
 
     settings: &'a SA,
@@ -110,6 +113,11 @@ where
                 1000,
                 SettingsAccessorId::MonitoringTargetDaily,
             ),
+            time_entry_screen: SetTimeScreen::new(
+                "Default",
+                NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+                SettingsAccessorId::MonitoringDailyTargetTime,
+            ),
             about_screen: AboutScreen::new(),
 
             settings,
@@ -154,6 +162,26 @@ where
         };
         debug!("Restored display_timeout={:?}", display_timeout);
         Duration::from_secs(display_timeout as u64 * 60)
+    }
+
+    async fn setup_monitoring_target_time_selection(&mut self) {
+        let value = if let SettingValue::Time(value) = self
+            .settings
+            .get_setting(SettingsAccessorId::MonitoringDailyTargetTime)
+            .await
+            .unwrap_or(SettingValue::Time(
+                NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+            )) {
+            value
+        } else {
+            NaiveTime::from_hms_opt(0, 0, 0).unwrap()
+        };
+
+        self.time_entry_screen = SetTimeScreen::new(
+            "Daily Target Time",
+            value,
+            SettingsAccessorId::MonitoringDailyTargetTime,
+        )
     }
 
     async fn setup_monitoring_target_value_selection(&mut self) {
@@ -205,6 +233,11 @@ where
                 self.setup_monitoring_target_value_selection().await
             }
         }
+        if let ApplicationState::TimeEntry(setting_id) = display_state {
+            if setting_id == SettingsAccessorId::MonitoringDailyTargetTime {
+                self.setup_monitoring_target_time_selection().await
+            }
+        }
 
         self.display_state = display_state;
         let dt = self.rtc_accessor.get_date_time();
@@ -248,6 +281,9 @@ where
             ApplicationState::AboutScreen => {
                 self.about_screen.update_pre_draw_actions(&self.display);
                 self.about_screen.draw(&mut self.display).unwrap()
+            }
+            ApplicationState::TimeEntry(_) => {
+                self.time_entry_screen.draw(&mut self.display).unwrap()
             }
         }
 
@@ -294,6 +330,11 @@ where
             }
             ApplicationState::NumberEntry(_) => {
                 self.number_setting_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await
+            }
+            ApplicationState::TimeEntry(_) => {
+                self.time_entry_screen
                     .ui_input_handler(input, &self.ui_action_publisher)
                     .await
             }

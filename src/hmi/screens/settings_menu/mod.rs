@@ -33,7 +33,7 @@ use simple_embedded_graphics_menu::{Menu, MenuStyle};
 
 mod display_options;
 mod led_brightness_options;
-pub(crate) mod monitoring_options;
+pub mod monitoring_options;
 
 #[derive(Copy, Clone, Debug)]
 pub enum SettingMenuIdentifier {
@@ -49,6 +49,7 @@ pub enum SettingMenuIdentifier {
     SetMonitoringTargetValue,
     DisplayTimeout,
     AboutScreen,
+    SetDailyTargetTime,
 }
 
 pub struct SettingMenu<'a, SA>
@@ -100,6 +101,10 @@ where
         );
 
         menu.add_action("Target", SettingMenuIdentifier::SetMonitoringTargetValue);
+        menu.add_action(
+            "Daily Target Time",
+            SettingMenuIdentifier::SetDailyTargetTime,
+        );
         menu.add_back("Back", SettingMenuIdentifier::None);
     }
 
@@ -280,6 +285,7 @@ where
             SettingMenuIdentifier::SetDateTime => {}
             SettingMenuIdentifier::SetMonitoringTargetValue => {}
             SettingMenuIdentifier::AboutScreen => {}
+            SettingMenuIdentifier::SetDailyTargetTime => {}
         }
     }
 
@@ -313,6 +319,11 @@ where
                 SettingMenuIdentifier::AboutScreen => ui_action_publisher.publish_immediate(
                     UiRequestMessage::ChangeState(ApplicationState::AboutScreen),
                 ),
+                SettingMenuIdentifier::SetDailyTargetTime => {
+                    ui_action_publisher.publish_immediate(UiRequestMessage::ChangeState(
+                        ApplicationState::TimeEntry(SettingsAccessorId::MonitoringDailyTargetTime),
+                    ))
+                }
                 _ => {}
             },
             SelectedData::MultiOption { id, option_id } => {

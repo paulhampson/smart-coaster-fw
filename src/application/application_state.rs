@@ -26,6 +26,7 @@ pub enum ApplicationState {
     Calibration,
     SetDateTime,
     NumberEntry(SettingsAccessorId),
+    TimeEntry(SettingsAccessorId),
     AboutScreen,
 }
 

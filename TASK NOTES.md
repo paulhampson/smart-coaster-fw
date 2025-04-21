@@ -15,7 +15,8 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Show on screen target status~~
     * ~~Save active monitoring screen, so it is recalled after power cycle~~
     * ~~Reset consumption at midnight~~
-    * ***NEXT*** Set time to achieve consumption by (for daily mode)
+    * ~~Set time to achieve consumption by (for daily mode)~~
+    * ***NEXT*** Use time to achieve consumption by (for daily mode)
     * Retain last consumption data between power cycles, respect reset point
     * Celebration screen when target achieved for the day (for daily mode)
     * Display ideas
