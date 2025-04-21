@@ -11,6 +11,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Monitor drink in background if in settings menu~~
     * ~~Daily/hourly target is settable~~
     * ~~Colour of LEDs changes in monitoring mode based on whether consumption is high/low/on target.~~
+    * ~~Multiple monitoring screen support~~
     * ***NEXT*** Show on screen target status
     * Reset consumption at midnight
     * Set time to achieve consumption by (for daily mode)
