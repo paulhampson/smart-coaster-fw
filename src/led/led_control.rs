@@ -256,8 +256,8 @@ where
     fn single_colour_wheel(&mut self) {
         let scaled_position = self.animation_position_to_u8();
         for i in 0..self.led_count {
-            let wheel_pos = (((i * 255 / (self.led_count - 1)) as f32 * self.repetition_factor)
-                .round() as u32
+            let wheel_pos = (((i * 255 / (self.led_count)) as f32 * self.repetition_factor).round()
+                as u32
                 + scaled_position as u32) as u8;
             self.led_state[i] = single_colour_wheel(self.base_colour, wheel_pos);
         }

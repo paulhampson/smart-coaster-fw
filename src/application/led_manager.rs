@@ -25,7 +25,6 @@ use smart_leds::RGB8;
 
 const UPDATES_PER_SECOND: u64 = 30;
 
-const WATER_BLUE: RGB8 = RGB8::new(62, 164, 240);
 
 pub struct LedManager<LC> {
     led_control: LC,
@@ -91,9 +90,7 @@ where
                                         speed: 3.0,
                                     })
                                 }
-                                ApplicationState::Monitoring => self
-                                    .led_control
-                                    .set_mode(LedArrayMode::StaticColour { colour: WATER_BLUE }),
+                                ApplicationState::Monitoring => {}
                                 ApplicationState::Settings => {
                                     self.led_control.set_mode(LedArrayMode::StaticColour {
                                         colour: RGB8::new(191, 64, 191),
