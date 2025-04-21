@@ -14,6 +14,7 @@
 
 use crate::drink_monitor::drink_monitoring::MonitoringStateSubstates;
 use crate::hmi::screens::monitoring::{MonitoringData, MonitoringScreenContent};
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use core::fmt::Write;
 use embedded_graphics::draw_target::{DrawTarget, DrawTargetExt};
 use embedded_graphics::geometry::{AnchorX, Dimensions, OriginDimensions, Point, Size};
@@ -104,10 +105,6 @@ where
         let label_char_style = MonoTextStyleBuilder::new()
             .font(&FONT_5X7)
             .text_color(BinaryColor::On)
-            .build();
-        let left_text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Left)
-            .baseline(Baseline::Bottom)
             .build();
         let centre_text_style = TextStyleBuilder::new()
             .alignment(Alignment::Center)
@@ -206,7 +203,12 @@ where
         .draw(&mut right_display_area)?;
 
         string_buffer.clear();
-        write!(string_buffer, "{:.0}", data.target_consumption).unwrap();
+        if data.target_mode == MonitoringTargetPeriodOptions::Daily {
+            write!(string_buffer, "{:.0}", data.target_consumption).unwrap();
+        } else {
+            write!(string_buffer, "--").unwrap();
+        }
+
         pos.y += (label_char_style.line_height() / 2) as i32
             + label_to_var_padding
             + (value_char_style.line_height() / 2) as i32;
@@ -230,35 +232,6 @@ where
             centre_text_style,
         )
         .draw(&mut right_display_area)?;
-
-        // next_pos.x += label_char_style.font.character_size.width as i32;
-        // next_pos.y -= 2; // expected baseline to manage this, but doesn't seem to for different font sizes.
-        //
-        // next_pos.y += value_char_style.line_height() as i32 + line_padding;
-        // next_pos.x = 0;
-        //
-        // string_buffer.clear();
-        // write!(string_buffer, "{:4.0}", data.total_consumed).unwrap();
-        // let mut next_pos = Text::with_text_style(
-        //     string_buffer.as_str(),
-        //     next_pos,
-        //     value_char_style,
-        //     text_style,
-        // )
-        // .draw(&mut right_display_area)?;
-        //
-        // next_pos.x += label_char_style.font.character_size.width as i32;
-        // next_pos.y -= 2; // expected text baseline to manage this, but doesn't seem to for different font sizes
-        //
-        // string_buffer.clear();
-        // write!(string_buffer, "ml today").unwrap();
-        // Text::with_text_style(
-        //     string_buffer.as_str(),
-        //     next_pos,
-        //     label_char_style,
-        //     text_style,
-        // )
-        // .draw(&mut right_display_area)?;
 
         Ok(())
     }

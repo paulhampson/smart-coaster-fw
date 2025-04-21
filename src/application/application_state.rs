@@ -29,7 +29,7 @@ pub enum ApplicationState {
     AboutScreen,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum CalibrationStateSubstates {
     Tare,
     Wait,

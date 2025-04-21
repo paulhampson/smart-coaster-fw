@@ -12,7 +12,8 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::messaging::ApplicationChannelSubscriber;
+use crate::application::application_state::ApplicationState;
+use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMessage};
 use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitoringUpdate};
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::storage::settings::accessor::FlashSettingsAccessor;
@@ -20,6 +21,7 @@ use crate::storage::settings::messaging::SettingsMessage;
 use crate::storage::settings::monitor::FlashSettingsMonitor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::weight::WeighingSystem;
+use core::cmp::PartialEq;
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select4, Either4};
 use embassy_time::{Duration, Instant, Ticker, Timer};
@@ -285,7 +287,17 @@ where
                         .await;
                     self.update_hourly_target().await;
                 }
-                Either4::Third(_app_message) => {}
+                Either4::Third(app_message) => {
+                    // This ensures that anything else in the system (e.g., LEDs, display) gets
+                    // updated data on the switch to monitoring mode
+                    if app_message
+                        == ApplicationMessage::ApplicationStateUpdate(ApplicationState::Monitoring)
+                    {
+                        self.update_hourly_target().await;
+                        self.update_consumption_rate(monitoring_start_time, total_consumption)
+                            .await;
+                    }
+                }
                 Either4::Fourth(setting_message) => {
                     if let SettingsMessage::Change(changed_setting) = setting_message {
                         match changed_setting.setting_id {
