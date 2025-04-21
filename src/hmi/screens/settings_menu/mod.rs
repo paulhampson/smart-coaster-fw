@@ -18,9 +18,7 @@ use crate::hmi::screens::settings_menu::display_options::{
     DisplayBrightnessOptions, DisplayTimeoutOptions,
 };
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
-use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
-use core::marker::PhantomData;
 use defmt::debug;
 use defmt::{warn, Debug2Format};
 use ds323x::NaiveDateTime;
@@ -53,24 +51,24 @@ pub enum SettingMenuIdentifier {
     AboutScreen,
 }
 
-pub struct SettingMenu<SA>
+pub struct SettingMenu<'a, SA>
 where
     SA: SettingsAccessor,
 {
     menu: Menu<'static, BinaryColor, SettingMenuIdentifier>,
     datetime: NaiveDateTime,
-    phantom: PhantomData<SA>,
+    settings_accessor: &'a SA,
 }
 
-impl<SA> SettingMenu<SA>
+impl<'a, SA> SettingMenu<'a, SA>
 where
     SA: SettingsAccessor,
 {
-    pub async fn new(settings: &SA) -> Self {
+    pub async fn new(settings: &'a SA) -> Self {
         Self {
             menu: Self::build_menu(settings).await,
             datetime: NaiveDateTime::default(),
-            phantom: PhantomData,
+            settings_accessor: settings,
         }
     }
 
@@ -233,6 +231,7 @@ where
     }
 
     async fn process_multi_options(
+        &self,
         ui_action_publisher: &UiActionChannelPublisher<'static>,
         id: SettingMenuIdentifier,
         option_id: usize,
@@ -242,7 +241,6 @@ where
             Debug2Format(&id),
             Debug2Format(&option_id)
         );
-        let mut settings = FlashSettingsAccessor::new();
         match id {
             SettingMenuIdentifier::SetLedBrightness => {
                 // TODO change this to a direct setting write and then publish change through settings channel
@@ -257,7 +255,7 @@ where
                 ));
             }
             SettingMenuIdentifier::SetMonitoringTargetType => {
-                settings
+                self.settings_accessor
                     .save_setting(
                         SettingsAccessorId::MonitoringTargetType,
                         SettingValue::SmallUInt(option_id as u8),
@@ -318,7 +316,8 @@ where
                 _ => {}
             },
             SelectedData::MultiOption { id, option_id } => {
-                Self::process_multi_options(ui_action_publisher, id, option_id).await;
+                self.process_multi_options(ui_action_publisher, id, option_id)
+                    .await;
             }
             SelectedData::Checkbox { id: _, state: _ } => {}
             SelectedData::Exit { id: _ } => {
@@ -330,7 +329,7 @@ where
     }
 }
 
-impl<SA> UiInputHandler for SettingMenu<SA>
+impl<'a, SA> UiInputHandler for SettingMenu<'a, SA>
 where
     SA: SettingsAccessor,
 {
@@ -361,7 +360,7 @@ where
     }
 }
 
-impl<SA> UiDrawer for SettingMenu<SA>
+impl<'a, SA> UiDrawer for SettingMenu<'a, SA>
 where
     SA: SettingsAccessor,
 {

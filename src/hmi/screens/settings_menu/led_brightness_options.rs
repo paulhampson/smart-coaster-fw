@@ -31,16 +31,6 @@ impl LedBrightnessOptions {
         &["Off", "Low", "Medium", "High", "Max"]
     }
 
-    pub fn brightness_mapping(&self) -> u8 {
-        match self {
-            LedBrightnessOptions::Off => Self::OFF,
-            LedBrightnessOptions::Low => Self::LOW,
-            LedBrightnessOptions::Medium => Self::MEDIUM,
-            LedBrightnessOptions::High => Self::HIGH,
-            LedBrightnessOptions::Max => Self::MAX,
-        }
-    }
-
     pub fn option_index_to_brightness(index: usize) -> u8 {
         match index {
             0 => Self::OFF,

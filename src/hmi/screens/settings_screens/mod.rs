@@ -12,13 +12,9 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::hmi::screens::{UiDrawer, UiInputHandler};
-
 pub mod about;
 pub mod calibration;
 pub mod heap_status;
 pub mod set_date_time;
 pub mod set_number;
 pub mod test_mode;
-
-trait SettingScreen: UiInputHandler + UiDrawer {}

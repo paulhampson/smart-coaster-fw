@@ -14,7 +14,6 @@
 
 use crate::application::application_state::ApplicationState;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
-use crate::hmi::screens::settings_screens::SettingScreen;
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
@@ -120,8 +119,6 @@ impl SetNumberScreen {
     }
 }
 
-impl SettingScreen for SetNumberScreen {}
-
 impl UiInputHandler for SetNumberScreen {
     async fn ui_input_handler(
         &mut self,
@@ -149,7 +146,7 @@ impl UiInputHandler for SetNumberScreen {
             }
             UiInput::ButtonPress => match self.current_element {
                 Element::Save => {
-                    let mut settings_accessor = FlashSettingsAccessor::new();
+                    let settings_accessor = FlashSettingsAccessor::new();
                     settings_accessor
                         .save_setting(self.setting_id_to_save, SettingValue::UInt(self.value))
                         .await

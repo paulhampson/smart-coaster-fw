@@ -52,7 +52,7 @@ where
     last_display_update: Instant,
     display_timeout: Duration,
 
-    settings_screen: SettingMenu<SA>,
+    settings_screen: SettingMenu<'a, SA>,
     test_mode_screen: TestModeScreen,
     monitoring_screen: MonitoringScreen<'a, SA>,
     heap_status_screen: HeapStatusScreen,

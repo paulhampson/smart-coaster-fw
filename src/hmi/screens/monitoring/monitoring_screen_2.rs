@@ -19,7 +19,7 @@ use core::fmt::Write;
 use embedded_graphics::draw_target::{DrawTarget, DrawTargetExt};
 use embedded_graphics::geometry::{AnchorX, Dimensions, OriginDimensions, Point, Size};
 use embedded_graphics::image::Image;
-use embedded_graphics::mono_font::ascii::{FONT_5X7, FONT_9X15_BOLD};
+use embedded_graphics::mono_font::ascii::{FONT_5X7, FONT_8X13_BOLD};
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
@@ -83,15 +83,19 @@ where
         .into_styled(base_style)
         .draw(&mut left_icon_display)?;
 
-        // vertical separate between the rate and total values
+        // vertical separator between the rate and total values
+        let left_right_adjustment = -1;
+        let vertical_pad = 3;
         Line::new(
             Point::new(
-                (main_area_display.bounding_box().size.width * 2 / 3) as i32,
-                2,
+                (main_area_display.bounding_box().size.width * 2 / 3) as i32
+                    + left_right_adjustment,
+                vertical_pad,
             ),
             Point::new(
-                (main_area_display.bounding_box().size.width * 2 / 3) as i32,
-                (main_area_display.bounding_box().size.height - 2) as i32,
+                (main_area_display.bounding_box().size.width * 2 / 3) as i32
+                    + left_right_adjustment,
+                (main_area_display.bounding_box().size.height) as i32 - vertical_pad,
             ),
         )
         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
@@ -99,7 +103,7 @@ where
 
         // setup some standard font sizes and styles
         let value_char_style = MonoTextStyleBuilder::new()
-            .font(&FONT_9X15_BOLD)
+            .font(&FONT_8X13_BOLD)
             .text_color(BinaryColor::On)
             .build();
         let label_char_style = MonoTextStyleBuilder::new()
@@ -110,8 +114,9 @@ where
             .alignment(Alignment::Center)
             .baseline(Baseline::Middle)
             .build();
+        let additional_top_padding = 2;
         let var_to_label_padding = 0;
-        let label_to_var_padding = 4;
+        let label_to_var_padding = 5;
         let mut string_buffer = String::<20>::new();
 
         // Middle area - show the data for current rate and target rate
@@ -123,7 +128,7 @@ where
 
         write!(string_buffer, "{:.0}", data.consumption_rate).unwrap();
         let mut pos = middle_display_area.bounding_box().center();
-        pos.y = (value_char_style.line_height() / 2) as i32;
+        pos.y = (value_char_style.line_height() / 2) as i32 + additional_top_padding;
         Text::with_text_style(
             string_buffer.as_str(),
             pos,
@@ -171,6 +176,7 @@ where
         )
         .draw(&mut middle_display_area)?;
 
+        // Right area - show data for total consumption and target total
         let mut right_display_area =
             main_area_display.cropped(&main_area_display.bounding_box().resized_width(
                 main_area_display.bounding_box().size.width / 3,
@@ -180,7 +186,7 @@ where
         string_buffer.clear();
         write!(string_buffer, "{:.0}", data.total_consumed).unwrap();
         let mut pos = right_display_area.bounding_box().center();
-        pos.y = (value_char_style.line_height() / 2) as i32;
+        pos.y = (value_char_style.line_height() / 2) as i32 + additional_top_padding;
         Text::with_text_style(
             string_buffer.as_str(),
             pos,

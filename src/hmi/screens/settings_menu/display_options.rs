@@ -52,14 +52,6 @@ impl DisplayBrightnessOptions {
         &["Low", "Medium", "High"]
     }
 
-    pub fn brightness_mapping(&self) -> u8 {
-        match self {
-            DisplayBrightnessOptions::Low => Self::LOW,
-            DisplayBrightnessOptions::Medium => Self::MEDIUM,
-            DisplayBrightnessOptions::High => Self::HIGH,
-        }
-    }
-
     pub fn option_index_to_brightness(index: usize) -> u8 {
         match index {
             0 => Self::LOW,

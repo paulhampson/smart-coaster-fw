@@ -148,7 +148,7 @@ where
         consumption_rate
     }
 
-    async fn update_hourly_target(&mut self) {
+    async fn update_targets(&mut self) {
         match self.target_mode {
             MonitoringTargetPeriodOptions::Daily => {
                 self.hourly_consumption_target = self.daily_consumption_target as f32 / 24.0;
@@ -156,6 +156,10 @@ where
                     "Hourly target (calc'd from daily) is now {}",
                     self.hourly_consumption_target
                 );
+                self.send_monitoring_update(DrinkMonitoringUpdate::TargetConsumption(
+                    self.daily_consumption_target as f32,
+                ))
+                .await;
             }
             MonitoringTargetPeriodOptions::Hourly => {
                 // no calculation required.
@@ -207,7 +211,7 @@ where
                 }
             }
         }
-        self.update_hourly_target().await;
+        self.update_targets().await;
     }
 
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
@@ -285,7 +289,7 @@ where
                 Either4::Second(_) => {
                     self.update_consumption_rate(monitoring_start_time, total_consumption)
                         .await;
-                    self.update_hourly_target().await;
+                    self.update_targets().await;
                 }
                 Either4::Third(app_message) => {
                     // This ensures that anything else in the system (e.g., LEDs, display) gets
@@ -293,56 +297,50 @@ where
                     if app_message
                         == ApplicationMessage::ApplicationStateUpdate(ApplicationState::Monitoring)
                     {
-                        self.update_hourly_target().await;
+                        self.update_targets().await;
                         self.update_consumption_rate(monitoring_start_time, total_consumption)
                             .await;
                     }
                 }
                 Either4::Fourth(setting_message) => {
-                    if let SettingsMessage::Change(changed_setting) = setting_message {
-                        match changed_setting.setting_id {
-                            SettingsAccessorId::MonitoringTargetHourly => {
-                                if let SettingValue::UInt(new_hourly_target) = changed_setting.value
-                                {
-                                    self.hourly_consumption_target = new_hourly_target as f32;
-                                    self.update_hourly_target().await;
-                                    debug!("Hourly target is now {}", new_hourly_target);
-                                } else {
-                                    warn!(
-                                        "Expected setting value for MonitoringTargetHourly: {}",
-                                        Debug2Format(&changed_setting.value)
-                                    );
-                                }
+                    let SettingsMessage::Change(changed_setting) = setting_message;
+                    match changed_setting.setting_id {
+                        SettingsAccessorId::MonitoringTargetHourly => {
+                            if let SettingValue::UInt(new_hourly_target) = changed_setting.value {
+                                self.hourly_consumption_target = new_hourly_target as f32;
+                                self.update_targets().await;
+                                debug!("Hourly target is now {}", new_hourly_target);
+                            } else {
+                                warn!(
+                                    "Expected setting value for MonitoringTargetHourly: {}",
+                                    Debug2Format(&changed_setting.value)
+                                );
                             }
-                            SettingsAccessorId::MonitoringTargetDaily => {
-                                if let SettingValue::UInt(new_daily_target) = changed_setting.value
-                                {
-                                    self.daily_consumption_target = new_daily_target;
-                                    self.update_hourly_target().await;
-                                } else {
-                                    warn!(
-                                        "Expected setting value for MonitoringTargetDaily: {}",
-                                        Debug2Format(&changed_setting.value)
-                                    );
-                                }
-                            }
-                            SettingsAccessorId::MonitoringTargetType => {
-                                if let SettingValue::SmallUInt(mode_id) = changed_setting.value {
-                                    let new_mode = mode_id.try_into().unwrap();
-                                    debug!(
-                                        "Monitoring mode changed to: {}",
-                                        Debug2Format(&new_mode)
-                                    );
-                                    self.update_monitoring_mode(new_mode, &settings).await;
-                                } else {
-                                    warn!(
-                                        "Unexpected MonitoringTargetType setting value: {}",
-                                        Debug2Format(&changed_setting.value)
-                                    );
-                                }
-                            }
-                            _ => {}
                         }
+                        SettingsAccessorId::MonitoringTargetDaily => {
+                            if let SettingValue::UInt(new_daily_target) = changed_setting.value {
+                                self.daily_consumption_target = new_daily_target;
+                                self.update_targets().await;
+                            } else {
+                                warn!(
+                                    "Expected setting value for MonitoringTargetDaily: {}",
+                                    Debug2Format(&changed_setting.value)
+                                );
+                            }
+                        }
+                        SettingsAccessorId::MonitoringTargetType => {
+                            if let SettingValue::SmallUInt(mode_id) = changed_setting.value {
+                                let new_mode = mode_id.try_into().unwrap();
+                                debug!("Monitoring mode changed to: {}", Debug2Format(&new_mode));
+                                self.update_monitoring_mode(new_mode, &settings).await;
+                            } else {
+                                warn!(
+                                    "Unexpected MonitoringTargetType setting value: {}",
+                                    Debug2Format(&changed_setting.value)
+                                );
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
