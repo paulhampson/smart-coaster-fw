@@ -14,14 +14,16 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Multiple monitoring screen support~~
     * ~~Show on screen target status~~
     * ~~Save active monitoring screen, so it is recalled after power cycle~~
-    * ***NEXT*** Reset consumption at midnight
+    * ~~Reset consumption at midnight~~
     * ***NEXT*** Set time to achieve consumption by (for daily mode)
     * Retain last consumption data between power cycles, respect reset point
     * Celebration screen when target achieved for the day (for daily mode)
-    * Show visual representation of target 'flight path'
-    * Show next required drink amount to get back on target
-    * Bar graph to a daily target
-    * Various combinations of above screens which can be cycled through or settable a custom fields on screen
+    * Display ideas
+        * Show visual representation of target 'flight path'
+        * Show required drink amount to get back on target
+        * Rate history as bar graph over last N hours
+        * Progress bar to a daily target
+    * Build custom screens based on standard 'widgets' (3x2 grid?)
     * Behaviours when vessel is missing
         * Time based 'aggressiveness' - no cup for long period = more vigorous LEDs
 * Historical log of consumption

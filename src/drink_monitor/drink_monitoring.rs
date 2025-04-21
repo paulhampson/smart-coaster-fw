@@ -16,15 +16,17 @@ use crate::application::application_state::ApplicationState;
 use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMessage};
 use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitoringUpdate};
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
+use crate::rtc::accessor::RtcAccessor;
 use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::messaging::SettingsMessage;
 use crate::storage::settings::monitor::FlashSettingsMonitor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::weight::WeighingSystem;
+use chrono::{NaiveDateTime, Timelike};
 use core::cmp::PartialEq;
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select4, Either4};
-use embassy_time::{Duration, Instant, Ticker, Timer};
+use embassy_time::{Duration, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
 
@@ -42,6 +44,9 @@ pub struct DrinkMonitoring<WS> {
     hourly_consumption_target: f32,
     daily_consumption_target: u32,
     target_mode: MonitoringTargetPeriodOptions,
+    rtc_accessor: RtcAccessor,
+    monitoring_start_time: NaiveDateTime,
+    total_consumption: f32,
 }
 
 impl<WS> DrinkMonitoring<WS>
@@ -54,12 +59,17 @@ where
         drink_monitor_publisher: DrinkMonitorChannelPublisher<'static>,
         weighing_system: WS,
     ) -> Self {
+        let mut rtc_accessor =
+            RtcAccessor::new().unwrap_or_else(|_| panic!("Failed to get RTC accessor"));
         Self {
             drink_monitor_publisher,
             weighing_system,
             hourly_consumption_target: 0.0,
             daily_consumption_target: 0,
             target_mode: MonitoringTargetPeriodOptions::Hourly,
+            monitoring_start_time: rtc_accessor.get_date_time(),
+            rtc_accessor,
+            total_consumption: 0.0,
         }
     }
 
@@ -132,16 +142,21 @@ where
             .await;
     }
 
-    async fn update_consumption_rate(
-        &mut self,
-        monitoring_start_time: Instant,
-        total_consumption: f32,
-    ) -> f32 {
+    async fn update_consumption_rate(&mut self) -> f32 {
+        // daily reset logic
+        let current_date_time = self.rtc_accessor.get_date_time();
+        let current_date = NaiveDateTime::from(current_date_time.date());
+        if self.monitoring_start_time != current_date {
+            self.monitoring_start_time = current_date;
+            self.total_consumption = 0.0;
+        }
+
+        // calculate the rate and notify the system
         let elapsed_time_in_hours = f32::max(
-            monitoring_start_time.elapsed().as_secs() as f32 / 3600.0,
-            1.0,
+            current_date_time.num_seconds_from_midnight() as f32 / 3600.0,
+            1.0, // this avoids getting meaningless consumption rate numbers when we are less than 1 hour from the start point
         );
-        let consumption_rate = total_consumption / elapsed_time_in_hours;
+        let consumption_rate = self.total_consumption / elapsed_time_in_hours;
         self.send_monitoring_update(DrinkMonitoringUpdate::ConsumptionRate(consumption_rate))
             .await;
         debug!("Consumption rate = {} ml/hr", consumption_rate.round());
@@ -153,7 +168,7 @@ where
             MonitoringTargetPeriodOptions::Daily => {
                 self.hourly_consumption_target = self.daily_consumption_target as f32 / 24.0;
                 debug!(
-                    "Hourly target (calc'd from daily) is now {}",
+                    "Hourly target (calculated from daily) is now {}",
                     self.hourly_consumption_target
                 );
                 self.send_monitoring_update(DrinkMonitoringUpdate::TargetConsumption(
@@ -224,8 +239,6 @@ where
         const MINIMUM_DELTA_FOR_STATE_CHANGE: f32 = 10.0;
         let mut last_stable_weight = self.get_stabilised_weight().await;
         let mut vessel_placed_weight = last_stable_weight;
-        let mut total_consumption = 0.0;
-        let monitoring_start_time = Instant::now();
         let mut consumption_update_ticker = Ticker::every(Duration::from_secs(60));
         let mut settings_monitor = FlashSettingsMonitor::new();
 
@@ -262,21 +275,20 @@ where
                             .await;
                         let consumption = vessel_placed_weight - new_stable_weight;
                         if consumption > 0.0 {
-                            total_consumption += consumption;
+                            self.total_consumption += consumption;
                         }
-                        self.update_consumption_rate(monitoring_start_time, total_consumption)
-                            .await;
+                        self.update_consumption_rate().await;
                         vessel_placed_weight = new_stable_weight;
                         trace!("New placed weight {}", vessel_placed_weight);
                         debug!("Consumption = {} ml", consumption);
-                        debug!("Total consumption = {} ml", total_consumption);
+                        debug!("Total consumption = {} ml", self.total_consumption);
                         self.send_monitoring_update(DrinkMonitoringUpdate::Consumption(f32::max(
                             0.0,
                             consumption,
                         )))
                         .await;
                         self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(
-                            f32::max(0.0, total_consumption),
+                            f32::max(0.0, self.total_consumption),
                         ))
                         .await;
                     } else if stable_delta < -MINIMUM_DELTA_FOR_STATE_CHANGE {
@@ -287,8 +299,8 @@ where
                     last_stable_weight = new_stable_weight;
                 }
                 Either4::Second(_) => {
-                    self.update_consumption_rate(monitoring_start_time, total_consumption)
-                        .await;
+                    // check for tick over to next day and reset consumption
+                    self.update_consumption_rate().await;
                     self.update_targets().await;
                 }
                 Either4::Third(app_message) => {
@@ -298,8 +310,7 @@ where
                         == ApplicationMessage::ApplicationStateUpdate(ApplicationState::Monitoring)
                     {
                         self.update_targets().await;
-                        self.update_consumption_rate(monitoring_start_time, total_consumption)
-                            .await;
+                        self.update_consumption_rate().await;
                     }
                 }
                 Either4::Fourth(setting_message) => {
