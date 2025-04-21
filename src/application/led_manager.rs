@@ -77,10 +77,7 @@ where
                                     self.led_control.set_mode(LedArrayMode::Off);
                                 }
                                 ApplicationState::TestScreen => {
-                                    self.led_control.set_mode(LedArrayMode::RainbowWheel {
-                                        speed: 1.0,
-                                        repetitions: 1.0,
-                                    })
+                                    self.led_control.set_mode(LedArrayMode::Test {})
                                 }
                                 ApplicationState::AboutScreen => {
                                     self.led_control.set_mode(LedArrayMode::RainbowWheel {

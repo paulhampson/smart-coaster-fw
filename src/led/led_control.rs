@@ -41,6 +41,7 @@ pub enum LedArrayMode {
     StaticColour {
         colour: RGB8,
     },
+    Test {},
 }
 
 /// Input a position 0 to 255 to get a color value associated with that position.
@@ -123,6 +124,7 @@ where
                 self.base_colour = colour;
             }
             LedArrayMode::Off => self.base_colour = RGB8::new(0, 0, 0),
+            LedArrayMode::Test {} => self.set_speed_factor(0.1),
         }
     }
 
@@ -164,6 +166,7 @@ where
                 speed: _,
             } => self.pulse(),
             LedArrayMode::StaticColour { colour: _ } => self.static_colour(),
+            LedArrayMode::Test {} => self.test(),
         };
 
         let mut scaled_leds = [RGB8::default(); LED_COUNT];
@@ -280,6 +283,33 @@ where
     fn static_colour(&mut self) {
         for i in 0..self.led_count {
             self.led_state[i] = self.base_colour;
+        }
+    }
+
+    fn test(&mut self) {
+        let normalised_position = self.animation_position / Self::LED_SINGLE_ROTATION_STEPS;
+        match normalised_position {
+            0.0..0.3333333 => {
+                self.led_state.fill(RGB8::new(0, 0, 0));
+                let index_as_float = (LED_COUNT - 1) as f32 * normalised_position / 0.3333333;
+                let index = index_as_float.round() as usize;
+                self.led_state[index] = RGB8::new(255, 0, 0);
+            }
+            0.3333333..0.6666666 => {
+                self.led_state.fill(RGB8::new(0, 0, 0));
+                let index_as_float =
+                    (LED_COUNT - 1) as f32 * (normalised_position - 0.3333333) / 0.3333333;
+                let index = index_as_float.round() as usize;
+                self.led_state[index] = RGB8::new(0, 255, 0);
+            }
+            0.6666666..1.0 => {
+                self.led_state.fill(RGB8::new(0, 0, 0));
+                let index_as_float =
+                    (LED_COUNT - 1) as f32 * (normalised_position - 0.666666) / 0.3333333;
+                let index = index_as_float.round() as usize;
+                self.led_state[index] = RGB8::new(0, 0, 255);
+            }
+            _ => {}
         }
     }
 }
