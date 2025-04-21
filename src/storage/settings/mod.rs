@@ -49,6 +49,7 @@ pub enum SettingsAccessorId {
     DisplayTimeoutMinutes,
     MonitoringDayEnd,
     MonitoringTargetHourly,
+    MonitoringDisplayIndex,
 }
 
 impl SettingsAccessorId {
@@ -82,7 +83,7 @@ pub trait SettingsAccessor {
     /// to complete the save action. Also notifies interested parties the setting has been changed.
     /// Thread safe.
     fn save_setting(
-        &mut self,
+        &self,
         setting: SettingsAccessorId,
         value: SettingValue,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;

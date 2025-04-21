@@ -39,7 +39,7 @@ use sh1106::mode::GraphicsMode;
 const DEFAULT_BRIGHTNESS: u8 = 128;
 const DEFAULT_DISPLAY_TIMEOUT_MINUTES: u8 = 15;
 
-pub struct DisplayManager<DI, SA>
+pub struct DisplayManager<'a, DI, SA>
 where
     DI: sh1106::interface::DisplayInterface,
     SA: SettingsAccessor,
@@ -54,18 +54,18 @@ where
 
     settings_screen: SettingMenu<SA>,
     test_mode_screen: TestModeScreen,
-    monitoring_screen: MonitoringScreen,
+    monitoring_screen: MonitoringScreen<'a, SA>,
     heap_status_screen: HeapStatusScreen,
     calibration_screens: CalibrationScreens,
     set_date_time_screen: SetDateTimeScreen,
     number_setting_screen: SetNumberScreen,
     about_screen: AboutScreen,
 
-    settings: SA,
+    settings: &'a SA,
     rtc_accessor: RtcAccessor,
 }
 
-impl<DI, SA> DisplayManager<DI, SA>
+impl<'a, DI, SA> DisplayManager<'a, DI, SA>
 where
     DI: sh1106::interface::DisplayInterface,
     SA: SettingsAccessor,
@@ -76,7 +76,7 @@ where
         mut display: GraphicsMode<DI>,
         app_channel_subscriber: ApplicationChannelSubscriber<'static>,
         ui_action_publisher: UiActionChannelPublisher<'static>,
-        settings: SA,
+        settings: &'a SA,
     ) -> Self {
         let _ = display.init().map_err(|_| error!("Failed to init display"));
         let _ = display
@@ -95,9 +95,9 @@ where
             last_display_update: Instant::MIN,
             display_timeout: Duration::from_secs(30 * 60),
 
-            settings_screen: SettingMenu::new(&settings).await,
+            settings_screen: SettingMenu::new(settings).await,
             test_mode_screen: TestModeScreen::new(),
-            monitoring_screen: MonitoringScreen::new(),
+            monitoring_screen: MonitoringScreen::new(settings).await,
             heap_status_screen: HeapStatusScreen::new(),
             calibration_screens: CalibrationScreens::new(),
             set_date_time_screen: SetDateTimeScreen::new(),

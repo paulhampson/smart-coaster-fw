@@ -12,9 +12,10 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Daily/hourly target is settable~~
     * ~~Colour of LEDs changes in monitoring mode based on whether consumption is high/low/on target.~~
     * ~~Multiple monitoring screen support~~
-    * ***NEXT*** Show on screen target status
-    * Reset consumption at midnight
-    * Set time to achieve consumption by (for daily mode)
+    * ~~Show on screen target status~~
+    * ~~Save active monitoring screen, so it is recalled after power cycle~~
+    * ***NEXT*** Reset consumption at midnight
+    * ***NEXT*** Set time to achieve consumption by (for daily mode)
     * Retain last consumption data between power cycles, respect reset point
     * Celebration screen when target achieved for the day (for daily mode)
     * Show visual representation of target 'flight path'
@@ -26,11 +27,12 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 * Historical log of consumption
     * can be viewed as a graph on device (sparkline?)
     * or transferred via USB.
+* Firmware update via USB
+* Live consumption data streamed over USB to be accessible by a local web page#
+* Timezones
+    * Daylight savings
 * Visual alarm
 * Pomodoro mode
-* Timezones
-* Firmware update via USB
-* Live consumption data streamed over USB to be accessible by a local web page
 * ~~Screen off after period of inactivity to save OLED~~
 
 ### Application logic ideas
@@ -64,7 +66,6 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 * Display
     * ~~Brightness~~
     * ~~Inactivity timeout~~
-    * Default activity screen (if multiple)
 * Sys config
     * ~~Test mode access~~
     * ~~Calibration~~

@@ -66,11 +66,14 @@ impl SettingsAccessor for FlashSettingsAccessor {
             SettingsAccessorId::MonitoringTargetHourly => settings.get_setting(
                 StoredSettings::MonitoringTargetHourly(SettingValue::Default).discriminant(),
             ),
+            SettingsAccessorId::MonitoringDisplayIndex => settings.get_setting(
+                StoredSettings::MonitoringDisplayIndex(SettingValue::Default).discriminant(),
+            ),
         }
     }
 
     async fn save_setting(
-        &mut self,
+        &self,
         setting: SettingsAccessorId,
         value: SettingValue,
     ) -> Result<(), Self::Error> {
@@ -98,6 +101,9 @@ impl SettingsAccessor for FlashSettingsAccessor {
             SettingsAccessorId::MonitoringDayEnd => StoredSettings::MonitoringDayEnd(value),
             SettingsAccessorId::MonitoringTargetHourly => {
                 StoredSettings::MonitoringTargetHourly(value)
+            }
+            SettingsAccessorId::MonitoringDisplayIndex => {
+                StoredSettings::MonitoringDisplayIndex(value)
             }
         };
 

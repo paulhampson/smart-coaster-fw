@@ -28,6 +28,7 @@ use crate::hmi::screens::monitoring::monitoring_screen_debug::MonitoringScreenDe
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use chrono::NaiveDateTime;
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::{AnchorX, AnchorY, Point};
@@ -62,8 +63,8 @@ static SCREEN_LAYOUT_1: MonitoringScreen1 = MonitoringScreen1 {};
 static SCREEN_LAYOUT_2: MonitoringScreen2 = MonitoringScreen2 {};
 static SCREEN_LAYOUT_DEBUG: MonitoringScreenDebug = MonitoringScreenDebug {};
 
-const MAX_SCREENS: usize = 3;
-fn get_screen_layout<D>(index: &usize) -> &dyn MonitoringScreenContent<D>
+const MAX_SCREENS: u8 = 3;
+fn get_screen_layout<D>(index: &u8) -> &dyn MonitoringScreenContent<D>
 where
     D: DrawTarget<Color = BinaryColor>,
 {
@@ -75,16 +76,30 @@ where
     }
 }
 
-pub struct MonitoringScreen {
+pub struct MonitoringScreen<'a, SA> {
     monitoring_data: MonitoringData,
     state: MonitoringStateSubstates,
 
-    active_screen_index: usize,
+    active_screen_index: u8,
     datetime: NaiveDateTime,
+    settings: &'a SA,
 }
 
-impl MonitoringScreen {
-    pub fn new() -> Self {
+impl<'a, SA> MonitoringScreen<'a, SA>
+where
+    SA: SettingsAccessor,
+{
+    pub async fn new(settings: &'a SA) -> Self {
+        let active_screen_index = if let SettingValue::SmallUInt(retrieved_screen_index) = settings
+            .get_setting(SettingsAccessorId::MonitoringDisplayIndex)
+            .await
+            .unwrap_or(SettingValue::SmallUInt(0))
+        {
+            retrieved_screen_index
+        } else {
+            0
+        };
+
         Self {
             monitoring_data: MonitoringData {
                 consumption: 0.0,
@@ -95,8 +110,9 @@ impl MonitoringScreen {
                 target_mode: MonitoringTargetPeriodOptions::Daily,
             },
             state: MonitoringStateSubstates::WaitingForActivity,
-            active_screen_index: 0,
+            active_screen_index,
             datetime: NaiveDateTime::default(),
+            settings,
         }
     }
 
@@ -129,7 +145,10 @@ impl MonitoringScreen {
     }
 }
 
-impl UiInputHandler for MonitoringScreen {
+impl<'a, SA> UiInputHandler for MonitoringScreen<'a, SA>
+where
+    SA: SettingsAccessor,
+{
     async fn ui_input_handler(
         &mut self,
         input: UiInput,
@@ -137,15 +156,37 @@ impl UiInputHandler for MonitoringScreen {
     ) {
         match input {
             UiInput::EncoderClockwise => {
-                self.active_screen_index += 1;
-                if self.active_screen_index >= MAX_SCREENS {
-                    self.active_screen_index = 0;
+                if self.state == MonitoringStateSubstates::VesselPlaced
+                    || self.state == MonitoringStateSubstates::VesselRemoved
+                {
+                    self.active_screen_index += 1;
+                    if self.active_screen_index >= MAX_SCREENS {
+                        self.active_screen_index = 0;
+                    }
+                    self.settings
+                        .save_setting(
+                            SettingsAccessorId::MonitoringDisplayIndex,
+                            SettingValue::SmallUInt(self.active_screen_index),
+                        )
+                        .await
+                        .unwrap();
                 }
             }
             UiInput::EncoderCounterClockwise => {
-                self.active_screen_index -= 1;
-                if self.active_screen_index >= MAX_SCREENS {
-                    self.active_screen_index = MAX_SCREENS - 1;
+                if self.state == MonitoringStateSubstates::VesselPlaced
+                    || self.state == MonitoringStateSubstates::VesselRemoved
+                {
+                    self.active_screen_index -= 1;
+                    if self.active_screen_index >= MAX_SCREENS {
+                        self.active_screen_index = MAX_SCREENS - 1;
+                    }
+                    self.settings
+                        .save_setting(
+                            SettingsAccessorId::MonitoringDisplayIndex,
+                            SettingValue::SmallUInt(self.active_screen_index),
+                        )
+                        .await
+                        .unwrap();
                 }
             }
             UiInput::ButtonPress => ui_action_publisher
@@ -157,7 +198,7 @@ impl UiInputHandler for MonitoringScreen {
     }
 }
 
-impl MonitoringScreen {
+impl<'a, SA> MonitoringScreen<'a, SA> {
     fn draw_waiting_content<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
         D: DrawTarget<Color = BinaryColor>,
@@ -221,7 +262,7 @@ impl MonitoringScreen {
     }
 }
 
-impl UiDrawer for MonitoringScreen {
+impl<'a, SA> UiDrawer for MonitoringScreen<'a, SA> {
     fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
         D: DrawTarget<Color = BinaryColor>,

@@ -363,7 +363,7 @@ async fn display_task(
     let settings = FlashSettingsAccessor::new();
     let display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
     let mut display_manager =
-        DisplayManager::new(display, app_subscriber, ui_action_publisher, settings).await;
+        DisplayManager::new(display, app_subscriber, ui_action_publisher, &settings).await;
     display_manager.run().await;
 }
 
