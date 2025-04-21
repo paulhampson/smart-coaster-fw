@@ -97,9 +97,10 @@ where
                                 }
                                 ApplicationState::HeapStatus => {}
                                 ApplicationState::Calibration => {}
-                                ApplicationState::SetDateTime => {}
+                                ApplicationState::SetSystemDateTime => {}
                                 ApplicationState::NumberEntry(_) => {}
                                 ApplicationState::TimeEntry(_) => {}
+                                ApplicationState::DateTimeEntry(_) => {}
                             }
                         }
 

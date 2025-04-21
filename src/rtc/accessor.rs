@@ -12,10 +12,11 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use defmt::warn;
 use crate::rtc::signal::{RtcWatchReceiver, RTC_SET_TIME, RTC_TIME_UPDATE};
+use defmt::warn;
 use ds323x::NaiveDateTime;
 
+#[derive(Debug)]
 pub enum RtcAccessorError {
     NoWatchSlotsAvailable,
 }

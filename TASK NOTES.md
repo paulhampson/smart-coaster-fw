@@ -73,7 +73,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Test mode access~~
     * ~~Calibration~~
     * ~~Set Date/Time~~
-        * Improve date/time setting screen to be on par with numerical setting
+        * ~~Improve date/time setting screen to be on par with numerical setting~~
     * TZ setting
         * see https://docs.rs/time-tz/latest/time_tz/timezones/index.html / https://crates.io/crates/chrono-tz
     * Factory Reset

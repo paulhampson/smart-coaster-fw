@@ -16,94 +16,135 @@ use crate::application::application_state::ApplicationState;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use crate::rtc;
-use chrono::{Datelike, Month, Timelike};
+use crate::storage::settings::accessor::FlashSettingsAccessor;
+use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use chrono::{Datelike, Months, TimeDelta, Timelike};
 use core::cmp::PartialEq;
 use core::fmt::Write;
+use defmt::{error, trace, Debug2Format};
 use ds323x::NaiveDateTime;
 use embedded_graphics::geometry::Point;
-use embedded_graphics::mono_font::ascii::FONT_6X10;
+use embedded_graphics::mono_font::ascii::{FONT_6X13_BOLD, FONT_8X13};
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::DrawTarget;
-use embedded_graphics::text::{Baseline, Text};
+use embedded_graphics::text::renderer::TextRenderer;
+use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 use embedded_graphics::Drawable;
 use heapless::String;
-use strum::{EnumIter, IntoEnumIterator};
 
-#[derive(EnumIter, Debug, PartialEq)]
-enum DateTimeSettingElement {
+#[derive(PartialEq, Debug)]
+enum Element {
     Hour,
     Minute,
-    Seconds,
     Year,
     Month,
     Day,
     Save,
+    Cancel,
 }
 
-impl DateTimeSettingElement {
-    pub fn increment(&self, dt: NaiveDateTime) -> NaiveDateTime {
+impl Element {
+    pub fn next_element(&self) -> Self {
         match self {
-            DateTimeSettingElement::Hour => dt.with_hour(dt.hour() + 1).unwrap_or(dt),
-            DateTimeSettingElement::Minute => dt.with_minute(dt.minute() + 1).unwrap_or(dt),
-            DateTimeSettingElement::Seconds => dt.with_second(dt.second() + 1).unwrap_or(dt),
-            DateTimeSettingElement::Day => dt.with_day(dt.day() + 1).unwrap_or(dt),
-            DateTimeSettingElement::Month => dt.with_month(dt.month() + 1).unwrap_or(dt),
-            DateTimeSettingElement::Year => {
-                if let Some(new_dt) = dt.with_year(dt.year() + 1) {
-                    new_dt
-                } else {
-                    // with_year can return None when the date doesn't exist (e.g. 29 Feb), so set
-                    // it to first of the month which always exists.
-                    let new_dt = dt.with_day(1).unwrap().with_year(dt.year() + 1).unwrap();
-                    new_dt
-                }
-            }
-            _ => dt,
+            Element::Day => Element::Month,
+            Element::Month => Element::Year,
+            Element::Year => Element::Hour,
+            Element::Hour => Element::Minute,
+            Element::Minute => Element::Save,
+            Element::Save => Element::Cancel,
+            Element::Cancel => Element::Day,
         }
     }
 
-    pub fn decrement(&self, dt: NaiveDateTime) -> NaiveDateTime {
+    pub fn previous_element(&self) -> Self {
         match self {
-            DateTimeSettingElement::Hour => dt.with_hour(dt.hour() - 1).unwrap_or(dt),
-            DateTimeSettingElement::Minute => dt.with_minute(dt.minute() - 1).unwrap_or(dt),
-            DateTimeSettingElement::Seconds => dt.with_second(dt.second() - 1).unwrap_or(dt),
-            DateTimeSettingElement::Day => dt.with_day(dt.day() - 1).unwrap_or(dt),
-            DateTimeSettingElement::Month => dt.with_month(dt.month() - 1).unwrap_or(dt),
-            DateTimeSettingElement::Year => {
-                if let Some(new_dt) = dt.with_year(dt.year() - 1) {
-                    new_dt
-                } else {
-                    // with_year can return None when the date doesn't exist (e.g. 29 Feb), so set
-                    // it to first of the month which always exists.
-                    let new_dt = dt.with_day(1).unwrap().with_year(dt.year() - 1).unwrap();
-                    new_dt
-                }
-            }
-            _ => dt,
+            Element::Day => Element::Cancel,
+            Element::Month => Element::Day,
+            Element::Year => Element::Month,
+            Element::Hour => Element::Year,
+            Element::Minute => Element::Hour,
+            Element::Cancel => Element::Save,
+            Element::Save => Element::Minute,
         }
     }
 }
 
 pub struct SetDateTimeScreen {
-    local_datetime: NaiveDateTime,
-    active_element: DateTimeSettingElement,
-    element_idx: usize,
+    label: &'static str,
+    value: NaiveDateTime,
+    setting_id_to_save: Option<SettingsAccessorId>,
+    current_element: Element,
+    element_active: bool,
 }
 
 impl SetDateTimeScreen {
-    pub fn new() -> Self {
+    pub fn new(
+        label: &'static str,
+        value: NaiveDateTime,
+        setting_id_to_save: Option<SettingsAccessorId>,
+    ) -> Self {
         Self {
-            local_datetime: NaiveDateTime::default(),
-            active_element: DateTimeSettingElement::iter().nth(0).unwrap(),
-            element_idx: 0,
+            label,
+            value,
+            setting_id_to_save,
+            current_element: Element::Day,
+            element_active: false,
         }
     }
 
-    pub fn reset(&mut self, dt: NaiveDateTime) {
-        self.local_datetime = dt;
-        self.active_element = DateTimeSettingElement::iter().nth(0).unwrap();
-        self.element_idx = 0;
+    fn increase_value(&mut self) {
+        match self.current_element {
+            Element::Hour => {
+                self.value = self.value + TimeDelta::hours(1);
+            }
+            Element::Minute => {
+                self.value = self.value + TimeDelta::minutes(1);
+            }
+            Element::Year => {
+                self.value = self
+                    .value
+                    .checked_add_months(Months::new(12))
+                    .unwrap_or(self.value);
+            }
+            Element::Month => {
+                self.value = self
+                    .value
+                    .checked_add_months(Months::new(1))
+                    .unwrap_or(self.value);
+            }
+            Element::Day => {
+                self.value = self.value + TimeDelta::days(1);
+            }
+            _ => {}
+        }
+    }
+
+    fn decrease_value(&mut self) {
+        match self.current_element {
+            Element::Hour => {
+                self.value = self.value - TimeDelta::hours(1);
+            }
+            Element::Minute => {
+                self.value = self.value - TimeDelta::minutes(1);
+            }
+            Element::Year => {
+                self.value = self
+                    .value
+                    .checked_sub_months(Months::new(12))
+                    .unwrap_or(self.value);
+            }
+            Element::Month => {
+                self.value = self
+                    .value
+                    .checked_sub_months(Months::new(1))
+                    .unwrap_or(self.value);
+            }
+            Element::Day => {
+                self.value = self.value - TimeDelta::days(1);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -111,32 +152,51 @@ impl UiInputHandler for SetDateTimeScreen {
     async fn ui_input_handler(
         &mut self,
         input: UiInput,
-        ui_channel_publisher: &UiActionChannelPublisher<'_>,
+        ui_action_publisher: &UiActionChannelPublisher<'_>,
     ) {
         match input {
             UiInput::EncoderClockwise => {
-                self.local_datetime = self.active_element.increment(self.local_datetime);
-            }
-            UiInput::EncoderCounterClockwise => {
-                self.local_datetime = self.active_element.decrement(self.local_datetime);
-            }
-            UiInput::ButtonPress => {
-                if self.active_element == DateTimeSettingElement::Save {
-                    rtc::accessor::set_date_time(self.local_datetime);
-                    ui_channel_publisher.publish_immediate(UiRequestMessage::ChangeState(
-                        ApplicationState::Settings,
-                    ))
+                if self.element_active {
+                    self.increase_value();
                 } else {
-                    self.element_idx += 1;
-                    self.element_idx %= DateTimeSettingElement::iter().len();
-                    self.active_element = DateTimeSettingElement::iter()
-                        .nth(self.element_idx)
-                        .unwrap();
+                    self.current_element = self.current_element.next_element();
                 }
             }
-            UiInput::DateTimeUpdate(dt) => {
-                self.reset(dt);
+            UiInput::EncoderCounterClockwise => {
+                if self.element_active {
+                    self.decrease_value();
+                } else {
+                    self.current_element = self.current_element.previous_element();
+                }
             }
+            UiInput::ButtonPress => match self.current_element {
+                Element::Save => {
+                    if let Some(setting_id) = self.setting_id_to_save {
+                        let settings_accessor = FlashSettingsAccessor::new();
+                        settings_accessor
+                            .save_setting(setting_id, SettingValue::DateTime(self.value))
+                            .await
+                            .unwrap_or_else(|e| {
+                                error!("Failed to save setting value - {}", Debug2Format(&e))
+                            });
+                    } else {
+                        rtc::accessor::set_date_time(self.value);
+                        trace!("Set system date and time");
+                    }
+
+                    ui_action_publisher.publish_immediate(UiRequestMessage::ChangeState(
+                        ApplicationState::Settings,
+                    ));
+                }
+                Element::Cancel => {
+                    ui_action_publisher.publish_immediate(UiRequestMessage::ChangeState(
+                        ApplicationState::Settings,
+                    ));
+                }
+                _ => {
+                    self.element_active = !self.element_active;
+                }
+            },
             _ => {}
         }
     }
@@ -148,129 +208,215 @@ impl UiDrawer for SetDateTimeScreen {
         D: DrawTarget<Color = BinaryColor>,
     {
         let active_element_style = MonoTextStyleBuilder::new()
-            .font(&FONT_6X10)
+            .font(&FONT_8X13)
             .text_color(BinaryColor::Off)
             .background_color(BinaryColor::On)
             .build();
+        let hover_element_style = MonoTextStyleBuilder::new()
+            .font(&FONT_8X13)
+            .text_color(BinaryColor::On)
+            .background_color(BinaryColor::Off)
+            .underline()
+            .build();
+
         let text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_6X10)
+            .font(&FONT_8X13)
             .text_color(BinaryColor::On)
             .build();
 
+        let label_char_style = MonoTextStyleBuilder::new()
+            .font(&FONT_6X13_BOLD)
+            .text_color(BinaryColor::On)
+            .build();
+        let label_text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
+
         let mut string_buffer = String::<32>::new();
-        let mut next_point = Point::new(0, 0);
 
-        let style_to_use = if self.active_element == DateTimeSettingElement::Hour {
-            active_element_style
-        } else {
-            text_style
-        };
+        let mut next_point = Point::new((display.bounding_box().size.width / 2) as i32, 0);
         string_buffer.clear();
-        write!(&mut string_buffer, "{:01}:", self.local_datetime.hour()).unwrap();
-        next_point = Text::with_baseline(
+        writeln!(&mut string_buffer, "{}", self.label).unwrap();
+        next_point = Text::with_text_style(
             string_buffer.as_str(),
             next_point,
-            style_to_use,
-            Baseline::Top,
+            label_char_style,
+            label_text_style,
         )
         .draw(display)?;
 
-        let style_to_use = if self.active_element == DateTimeSettingElement::Minute {
-            active_element_style
-        } else {
-            text_style
-        };
-        string_buffer.clear();
-        write!(&mut string_buffer, "{:01}:", self.local_datetime.minute()).unwrap();
-        next_point = Text::with_baseline(
-            string_buffer.as_str(),
-            next_point,
-            style_to_use,
-            Baseline::Top,
-        )
-        .draw(display)?;
+        // Date in format DD-MMM-YYYY
+        let date_character_count = 11;
+        let date_text_width = date_character_count * text_style.font.character_size.width as i32;
+        let date_x_offset = display.bounding_box().center().x - (date_text_width / 2);
+        next_point.x = date_x_offset;
+        next_point.y = (display.bounding_box().center().y) - text_style.line_height() as i32;
 
-        let style_to_use = if self.active_element == DateTimeSettingElement::Seconds {
-            active_element_style
-        } else {
-            text_style
-        };
         string_buffer.clear();
-        write!(&mut string_buffer, "{:01}\n", self.local_datetime.second()).unwrap();
-        next_point = Text::with_baseline(
-            string_buffer.as_str(),
-            next_point,
-            style_to_use,
-            Baseline::Top,
-        )
-        .draw(display)?;
+        write!(&mut string_buffer, "{:02}", self.value.day()).unwrap();
 
-        next_point.x = 0;
-        let style_to_use = if self.active_element == DateTimeSettingElement::Year {
-            active_element_style
+        let style_to_use = if let Element::Day = self.current_element {
+            if self.element_active {
+                active_element_style
+            } else {
+                hover_element_style
+            }
         } else {
             text_style
         };
-        string_buffer.clear();
-        write!(&mut string_buffer, "{:04}-", self.local_datetime.year()).unwrap();
-        next_point = Text::with_baseline(
-            string_buffer.as_str(),
-            next_point,
-            style_to_use,
-            Baseline::Top,
-        )
-        .draw(display)?;
-
-        let style_to_use = if self.active_element == DateTimeSettingElement::Month {
-            active_element_style
-        } else {
-            text_style
-        };
-        string_buffer.clear();
-        write!(
-            &mut string_buffer,
-            "{:^9}-",
-            Month::try_from(self.local_datetime.month() as u8)
-                .unwrap()
-                .name()
-        )
-        .unwrap();
-        next_point = Text::with_baseline(
-            string_buffer.as_str(),
-            next_point,
-            style_to_use,
-            Baseline::Top,
-        )
-        .draw(display)?;
-
-        let style_to_use = if self.active_element == DateTimeSettingElement::Day {
-            active_element_style
-        } else {
-            text_style
-        };
-        string_buffer.clear();
-        write!(&mut string_buffer, "{:02}\n\n", self.local_datetime.day()).unwrap();
-        next_point = Text::with_baseline(
-            string_buffer.as_str(),
-            next_point,
-            style_to_use,
-            Baseline::Top,
-        )
-        .draw(display)?;
-
-        next_point.x = 0;
-        let style_to_use = if self.active_element == DateTimeSettingElement::Save {
-            active_element_style
-        } else {
-            text_style
-        };
-        string_buffer.clear();
-        write!(&mut string_buffer, "[Set Time]").unwrap();
         Text::with_baseline(
             string_buffer.as_str(),
             next_point,
             style_to_use,
             Baseline::Top,
+        )
+        .draw(display)?;
+
+        next_point.x += text_style.font.character_size.width as i32 * 2;
+        Text::with_baseline("-", next_point, text_style, Baseline::Top).draw(display)?;
+
+        let month_list = [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        ];
+        next_point.x += text_style.font.character_size.width as i32;
+        string_buffer.clear();
+        write!(
+            &mut string_buffer,
+            "{}",
+            month_list[self.value.month0() as usize]
+        )
+        .unwrap();
+
+        let style_to_use = if let Element::Month = self.current_element {
+            if self.element_active {
+                active_element_style
+            } else {
+                hover_element_style
+            }
+        } else {
+            text_style
+        };
+        Text::with_baseline(
+            string_buffer.as_str(),
+            next_point,
+            style_to_use,
+            Baseline::Top,
+        )
+        .draw(display)?;
+
+        next_point.x += text_style.font.character_size.width as i32 * 3;
+        Text::with_baseline("-", next_point, text_style, Baseline::Top).draw(display)?;
+
+        next_point.x += text_style.font.character_size.width as i32;
+        string_buffer.clear();
+        write!(&mut string_buffer, "{:04}", self.value.year()).unwrap();
+
+        let style_to_use = if let Element::Year = self.current_element {
+            if self.element_active {
+                active_element_style
+            } else {
+                hover_element_style
+            }
+        } else {
+            text_style
+        };
+        Text::with_baseline(
+            string_buffer.as_str(),
+            next_point,
+            style_to_use,
+            Baseline::Top,
+        )
+        .draw(display)?;
+
+        // Time in format HH:MM
+        let time_character_count = 5;
+        let time_text_width = time_character_count * text_style.font.character_size.width as i32;
+        let time_x_offset = display.bounding_box().center().x - (time_text_width / 2);
+        next_point.x = time_x_offset;
+        next_point.y = display.bounding_box().center().y; //+ text_style.line_height() as i32 / 2;
+
+        string_buffer.clear();
+        write!(&mut string_buffer, "{:02}", self.value.hour()).unwrap();
+
+        let style_to_use = if let Element::Hour = self.current_element {
+            if self.element_active {
+                active_element_style
+            } else {
+                hover_element_style
+            }
+        } else {
+            text_style
+        };
+        Text::with_baseline(
+            string_buffer.as_str(),
+            next_point,
+            style_to_use,
+            Baseline::Top,
+        )
+        .draw(display)?;
+
+        next_point.x += text_style.font.character_size.width as i32 * 2;
+        Text::with_baseline(":", next_point, text_style, Baseline::Top).draw(display)?;
+
+        next_point.x += text_style.font.character_size.width as i32;
+        string_buffer.clear();
+        write!(&mut string_buffer, "{:02}", self.value.minute()).unwrap();
+
+        let style_to_use = if let Element::Minute = self.current_element {
+            if self.element_active {
+                active_element_style
+            } else {
+                hover_element_style
+            }
+        } else {
+            text_style
+        };
+        Text::with_baseline(
+            string_buffer.as_str(),
+            next_point,
+            style_to_use,
+            Baseline::Top,
+        )
+        .draw(display)?;
+
+        // save & cancel buttons
+        next_point.x = 0;
+        next_point.y = display.bounding_box().size.height as i32;
+        let char_style_to_use = if self.current_element == Element::Save {
+            active_element_style
+        } else {
+            text_style
+        };
+        string_buffer.clear();
+        write!(&mut string_buffer, "[Save]").unwrap();
+        next_point = Text::with_text_style(
+            string_buffer.as_str(),
+            next_point,
+            char_style_to_use,
+            TextStyleBuilder::new()
+                .alignment(Alignment::Left)
+                .baseline(Baseline::Bottom)
+                .build(),
+        )
+        .draw(display)?;
+
+        next_point.x = display.bounding_box().size.width as i32;
+        let char_style_to_use = if self.current_element == Element::Cancel {
+            active_element_style
+        } else {
+            text_style
+        };
+        string_buffer.clear();
+        writeln!(&mut string_buffer, "[Cancel]").unwrap();
+        Text::with_text_style(
+            string_buffer.as_str(),
+            next_point,
+            char_style_to_use,
+            TextStyleBuilder::new()
+                .alignment(Alignment::Right)
+                .baseline(Baseline::Bottom)
+                .build(),
         )
         .draw(display)?;
         Ok(())

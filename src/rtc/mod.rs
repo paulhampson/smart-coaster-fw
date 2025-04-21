@@ -15,27 +15,28 @@
 pub mod accessor;
 mod signal;
 
+use crate::rtc::signal::{RTC_SET_TIME, RTC_TIME_UPDATE};
 use defmt::{debug, error, trace, Debug2Format};
-use ds323x::{DateTimeAccess, Ds323x, NaiveDateTime};
 use ds323x::ic;
 use ds323x::interface::I2cInterface;
+use ds323x::{DateTimeAccess, Ds323x, NaiveDateTime};
 use embassy_rp::i2c::{Async, I2c};
 use embassy_rp::peripherals::I2C1;
 use embassy_time::{Duration, Ticker};
-use crate::rtc::signal::{RTC_SET_TIME, RTC_TIME_UPDATE};
 
 pub type SystemRtc = Ds323x<I2cInterface<I2c<'static, I2C1, Async>>, ic::DS3231>;
 
-pub struct RtcControl{
+pub struct RtcControl {
     rtc: SystemRtc,
-    latest_dt: NaiveDateTime
+    latest_dt: NaiveDateTime,
 }
 
 impl RtcControl {
     pub fn new(mut rtc: SystemRtc) -> Self {
-        rtc.use_int_sqw_output_as_interrupt().unwrap_or_else(|e| error!("unable to set RTC interrupt signal: {}", Debug2Format(&e)));
+        rtc.use_int_sqw_output_as_interrupt()
+            .unwrap_or_else(|e| error!("unable to set RTC interrupt signal: {}", Debug2Format(&e)));
         let latest_dt = rtc.datetime().unwrap_or_default();
-        Self { rtc, latest_dt}
+        Self { rtc, latest_dt }
     }
 
     pub async fn run(&mut self) {
@@ -44,7 +45,9 @@ impl RtcControl {
         loop {
             one_second_ticker.next().await;
             if let Some(new_time) = RTC_SET_TIME.try_take() {
-                self.rtc.set_datetime(&new_time).unwrap_or_else(|e| error!("unable to set RTC timer: {}", Debug2Format(&e)));
+                self.rtc
+                    .set_datetime(&new_time)
+                    .unwrap_or_else(|e| error!("unable to set RTC time: {}", Debug2Format(&e)));
                 debug!("Time set to {}", Debug2Format(&new_time));
             }
             if let Ok(dt) = self.rtc.datetime() {

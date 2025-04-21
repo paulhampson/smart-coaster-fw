@@ -31,7 +31,7 @@ use crate::hmi::screens::settings_screens::test_mode::TestModeScreen;
 use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
 use crate::rtc::accessor::RtcAccessor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
-use chrono::NaiveTime;
+use chrono::{NaiveDateTime, NaiveTime};
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select3, Either3};
 use embassy_sync::pubsub::WaitResult;
@@ -103,7 +103,7 @@ where
             monitoring_screen: MonitoringScreen::new(settings).await,
             heap_status_screen: HeapStatusScreen::new(),
             calibration_screens: CalibrationScreens::new(),
-            set_date_time_screen: SetDateTimeScreen::new(),
+            set_date_time_screen: SetDateTimeScreen::new("Default", NaiveDateTime::default(), None),
             number_setting_screen: SetNumberScreen::new(
                 // set some default values, these are changed as required
                 "Default",
@@ -162,6 +162,14 @@ where
         };
         debug!("Restored display_timeout={:?}", display_timeout);
         Duration::from_secs(display_timeout as u64 * 60)
+    }
+
+    async fn setup_system_date_time_setting(&mut self) {
+        self.set_date_time_screen = SetDateTimeScreen::new(
+            "System Date & Time",
+            self.rtc_accessor.get_date_time(),
+            None,
+        )
     }
 
     async fn setup_monitoring_target_time_selection(&mut self) {
@@ -239,6 +247,10 @@ where
             }
         }
 
+        if let ApplicationState::SetSystemDateTime = display_state {
+            self.setup_system_date_time_setting().await;
+        }
+
         self.display_state = display_state;
         let dt = self.rtc_accessor.get_date_time();
         self.route_ui_input(UiInput::DateTimeUpdate(dt)).await;
@@ -272,7 +284,7 @@ where
             ApplicationState::Calibration => {
                 self.calibration_screens.draw(&mut self.display).unwrap()
             }
-            ApplicationState::SetDateTime => {
+            ApplicationState::SetSystemDateTime | ApplicationState::DateTimeEntry(_) => {
                 self.set_date_time_screen.draw(&mut self.display).unwrap()
             }
             ApplicationState::NumberEntry(_) => {
@@ -323,7 +335,7 @@ where
                     .ui_input_handler(input, &self.ui_action_publisher)
                     .await
             }
-            ApplicationState::SetDateTime => {
+            ApplicationState::SetSystemDateTime | ApplicationState::DateTimeEntry(_) => {
                 self.set_date_time_screen
                     .ui_input_handler(input, &self.ui_action_publisher)
                     .await
@@ -447,7 +459,7 @@ where
                 },
                 Either3::Second(_) => {}
                 Either3::Third(dt) => {
-                    if self.display_state != ApplicationState::SetDateTime {
+                    if self.display_state != ApplicationState::SetSystemDateTime {
                         trace!("DateTime update");
                         self.route_ui_input(UiInput::DateTimeUpdate(dt)).await;
                     }

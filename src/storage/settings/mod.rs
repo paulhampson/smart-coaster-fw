@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use chrono::Timelike;
+use chrono::{Datelike, Timelike};
 use core::fmt::Debug;
 use core::future::Future;
 use defmt::Format;
@@ -97,6 +97,7 @@ pub enum SettingValue {
     SmallUInt(u8),
     UInt(u32),
     Time(chrono::NaiveTime),
+    DateTime(chrono::NaiveDateTime),
 }
 
 impl SettingValue {
@@ -135,6 +136,25 @@ impl Value<'_> for SettingValue {
                 // Return the number of bytes used
                 7
             }
+            SettingValue::DateTime(v) => {
+                // Date part
+                value_buffer[0] = v.year() as u8; // Lower 8 bits of year
+                value_buffer[1] = (v.year() >> 8) as u8; // Upper 8 bits of year
+                value_buffer[2] = v.month() as u8;
+                value_buffer[3] = v.day() as u8;
+
+                // Time part
+                value_buffer[4] = v.hour() as u8;
+                value_buffer[5] = v.minute() as u8;
+                value_buffer[6] = v.second() as u8;
+
+                // Nanoseconds
+                let nanos = v.nanosecond();
+                value_buffer[7..].copy_from_slice(&nanos.to_le_bytes()[..3]); // Using only 3 bytes for nanos
+
+                // Return the number of bytes used
+                10
+            }
         };
         let total_serialization_len = data_bytes_count + 1;
 
@@ -164,10 +184,12 @@ impl Value<'_> for SettingValue {
         match id_byte {
             0 => Ok(SettingValue::Default),
             1 => {
+                // float32
                 let value = f32::deserialize_from(value_buffer)?;
                 Ok(SettingValue::Float(value))
             }
             2 => {
+                // u8
                 if value_buffer.len() < 1 {
                     return Err(SerializationError::BufferTooSmall);
                 }
@@ -175,10 +197,12 @@ impl Value<'_> for SettingValue {
                 Ok(SettingValue::SmallUInt(value))
             }
             3 => {
+                // u32
                 let value = u32::deserialize_from(value_buffer)?;
                 Ok(SettingValue::UInt(value))
             }
             4 => {
+                // NaiveTime
                 if value_buffer.len() < 7 {
                     return Err(SerializationError::BufferTooSmall);
                 }
@@ -196,6 +220,44 @@ impl Value<'_> for SettingValue {
                 // Create NaiveTime
                 match chrono::NaiveTime::from_hms_nano_opt(hour, minute, second, nano) {
                     Some(time) => Ok(SettingValue::Time(time)),
+                    None => Err(SerializationError::InvalidFormat),
+                }
+            }
+            5 => {
+                //NaiveDateTime
+                if value_buffer.len() < 10 {
+                    return Err(SerializationError::BufferTooSmall);
+                }
+
+                // Extract date components
+                let year_lower = value_buffer[0] as u16;
+                let year_upper = value_buffer[1] as u16;
+                let year = year_lower | (year_upper << 8);
+                let month = value_buffer[2] as u32;
+                let day = value_buffer[3] as u32;
+
+                // Extract time components
+                let hour = value_buffer[4] as u32;
+                let minute = value_buffer[5] as u32;
+                let second = value_buffer[6] as u32;
+
+                // Extract nanoseconds (stored in 3 bytes)
+                let mut nano_bytes = [0u8; 4];
+                nano_bytes[0..3].copy_from_slice(&value_buffer[7..10]);
+                let nano = u32::from_le_bytes(nano_bytes);
+
+                // Create NaiveDate and NaiveTime
+                match chrono::NaiveDate::from_ymd_opt(year as i32, month, day) {
+                    Some(date) => {
+                        match chrono::NaiveTime::from_hms_nano_opt(hour, minute, second, nano) {
+                            Some(time) => {
+                                // Combine into a NaiveDateTime
+                                let datetime = chrono::NaiveDateTime::new(date, time);
+                                Ok(SettingValue::DateTime(datetime))
+                            }
+                            None => Err(SerializationError::InvalidFormat),
+                        }
+                    }
                     None => Err(SerializationError::InvalidFormat),
                 }
             }

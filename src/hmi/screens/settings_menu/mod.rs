@@ -310,7 +310,7 @@ where
                     UiRequestMessage::ChangeState(ApplicationState::Calibration),
                 ),
                 SettingMenuIdentifier::SetDateTime => ui_action_publisher.publish_immediate(
-                    UiRequestMessage::ChangeState(ApplicationState::SetDateTime),
+                    UiRequestMessage::ChangeState(ApplicationState::SetSystemDateTime),
                 ),
                 SettingMenuIdentifier::SetMonitoringTargetValue => ui_action_publisher
                     .publish_immediate(UiRequestMessage::ChangeState(

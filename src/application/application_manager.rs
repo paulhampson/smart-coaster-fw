@@ -138,6 +138,15 @@ where
                         .time_entry_screen(&mut ui_action_receiver, &mut hmi_subscriber, setting_id)
                         .await;
                 }
+                ApplicationState::DateTimeEntry(_) => {
+                    next_state = self
+                        .set_date_time_screen(
+                            &mut ui_action_receiver,
+                            &mut hmi_subscriber,
+                            next_state,
+                        )
+                        .await;
+                }
                 ApplicationState::HeapStatus => {
                     next_state = self
                         .heap_status_screen(&mut ui_action_receiver, &mut hmi_subscriber)
@@ -157,9 +166,13 @@ where
                     }
                     next_state = ApplicationState::Settings;
                 }
-                ApplicationState::SetDateTime => {
+                ApplicationState::SetSystemDateTime => {
                     next_state = self
-                        .set_date_time_screen(&mut ui_action_receiver, &mut hmi_subscriber)
+                        .set_date_time_screen(
+                            &mut ui_action_receiver,
+                            &mut hmi_subscriber,
+                            next_state,
+                        )
                         .await;
                 }
                 ApplicationState::AboutScreen => {
@@ -347,9 +360,9 @@ where
         &mut self,
         ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
         hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+        enter_state: ApplicationState,
     ) -> ApplicationState {
-        self.update_application_state(ApplicationState::SetDateTime)
-            .await;
+        self.update_application_state(enter_state).await;
         loop {
             let ui_or_hmi = select(
                 ui_action_subscriber.next_message_pure(),
