@@ -13,7 +13,6 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 #![no_std]
 #![no_main]
-extern crate alloc;
 
 #[cfg(all(feature = "flat_board", feature = "pcb_rev1"))]
 compile_error!("cannot configure for flat_board and pcb_rev1 at the same time");
@@ -312,12 +311,10 @@ async fn storage_task(storage_resources: StorageResources) {
     );
     let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
 
-    storage::settings::accessor::initialise_settings_store(
-        flash,
-        NVM_FLASH_OFFSET_RANGE,
-        NVM_PAGE_SIZE,
-    )
-    .await;
+    storage::storage_manager::initialise_storage(flash, NVM_FLASH_OFFSET_RANGE, NVM_PAGE_SIZE)
+        .await;
+
+    storage::settings::accessor::initialise_settings().await;
 
     loop {
         Timer::after(Duration::from_millis(500)).await;

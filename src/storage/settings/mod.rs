@@ -32,6 +32,14 @@ pub enum SettingError {
     SaveQueueFull,
 }
 
+#[derive(Debug, Format)]
+pub enum StorageError {
+    SaveError,
+    RetrieveError,
+    NotInitialized,
+    EraseError,
+}
+
 pub struct NumericSettingProperties<T> {
     pub minimum_value: T,
     pub maximum_value: T,

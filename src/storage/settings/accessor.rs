@@ -13,12 +13,11 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::storage::settings::messaging::{SettingData, SettingsMessage};
-use crate::storage::settings::settings_store::{
-    wait_for_settings_store_initialisation, BlockingAsyncFlash, StoredSettings, SETTINGS_STORE,
-};
+use crate::storage::settings::settings_store::{StoredSettings, SETTINGS_STORE};
 use crate::storage::settings::{SettingError, SettingValue, SettingsAccessor, SettingsAccessorId};
-use core::ops::Range;
-use defmt::error;
+use crate::storage::storage_manager::wait_for_storage_initialisation;
+use defmt::{error, trace};
+use embassy_time::{Duration, Timer};
 
 pub struct FlashSettingsAccessor {}
 
@@ -32,7 +31,7 @@ impl SettingsAccessor for FlashSettingsAccessor {
     type Error = SettingError;
 
     async fn get_setting(&self, setting: SettingsAccessorId) -> Option<SettingValue> {
-        wait_for_settings_store_initialisation().await;
+        wait_for_settings_initialisation().await;
         let settings = SETTINGS_STORE.lock().await;
         match setting {
             SettingsAccessorId::SystemLedBrightness => settings.get_setting(
@@ -98,7 +97,9 @@ impl SettingsAccessor for FlashSettingsAccessor {
             SettingsAccessorId::DisplayTimeoutMinutes => {
                 StoredSettings::DisplayTimeoutMinutes(value)
             }
-            SettingsAccessorId::MonitoringDailyTargetTime => StoredSettings::MonitoringDailyTargetTime(value),
+            SettingsAccessorId::MonitoringDailyTargetTime => {
+                StoredSettings::MonitoringDailyTargetTime(value)
+            }
             SettingsAccessorId::MonitoringTargetHourly => {
                 StoredSettings::MonitoringTargetHourly(value)
             }
@@ -107,7 +108,6 @@ impl SettingsAccessor for FlashSettingsAccessor {
             }
         };
 
-        wait_for_settings_store_initialisation().await;
         let mut settings = SETTINGS_STORE.lock().await;
         settings.queue_settings_save(setting_obj)?;
 
@@ -121,13 +121,24 @@ impl SettingsAccessor for FlashSettingsAccessor {
     }
 }
 
-pub async fn initialise_settings_store(
-    flash: BlockingAsyncFlash,
-    range: Range<u32>,
-    page_size: usize,
-) {
+pub async fn initialise_settings() {
+    wait_for_storage_initialisation().await;
     let mut settings = SETTINGS_STORE.lock().await;
-    settings.initialise(flash, range, page_size).await;
+    settings.initialise().await;
+}
+
+pub async fn wait_for_settings_initialisation() {
+    wait_for_storage_initialisation().await;
+    loop {
+        {
+            let settings = SETTINGS_STORE.lock().await;
+            if settings.is_initialized() {
+                trace!("Settings available");
+                return;
+            }
+        }
+        Timer::after(Duration::from_millis(200)).await;
+    }
 }
 
 pub async fn process_save_queue() {

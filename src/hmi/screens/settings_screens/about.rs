@@ -18,7 +18,6 @@ use crate::hmi::screens::{
     draw_message_screen, draw_message_screen_no_reformat, UiDrawer, UiInput, UiInputHandler,
     DEFAULT_FONT_WIDTH, DEFAULT_TEXT_STYLE,
 };
-use alloc::borrow::ToOwned;
 use core::cmp::min;
 use core::fmt::Write;
 use embedded_graphics::draw_target::DrawTarget;
@@ -43,16 +42,22 @@ pub struct AboutScreen {
 
 impl AboutScreen {
     pub fn new() -> Self {
+        let mut repository_url_string = String::<80>::new();
+        write!(
+            repository_url_string,
+            "{}{}{}",
+            REPOSITORY_PREFIX,
+            built_info::PKG_REPOSITORY,
+            REPOSITORY_SUFFIX
+        )
+        .unwrap();
+
         let s = Self {
             start_entry_index: 0,
             max_entries: 4,
 
             repository_url_scroll_pos: 0,
-            repository_url_string: (REPOSITORY_PREFIX.to_owned()
-                + built_info::PKG_REPOSITORY
-                + REPOSITORY_SUFFIX)
-                .parse()
-                .unwrap(),
+            repository_url_string,
         };
         s
     }

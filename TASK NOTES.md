@@ -4,6 +4,11 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 
 ## Software
 
+### Bugs
+
+* Crash on viewing heap status from settings menu
+* Device and system menu requires two clicks down from top before scrolling starts
+
 ### Feature List
 
 * Time to drink reminder mode (flash LED when time since last drink has elapsed)

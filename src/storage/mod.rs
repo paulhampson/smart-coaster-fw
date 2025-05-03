@@ -13,3 +13,4 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 pub mod settings;
+pub(crate) mod storage_manager;

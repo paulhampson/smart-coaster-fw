@@ -15,43 +15,17 @@
 use crate::storage::settings::messaging::SettingsMessage;
 use crate::storage::settings::messaging::{SettingsChannelPublisher, SETTINGS_CHANNEL};
 use crate::storage::settings::{SettingError, SettingValue};
-use core::ops::Range;
-use defmt::{debug, trace, warn, Debug2Format};
-use embassy_embedded_hal::adapter::BlockingAsync;
-use embassy_rp::flash;
-use embassy_rp::flash::{Error, Flash};
-use embassy_rp::peripherals::FLASH;
+use crate::storage::storage_manager::{StorageManager, NV_STORAGE};
+use defmt::{debug, warn, Debug2Format};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer};
-use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 use heapless::spsc::Queue;
 use heapless::FnvIndexMap;
-use sequential_storage::cache::NoCache;
-use sequential_storage::map;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
-pub type BlockingAsyncFlash =
-    BlockingAsync<Flash<'static, FLASH, flash::Async, { crate::FLASH_SIZE }>>;
+pub static SETTINGS_STORE: SettingsManagerMutex = Mutex::new(SettingsManager::new());
 
-pub static SETTINGS_STORE: SettingsManagerMutex<Error, BlockingAsyncFlash> =
-    Mutex::new(SettingsManager::<Error, BlockingAsyncFlash>::new());
-
-pub type SettingsManagerMutex<E, F> = Mutex<CriticalSectionRawMutex, SettingsManager<E, F>>;
-
-pub async fn wait_for_settings_store_initialisation() {
-    trace!("Checking settings_menu initialisation");
-    loop {
-        {
-            let settings = SETTINGS_STORE.lock().await;
-            if settings.is_initialized() {
-                trace!("Settings now available");
-                return;
-            }
-        }
-        Timer::after(Duration::from_millis(200)).await;
-    }
-}
+pub type SettingsManagerMutex = Mutex<CriticalSectionRawMutex, SettingsManager>;
 
 type SettingKey = u16;
 #[repr(u16)]
@@ -95,14 +69,7 @@ impl StoredSettings {
     }
 }
 
-pub struct SettingsManager<E, F>
-where
-    E: defmt::Format,
-    F: NorFlash + MultiwriteNorFlash<Error = E>,
-{
-    flash: Option<F>,
-    storage_range: Option<Range<u32>>,
-    flash_cache: NoCache,
+pub struct SettingsManager {
     settings_cache: FnvIndexMap<
         SettingKey,
         Option<SettingValue>,
@@ -113,18 +80,9 @@ where
     settings_publisher: Option<SettingsChannelPublisher<'static>>,
 }
 
-const DATA_BUFFER_SIZE: usize = 128;
-
-impl<E, F> SettingsManager<E, F>
-where
-    E: defmt::Format,
-    F: MultiwriteNorFlash<Error = E>,
-{
+impl SettingsManager {
     pub const fn new() -> Self {
         Self {
-            flash: None,
-            storage_range: None,
-            flash_cache: NoCache::new(),
             settings_cache: FnvIndexMap::new(),
             settings_initialised: false,
             save_queue: Queue::new(),
@@ -132,16 +90,8 @@ where
         }
     }
 
-    pub async fn initialise(&mut self, flash: F, storage_range: Range<u32>, _page_size: usize) {
+    pub async fn initialise(&mut self) {
         self.settings_publisher = Some(SETTINGS_CHANNEL.publisher().unwrap());
-        self.flash = Some(flash);
-        self.storage_range = Some(storage_range);
-        debug!(
-            "Settings initialising. Flash address range: 0x{:x} to 0x{:x}, size 0x{:x}",
-            self.storage_range.clone().unwrap().start,
-            self.storage_range.clone().unwrap().end,
-            self.flash.as_ref().unwrap().capacity(),
-        );
 
         for setting in StoredSettings::iter() {
             let value = self.load_setting_from_flash(&setting).await;
@@ -154,70 +104,34 @@ where
             }
         }
 
-        if self.settings_cache.iter().all(|(_, v)| v.is_none()) {
-            warn!("No settings_menu loaded on initialisation, erasing storage");
-            let _ = self
-                .clear_data()
-                .await
-                .map_err(|_| warn!("Clearing data failed"));
-        }
         self.settings_initialised = true;
         debug!("Settings initialised");
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.flash.is_some() && self.storage_range.is_some() && self.settings_initialised
-    }
-
-    async fn clear_data(&mut self) -> Result<(), SettingError> {
-        if !(self.flash.is_some() && self.storage_range.is_some()) {
-            warn!("Trying to clear data before storage is configured");
-            return Err(SettingError::NotInitialized);
-        }
-        let flash = self.flash.as_mut().unwrap();
-        let storage_range = self.storage_range.clone().unwrap().clone();
-        sequential_storage::erase_all(flash, storage_range)
-            .await
-            .map_err(|e| {
-                warn!("Unable to erase settings_menu storage. Error: {:?}", e);
-                SettingError::EraseError
-            })?;
-
-        Ok(())
+        self.settings_publisher.is_some() && self.settings_initialised
     }
 
     async fn save_setting(&mut self, setting: StoredSettings) -> Result<(), SettingError> {
-        // Storage management layer requires a buffer to work with. It must be big enough to
-        // serialize the biggest value of your storage type in,
-        // rounded up  to word alignment of the flash. Some kinds of internal flash may require
-        // this buffer to be aligned in RAM as well.
-        let mut data_buffer = [0; DATA_BUFFER_SIZE];
-
         if !self.is_initialized() {
             warn!("Trying to save settings_menu before initialisation");
             return Err(SettingError::NotInitialized);
         }
 
-        let flash = self.flash.as_mut().unwrap();
-        let storage_range = self.storage_range.clone().unwrap().clone();
+        {
+            let mut storage = NV_STORAGE.lock().await;
+            storage
+                .save_key_value_pair(setting.discriminant(), setting.value())
+                .await
+                .map_err(|e| {
+                    warn!("Unable to save setting. Error: {:?}", e);
+                    SettingError::SaveError
+                })?;
+        }
 
-        let k = setting.discriminant();
-        let v = setting.value();
-        map::store_item(
-            flash,
-            storage_range,
-            &mut self.flash_cache,
-            &mut data_buffer,
-            &k,
-            &v,
-        )
-        .await
-        .map_err(|e| {
-            warn!("Unable to save value. Error {:?}", e);
-            SettingError::SaveError
-        })?;
-
-        let _ = self.settings_cache.insert(setting.discriminant(), Some(v));
+        let _ = self
+            .settings_cache
+            .insert(setting.discriminant(), Some(setting.value()));
         debug!("Setting saved - {}", Debug2Format(&setting));
 
         Ok(())
@@ -234,28 +148,22 @@ where
         &mut self,
         setting: &StoredSettings,
     ) -> Result<Option<SettingValue>, SettingError> {
-        let mut data_buffer = [0; DATA_BUFFER_SIZE];
+        // this can be called before the settings themselves are initialised, the only requirement
+        // is that storage is initialised.
 
-        if !(self.flash.is_some() && self.storage_range.is_some()) {
-            warn!("Trying to load settings_menu before initialisation");
+        let mut storage = NV_STORAGE.lock().await;
+        if !storage.is_initialized() {
+            warn!("Called load setting prior to storage being initialised.");
             return Err(SettingError::NotInitialized);
         }
 
-        let flash = self.flash.as_mut().unwrap();
-        let storage_range = self.storage_range.clone().unwrap().clone();
-
-        let value = map::fetch_item::<u16, SettingValue, _>(
-            flash,
-            storage_range,
-            &mut self.flash_cache,
-            &mut data_buffer,
-            &setting.discriminant(),
-        )
-        .await
-        .map_err(|e| {
-            warn!("Unable to load setting. Error: {:?}", e);
-            SettingError::RetrieveError
-        })?;
+        let value = storage
+            .read_key_value_pair::<SettingValue>(setting.discriminant())
+            .await
+            .map_err(|e| {
+                warn!("Unable to load setting. Error: {:?}", e);
+                SettingError::RetrieveError
+            })?;
         Ok(value)
     }
 
