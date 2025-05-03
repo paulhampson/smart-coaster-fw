@@ -14,6 +14,7 @@
 
 mod monitoring_screen_1;
 mod monitoring_screen_2;
+mod monitoring_screen_3;
 mod monitoring_screen_debug;
 mod top_status_bar;
 
@@ -24,6 +25,7 @@ use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::monitoring::monitoring_screen_1::MonitoringScreen1;
 use crate::hmi::screens::monitoring::monitoring_screen_2::MonitoringScreen2;
+use crate::hmi::screens::monitoring::monitoring_screen_3::MonitoringScreen3;
 use crate::hmi::screens::monitoring::monitoring_screen_debug::MonitoringScreenDebug;
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
@@ -39,12 +41,13 @@ use embedded_graphics::Drawable;
 use embedded_icon::NewIcon;
 
 struct MonitoringData {
-    consumption: f32,
-    consumption_rate: f32,
-    total_consumed: f32,
+    last_consumption: f32,
+    day_consumption_rate: f32,
+    day_total_consumed: f32,
     target_rate: f32,
-    target_consumption: f32,
+    day_target_consumption: f32,
     target_mode: MonitoringTargetPeriodOptions,
+    last_hour_consumption_rate: f32,
 }
 
 trait MonitoringScreenContent<D>
@@ -61,6 +64,7 @@ where
 
 static SCREEN_LAYOUT_1: MonitoringScreen1 = MonitoringScreen1 {};
 static SCREEN_LAYOUT_2: MonitoringScreen2 = MonitoringScreen2 {};
+static SCREEN_LAYOUT_3: MonitoringScreen3 = MonitoringScreen3 {};
 static SCREEN_LAYOUT_DEBUG: MonitoringScreenDebug = MonitoringScreenDebug {};
 
 const MAX_SCREENS: u8 = 3;
@@ -71,7 +75,8 @@ where
     match index {
         0 => &SCREEN_LAYOUT_1,
         1 => &SCREEN_LAYOUT_2,
-        2 => &SCREEN_LAYOUT_DEBUG,
+        2 => &SCREEN_LAYOUT_3,
+        3 => &SCREEN_LAYOUT_DEBUG,
         _ => &SCREEN_LAYOUT_1,
     }
 }
@@ -102,12 +107,13 @@ where
 
         Self {
             monitoring_data: MonitoringData {
-                consumption: 0.0,
-                consumption_rate: 0.0,
-                total_consumed: 0.0,
+                last_consumption: 0.0,
+                day_consumption_rate: 0.0,
+                day_total_consumed: 0.0,
                 target_rate: 0.0,
-                target_consumption: 0.0,
+                day_target_consumption: 0.0,
                 target_mode: MonitoringTargetPeriodOptions::Daily,
+                last_hour_consumption_rate: 0.0,
             },
             state: MonitoringStateSubstates::WaitingForActivity,
             active_screen_index,
@@ -120,13 +126,13 @@ where
         if let ApplicationData::MonitoringUpdate(update) = data {
             match update {
                 DrinkMonitoringUpdate::Consumption(new_consumption) => {
-                    self.monitoring_data.consumption = new_consumption;
+                    self.monitoring_data.last_consumption = new_consumption;
                 }
                 DrinkMonitoringUpdate::ConsumptionRate(new_consumption_rate) => {
-                    self.monitoring_data.consumption_rate = new_consumption_rate;
+                    self.monitoring_data.day_consumption_rate = new_consumption_rate;
                 }
                 DrinkMonitoringUpdate::TotalConsumed(new_total_consumed) => {
-                    self.monitoring_data.total_consumed = new_total_consumed;
+                    self.monitoring_data.day_total_consumed = new_total_consumed;
                 }
                 DrinkMonitoringUpdate::UpdateMonitoringSubstate(new_state) => {
                     self.state = new_state;
@@ -135,7 +141,7 @@ where
                     self.monitoring_data.target_rate = new_target_rate;
                 }
                 DrinkMonitoringUpdate::TargetConsumption(new_target_consumption) => {
-                    self.monitoring_data.target_consumption = new_target_consumption;
+                    self.monitoring_data.day_target_consumption = new_target_consumption;
                 }
                 DrinkMonitoringUpdate::TargetMode(new_target_mode) => {
                     self.monitoring_data.target_mode = new_target_mode;

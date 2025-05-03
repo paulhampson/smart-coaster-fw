@@ -103,7 +103,7 @@ where
         let line_padding = value_char_style.line_height() as i32 / 4;
 
         let mut string_buffer = String::<10>::new();
-        write!(string_buffer, "{:4.0}", data.consumption_rate).unwrap();
+        write!(string_buffer, "{:4.0}", data.day_consumption_rate).unwrap();
         let mut pos = right_display_area.bounding_box().center();
         pos.x = 0;
         pos.y -= line_padding / 2;
@@ -128,7 +128,7 @@ where
         next_pos.x = 0;
 
         string_buffer.clear();
-        write!(string_buffer, "{:4.0}", data.total_consumed).unwrap();
+        write!(string_buffer, "{:4.0}", data.day_total_consumed).unwrap();
         let mut next_pos = Text::with_text_style(
             string_buffer.as_str(),
             next_pos,

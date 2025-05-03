@@ -64,9 +64,14 @@ where
             }
             _ => {}
         };
-        writeln!(string_buffer, "Rate: {:.0} ml/hr", data.consumption_rate).unwrap();
-        writeln!(string_buffer, "Last drink: {:.0} ml", data.consumption).unwrap();
-        write!(string_buffer, "Total: {:.0} ml", data.total_consumed).unwrap();
+        writeln!(
+            string_buffer,
+            "Rate: {:.0} ml/hr",
+            data.day_consumption_rate
+        )
+        .unwrap();
+        writeln!(string_buffer, "Last drink: {:.0} ml", data.last_consumption).unwrap();
+        write!(string_buffer, "Total: {:.0} ml", data.day_total_consumed).unwrap();
         Text::with_text_style(
             string_buffer.as_str(),
             centre_point,

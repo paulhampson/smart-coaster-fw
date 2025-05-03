@@ -30,10 +30,11 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * Behaviours when vessel is missing
         * Time based 'aggressiveness' - no cup for long period = more vigorous LEDs
 * Historical log of consumption
+    * **NEXT** Store history
     * can be viewed as a graph on device (sparkline?)
     * or transferred via USB.
 * Firmware update via USB
-* Live consumption data streamed over USB to be accessible by a local web page#
+* Live consumption data streamed over USB to be accessible by a local web page
 * Timezones
     * Daylight savings
 * Visual alarm

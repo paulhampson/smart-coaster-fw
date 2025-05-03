@@ -30,11 +30,11 @@ use embedded_graphics::Drawable;
 use embedded_icon::NewIcon;
 use heapless::String;
 
-pub struct MonitoringScreen2 {}
+pub struct MonitoringScreen3 {}
 
-impl MonitoringScreen2 {}
+impl MonitoringScreen3 {}
 
-impl<D> MonitoringScreenContent<D> for MonitoringScreen2
+impl<D> MonitoringScreenContent<D> for MonitoringScreen3
 where
     D: DrawTarget<Color = BinaryColor>,
 {
@@ -126,7 +126,8 @@ where
                 AnchorX::Center,
             ));
 
-        write!(string_buffer, "{:.0}", data.day_consumption_rate).unwrap();
+        // write!(string_buffer, "{:.0}", data.last_hour_consumption_rate).unwrap();
+        write!(string_buffer, "--").unwrap(); // TODO when this data is available show it
         let mut pos = middle_display_area.bounding_box().center();
         pos.y = (value_char_style.line_height() / 2) as i32 + additional_top_padding;
         Text::with_text_style(
@@ -138,7 +139,7 @@ where
         .draw(&mut middle_display_area)?;
 
         string_buffer.clear();
-        write!(string_buffer, "average\nml/hour").unwrap();
+        write!(string_buffer, "current\nml/hour").unwrap();
         pos.y += (value_char_style.line_height() / 2) as i32
             + var_to_label_padding
             + (label_char_style.line_height() / 2) as i32;
