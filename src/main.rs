@@ -89,9 +89,16 @@ const HEAP_SIZE: usize = 16 * 1024;
 
 // Ensure this matches memory.x
 const FLASH_SIZE: usize = 2 * 1024 * 1024;
-const NVM_SIZE: usize = 0x2000;
-const NVM_FLASH_OFFSET_RANGE: Range<u32> = (FLASH_SIZE - NVM_SIZE) as u32..FLASH_SIZE as u32;
 const NVM_PAGE_SIZE: usize = 256;
+
+const SETTINGS_SIZE: usize = 0x2000;
+const SETTINGS_NVM_FLASH_OFFSET_RANGE: Range<u32> =
+    (FLASH_SIZE - SETTINGS_SIZE) as u32..FLASH_SIZE as u32;
+
+const ACTIVITY_LOG_SIZE: usize = 0x8000;
+const ACTIVITY_LOG_NVM_FLASH_OFFSET_RANGE: Range<u32> = (SETTINGS_NVM_FLASH_OFFSET_RANGE.start
+    - ACTIVITY_LOG_SIZE as u32)
+    ..SETTINGS_NVM_FLASH_OFFSET_RANGE.start;
 
 #[cfg(feature = "flat_board")]
 const LED_COUNT: usize = 8;
@@ -311,14 +318,19 @@ async fn storage_task(storage_resources: StorageResources) {
     );
     let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
 
-    storage::storage_manager::initialise_storage(flash, NVM_FLASH_OFFSET_RANGE, NVM_PAGE_SIZE)
-        .await;
+    storage::storage_manager::initialise_storage(
+        flash,
+        SETTINGS_NVM_FLASH_OFFSET_RANGE,
+        NVM_PAGE_SIZE,
+    )
+    .await;
 
     storage::settings::accessor::initialise_settings().await;
 
     loop {
         Timer::after(Duration::from_millis(500)).await;
         storage::settings::accessor::process_save_queue().await;
+        storage::historical::manager::process_log_write_queue().await;
     }
 }
 

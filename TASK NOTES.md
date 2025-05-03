@@ -35,7 +35,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * Behaviours when vessel is missing
         * Time based 'aggressiveness' - no cup for long period = more vigorous LEDs
 * Historical log of consumption
-    * **NEXT** Store history
+    * ~~Store history~~
     * can be viewed as a graph on device (sparkline?)
     * or transferred via USB.
 * Firmware update via USB
@@ -64,7 +64,6 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * LED indicates outside target - On/Off
     * LED no motion mode
 * Target / monitoring
-    * Reset vessel if vessel not present for X minutes
     * ~~Daily / Hourly~~
     * ~~Target Value~~
     * ~~Day length (?) / day resets at HH:MM / achieve daily target by HH:MM~~
@@ -74,6 +73,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * Large consumption threshold (to ask if new cup)
     * LED visualisation thresholds
         * colour selection?
+    * (?) Reset vessel if vessel not present for X minutes
 * Display
     * ~~Brightness~~
     * ~~Inactivity timeout~~
@@ -99,7 +99,9 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 * ~~Store settings~~
 * ~~Key / Value pair / general settings store~~
 * ~~Read / write~~
-* Historical data store / timestamped sequential data
+* **WIP** Historical data store / timestamped sequential data
+    * ~~Write~~
+    * Read
 * Error log
 * Factory reset
 

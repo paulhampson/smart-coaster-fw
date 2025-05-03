@@ -17,10 +17,13 @@ use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMes
 use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitoringUpdate};
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::rtc::accessor::RtcAccessor;
+use crate::storage::historical::accessor::HistoricalLogAccessor;
+use crate::storage::historical::log_config;
 use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::messaging::SettingsMessage;
 use crate::storage::settings::monitor::FlashSettingsMonitor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use crate::storage::StoredDataValue;
 use crate::weight::WeighingSystem;
 use chrono::{NaiveDateTime, NaiveTime, Timelike};
 use core::cmp::PartialEq;
@@ -48,6 +51,7 @@ pub struct DrinkMonitoring<WS> {
     monitoring_start_time: NaiveDateTime,
     total_consumption: f32,
     daily_consumption_target_time: NaiveTime,
+    consumption_log: HistoricalLogAccessor,
 }
 
 impl<WS> DrinkMonitoring<WS>
@@ -72,6 +76,7 @@ where
             rtc_accessor,
             total_consumption: 0.0,
             daily_consumption_target_time: Default::default(),
+            consumption_log: HistoricalLogAccessor::new(log_config::Logs::ConsumptionLog),
         }
     }
 
@@ -301,25 +306,30 @@ where
                     if stable_delta > MINIMUM_DELTA_FOR_STATE_CHANGE {
                         self.update_monitoring_substate(MonitoringStateSubstates::VesselPlaced)
                             .await;
-                        let consumption = vessel_placed_weight - new_stable_weight;
-                        if consumption > 0.0 {
-                            self.total_consumption += consumption;
-                        }
+                        let consumption = f32::max(0.0, vessel_placed_weight - new_stable_weight);
+                        self.total_consumption += consumption;
+
                         self.update_consumption_rate().await;
                         self.update_targets().await;
-                        vessel_placed_weight = new_stable_weight;
-                        trace!("New placed weight {}", vessel_placed_weight);
-                        debug!("Consumption = {} ml", consumption);
-                        debug!("Total consumption = {} ml", self.total_consumption);
+
+                        self.consumption_log
+                            .log(StoredDataValue::Float(consumption))
+                            .await;
+
                         self.send_monitoring_update(DrinkMonitoringUpdate::Consumption(f32::max(
                             0.0,
                             consumption,
                         )))
                         .await;
                         self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(
-                            f32::max(0.0, self.total_consumption),
+                            self.total_consumption,
                         ))
                         .await;
+
+                        vessel_placed_weight = new_stable_weight;
+                        trace!("New placed weight {}", vessel_placed_weight);
+                        debug!("Consumption = {} ml", consumption);
+                        debug!("Total consumption = {} ml", self.total_consumption);
                     } else if stable_delta < -MINIMUM_DELTA_FOR_STATE_CHANGE {
                         self.update_monitoring_substate(MonitoringStateSubstates::VesselRemoved)
                             .await;

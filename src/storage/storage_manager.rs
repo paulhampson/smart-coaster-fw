@@ -1,3 +1,17 @@
+// Copyright (C) 2025 Paul Hampson
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License version 3 as  published by the
+// Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+// details.
+//
+// You should have received a copy of the GNU General Public License along with
+// this program.  If not, see <https://www.gnu.org/licenses/>.
+
 use crate::storage::settings::StorageError;
 use core::ops::Range;
 use defmt::{debug, error, trace, warn};
@@ -13,18 +27,32 @@ use sequential_storage::cache::NoCache;
 use sequential_storage::map;
 use sequential_storage::map::Value;
 
+#[derive(Debug, Clone)]
+pub struct StoredLogConfig {
+    pub storage_range: Range<u32>,
+    pub allow_overwrite_old: bool,
+}
+
 pub trait StorageManager {
     fn is_initialized(&self) -> bool;
-    async fn clear_data(&mut self) -> Result<(), StorageError>;
-    async fn save_key_value_pair<'d, V: Value<'d>>(
+    fn clear_data(&mut self) -> impl core::future::Future<Output = Result<(), StorageError>>;
+    fn save_key_value_pair<'d, V: Value<'d>>(
         &mut self,
         key: u16,
         value: V,
-    ) -> Result<(), StorageError>;
-
-    async fn read_key_value_pair<V>(&mut self, key: u16) -> Result<Option<V>, StorageError>
+    ) -> impl core::future::Future<Output = Result<(), StorageError>>;
+    fn read_key_value_pair<V>(
+        &mut self,
+        key: u16,
+    ) -> impl core::future::Future<Output = Result<Option<V>, StorageError>>
     where
         for<'a> V: Value<'a>;
+
+    fn write_log_data(
+        &mut self,
+        config: &StoredLogConfig,
+        data: &[u8],
+    ) -> impl core::future::Future<Output = Result<(), StorageError>>;
 }
 
 pub type BlockingAsyncFlash =
@@ -44,7 +72,7 @@ where
     F: NorFlash + MultiwriteNorFlash<Error = E>,
 {
     flash: Option<F>,
-    storage_range: Option<Range<u32>>,
+    key_value_range: Option<Range<u32>>,
     flash_cache: NoCache,
     storage_initialised: bool,
 }
@@ -59,7 +87,7 @@ where
     pub const fn new() -> Self {
         Self {
             flash: None,
-            storage_range: None,
+            key_value_range: None,
             flash_cache: NoCache::new(),
             storage_initialised: false,
         }
@@ -67,11 +95,11 @@ where
 
     async fn initialise(&mut self, flash: F, storage_range: Range<u32>, _page_size: usize) {
         self.flash = Some(flash);
-        self.storage_range = Some(storage_range);
+        self.key_value_range = Some(storage_range);
         debug!(
-            "Storage initialising. Flash address range: 0x{:x} to 0x{:x}, size 0x{:x}",
-            self.storage_range.clone().unwrap().start,
-            self.storage_range.clone().unwrap().end,
+            "Storage initialising. KeyValue flash address range: 0x{:x} to 0x{:x}, flash size: {}",
+            self.key_value_range.clone().unwrap().start,
+            self.key_value_range.clone().unwrap().end,
             self.flash.as_ref().unwrap().capacity(),
         );
 
@@ -89,19 +117,19 @@ where
         trace!(
             "Flash set: {}, storage range set: {}, init flag: {}",
             self.flash.is_some(),
-            self.storage_range.is_some(),
+            self.key_value_range.is_some(),
             self.storage_initialised
         );
-        self.flash.is_some() && self.storage_range.is_some() && self.storage_initialised
+        self.flash.is_some() && self.key_value_range.is_some() && self.storage_initialised
     }
 
     async fn clear_data(&mut self) -> Result<(), StorageError> {
-        if !(self.flash.is_some() && self.storage_range.is_some()) {
+        if !(self.flash.is_some() && self.key_value_range.is_some()) {
             warn!("Trying to clear data before storage is configured");
             return Err(StorageError::NotInitialized);
         }
         let flash = self.flash.as_mut().unwrap();
-        let storage_range = self.storage_range.clone().unwrap().clone();
+        let storage_range = self.key_value_range.clone().unwrap().clone();
         sequential_storage::erase_all(flash, storage_range)
             .await
             .map_err(|e| {
@@ -129,7 +157,7 @@ where
         }
 
         let flash = self.flash.as_mut().unwrap();
-        let storage_range = self.storage_range.clone().unwrap().clone();
+        let storage_range = self.key_value_range.clone().unwrap().clone();
 
         map::store_item(
             flash,
@@ -154,13 +182,13 @@ where
     {
         let mut data_buffer = [0; DATA_BUFFER_SIZE];
 
-        if !(self.flash.is_some() && self.storage_range.is_some()) {
+        if !(self.flash.is_some() && self.key_value_range.is_some()) {
             error!("Trying to load from storage before initialisation");
             return Err(StorageError::NotInitialized);
         }
 
         let flash = self.flash.as_mut().unwrap();
-        let storage_range = self.storage_range.clone().unwrap().clone();
+        let storage_range = self.key_value_range.clone().unwrap().clone();
 
         let value = map::fetch_item(
             flash,
@@ -175,6 +203,32 @@ where
             StorageError::RetrieveError
         })?;
         Ok(value)
+    }
+
+    async fn write_log_data(
+        &mut self,
+        config: &StoredLogConfig,
+        data: &[u8],
+    ) -> Result<(), StorageError> {
+        if !self.flash.is_some() {
+            error!("Trying to read from storage before initialisation");
+            return Err(StorageError::NotInitialized);
+        }
+
+        let flash = self.flash.as_mut().unwrap();
+        sequential_storage::queue::push(
+            flash,
+            config.storage_range.clone(),
+            &mut NoCache::new(),
+            data,
+            config.allow_overwrite_old,
+        )
+        .await
+        .map_err(|e| {
+            warn!("Unable to write log data. Error: {:?}", e);
+            StorageError::SaveError
+        })?;
+        Ok(())
     }
 }
 
