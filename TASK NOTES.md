@@ -4,10 +4,10 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 
 ## Software
 
-### Bugs
+### Bugs / Things to fix
 
-* Crash on viewing heap status from settings menu
 * Device and system menu requires two clicks down from top before scrolling starts
+* Re-entering settings menu goes back to 'exit' entry
 
 ### Feature List
 

@@ -104,10 +104,8 @@ impl UiDrawer for HeapStatusScreen {
         count_string.clear();
 
         let max_line_length = display.bounding_box().size.width as usize / font_width as usize;
-        let string_to_print = add_newlines_to_string::<40>(
-            "Press button to return to settings_menu",
-            max_line_length,
-        );
+        let string_to_print =
+            add_newlines_to_string::<40>("Press button to return to menu", max_line_length);
         write!(&mut count_string, "{}", string_to_print).unwrap();
         Text::with_baseline(
             count_string.as_str(),
