@@ -65,7 +65,7 @@ pub enum StoredSettings {
     MonitoringTargetType(SettingValue) = 5,
     MonitoringTargetDaily(SettingValue) = 6,
     DisplayTimeoutMinutes(SettingValue) = 7,
-    MonitoringDayEnd(SettingValue) = 8,
+    MonitoringDailyTargetTime(SettingValue) = 8,
     MonitoringTargetHourly(SettingValue) = 9,
     MonitoringDisplayIndex(SettingValue) = 10,
 }
@@ -88,7 +88,7 @@ impl StoredSettings {
             StoredSettings::MonitoringTargetType(v) => v.clone(),
             StoredSettings::MonitoringTargetDaily(v) => v.clone(),
             StoredSettings::DisplayTimeoutMinutes(v) => v.clone(),
-            StoredSettings::MonitoringDayEnd(v) => v.clone(),
+            StoredSettings::MonitoringDailyTargetTime(v) => v.clone(),
             StoredSettings::MonitoringTargetHourly(v) => v.clone(),
             StoredSettings::MonitoringDisplayIndex(v) => v.clone(),
         }

@@ -22,7 +22,7 @@ use crate::storage::settings::messaging::SettingsMessage;
 use crate::storage::settings::monitor::FlashSettingsMonitor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::weight::WeighingSystem;
-use chrono::{NaiveDateTime, Timelike};
+use chrono::{NaiveDateTime, NaiveTime, Timelike};
 use core::cmp::PartialEq;
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select4, Either4};
@@ -47,6 +47,7 @@ pub struct DrinkMonitoring<WS> {
     rtc_accessor: RtcAccessor,
     monitoring_start_time: NaiveDateTime,
     total_consumption: f32,
+    daily_consumption_target_time: NaiveTime,
 }
 
 impl<WS> DrinkMonitoring<WS>
@@ -70,6 +71,7 @@ where
             monitoring_start_time: rtc_accessor.get_date_time(),
             rtc_accessor,
             total_consumption: 0.0,
+            daily_consumption_target_time: Default::default(),
         }
     }
 
@@ -166,10 +168,24 @@ where
     async fn update_targets(&mut self) {
         match self.target_mode {
             MonitoringTargetPeriodOptions::Daily => {
-                self.hourly_consumption_target = self.daily_consumption_target as f32 / 24.0;
+                let current_time = self.rtc_accessor.get_date_time().time();
+                let time_left = self.daily_consumption_target_time - current_time;
+                let mut hours_left = time_left.num_minutes() as f32 / 60.0;
+                if hours_left <= 1.0 {
+                    hours_left = 1.0;
+                }
+
+                self.hourly_consumption_target =
+                    (self.daily_consumption_target as f32 - self.total_consumption) / hours_left;
+                if self.hourly_consumption_target < 0.0 {
+                    self.hourly_consumption_target = 0.0;
+                }
                 debug!(
-                    "Hourly target (calculated from daily) is now {}",
-                    self.hourly_consumption_target
+                    "Hourly target (calculated from daily) is now {} (daily_target = {}, consumed = {}, hours left = {})",
+                    self.hourly_consumption_target,
+                    self.total_consumption,
+                    self.daily_consumption_target,
+                    hours_left
                 );
                 self.send_monitoring_update(DrinkMonitoringUpdate::TargetConsumption(
                     self.daily_consumption_target as f32,
@@ -222,6 +238,18 @@ where
                     warn!(
                         "Unable to get expected data for daily target: {}",
                         Debug2Format(&daily_setting)
+                    );
+                }
+
+                let target_time_setting = settings
+                    .get_setting(SettingsAccessorId::MonitoringDailyTargetTime)
+                    .await;
+                if let Some(SettingValue::Time(target_time)) = target_time_setting {
+                    self.daily_consumption_target_time = target_time;
+                } else {
+                    warn!(
+                        "Unable to get expected data for daily target time: {}",
+                        Debug2Format(&target_time_setting)
                     );
                 }
             }
@@ -278,6 +306,7 @@ where
                             self.total_consumption += consumption;
                         }
                         self.update_consumption_rate().await;
+                        self.update_targets().await;
                         vessel_placed_weight = new_stable_weight;
                         trace!("New placed weight {}", vessel_placed_weight);
                         debug!("Consumption = {} ml", consumption);
@@ -315,12 +344,14 @@ where
                 }
                 Either4::Fourth(setting_message) => {
                     let SettingsMessage::Change(changed_setting) = setting_message;
+                    trace!("Handling changed setting: {:?}", changed_setting);
+                    let mut do_update = false;
                     match changed_setting.setting_id {
                         SettingsAccessorId::MonitoringTargetHourly => {
                             if let SettingValue::UInt(new_hourly_target) = changed_setting.value {
                                 self.hourly_consumption_target = new_hourly_target as f32;
-                                self.update_targets().await;
                                 debug!("Hourly target is now {}", new_hourly_target);
+                                do_update = true;
                             } else {
                                 warn!(
                                     "Expected setting value for MonitoringTargetHourly: {}",
@@ -331,10 +362,22 @@ where
                         SettingsAccessorId::MonitoringTargetDaily => {
                             if let SettingValue::UInt(new_daily_target) = changed_setting.value {
                                 self.daily_consumption_target = new_daily_target;
-                                self.update_targets().await;
+                                do_update = true;
                             } else {
                                 warn!(
                                     "Expected setting value for MonitoringTargetDaily: {}",
+                                    Debug2Format(&changed_setting.value)
+                                );
+                            }
+                        }
+                        SettingsAccessorId::MonitoringDailyTargetTime => {
+                            if let SettingValue::Time(target_time) = changed_setting.value {
+                                self.daily_consumption_target_time = target_time;
+                                debug!("Target time is now {}", Debug2Format(&target_time));
+                                do_update = true;
+                            } else {
+                                warn!(
+                                    "Unable to get expected data for daily target time: {}",
                                     Debug2Format(&changed_setting.value)
                                 );
                             }
@@ -352,6 +395,11 @@ where
                             }
                         }
                         _ => {}
+                    }
+                    if do_update {
+                        debug!("Updating after settings change");
+                        self.update_targets().await;
+                        self.update_consumption_rate().await;
                     }
                 }
             }

@@ -114,7 +114,7 @@ where
             .alignment(Alignment::Center)
             .baseline(Baseline::Middle)
             .build();
-        let additional_top_padding = 2;
+        let additional_top_padding = 0;
         let var_to_label_padding = 0;
         let label_to_var_padding = 5;
         let mut string_buffer = String::<20>::new();
@@ -138,7 +138,7 @@ where
         .draw(&mut middle_display_area)?;
 
         string_buffer.clear();
-        write!(string_buffer, "ml/hour").unwrap();
+        write!(string_buffer, "average\nml/hour").unwrap();
         pos.y += (value_char_style.line_height() / 2) as i32
             + var_to_label_padding
             + (label_char_style.line_height() / 2) as i32;
@@ -152,7 +152,7 @@ where
 
         string_buffer.clear();
         write!(string_buffer, "{:.0}", data.target_rate).unwrap();
-        pos.y += (label_char_style.line_height() / 2) as i32
+        pos.y += ((2 * label_char_style.line_height()) / 2) as i32
             + label_to_var_padding
             + (value_char_style.line_height() / 2) as i32;
         Text::with_text_style(
@@ -167,7 +167,7 @@ where
         write!(string_buffer, "target\nml/hour").unwrap();
         pos.y += (value_char_style.line_height() / 2) as i32
             + var_to_label_padding
-            + (label_char_style.line_height() / 2) as i32;
+            + ((1 * label_char_style.line_height()) / 2) as i32;
         Text::with_text_style(
             string_buffer.as_str(),
             pos,
@@ -196,7 +196,7 @@ where
         .draw(&mut right_display_area)?;
 
         string_buffer.clear();
-        write!(string_buffer, "total ml").unwrap();
+        write!(string_buffer, "today's\ntotal ml").unwrap();
         pos.y += (value_char_style.line_height() / 2) as i32
             + var_to_label_padding
             + (label_char_style.line_height() / 2) as i32;
@@ -214,8 +214,7 @@ where
         } else {
             write!(string_buffer, "--").unwrap();
         }
-
-        pos.y += (label_char_style.line_height() / 2) as i32
+        pos.y += ((2 * label_char_style.line_height()) / 2) as i32
             + label_to_var_padding
             + (value_char_style.line_height() / 2) as i32;
         Text::with_text_style(
@@ -230,7 +229,7 @@ where
         write!(string_buffer, "target\ntotal ml").unwrap();
         pos.y += (value_char_style.line_height() / 2) as i32
             + var_to_label_padding
-            + (label_char_style.line_height() / 2) as i32;
+            + ((1 * label_char_style.line_height()) / 2) as i32;
         Text::with_text_style(
             string_buffer.as_str(),
             pos,

@@ -61,7 +61,7 @@ impl SettingsAccessor for FlashSettingsAccessor {
                 StoredSettings::DisplayTimeoutMinutes(SettingValue::Default).discriminant(),
             ),
             SettingsAccessorId::MonitoringDailyTargetTime => settings.get_setting(
-                StoredSettings::MonitoringDayEnd(SettingValue::Default).discriminant(),
+                StoredSettings::MonitoringDailyTargetTime(SettingValue::Default).discriminant(),
             ),
             SettingsAccessorId::MonitoringTargetHourly => settings.get_setting(
                 StoredSettings::MonitoringTargetHourly(SettingValue::Default).discriminant(),
@@ -98,7 +98,7 @@ impl SettingsAccessor for FlashSettingsAccessor {
             SettingsAccessorId::DisplayTimeoutMinutes => {
                 StoredSettings::DisplayTimeoutMinutes(value)
             }
-            SettingsAccessorId::MonitoringDailyTargetTime => StoredSettings::MonitoringDayEnd(value),
+            SettingsAccessorId::MonitoringDailyTargetTime => StoredSettings::MonitoringDailyTargetTime(value),
             SettingsAccessorId::MonitoringTargetHourly => {
                 StoredSettings::MonitoringTargetHourly(value)
             }

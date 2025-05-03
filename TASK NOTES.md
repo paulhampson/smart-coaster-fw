@@ -16,8 +16,10 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Save active monitoring screen, so it is recalled after power cycle~~
     * ~~Reset consumption at midnight~~
     * ~~Set time to achieve consumption by (for daily mode)~~
-    * ***NEXT*** Use time to achieve consumption by (for daily mode)
+    * ~~Use time to achieve consumption by (for daily mode)~~
+    * **NEXT** Add current consumption rate (last hour) as well as having daily hourly rate
     * Retain last consumption data between power cycles, respect reset point
+    * Manual add/subtract consumption
     * Celebration screen when target achieved for the day (for daily mode)
     * Display ideas
         * Show visual representation of target 'flight path'
@@ -59,10 +61,10 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * Reset vessel if vessel not present for X minutes
     * ~~Daily / Hourly~~
     * ~~Target Value~~
-    * Day length (?) / day resets at HH:MM / achieve daily target by HH:MM
-        * Day start / end
+    * ~~Day length (?) / day resets at HH:MM / achieve daily target by HH:MM~~
+        * Day start? / end
     * Target is minimum or maximum (decides which way is over/under consumption)
-    * Reset current consumption -> puts directly back on the target 'flight path'
+    * (?) Reset current consumption -> puts directly back on the target 'flight path'
     * Large consumption threshold (to ask if new cup)
     * LED visualisation thresholds
         * colour selection?
