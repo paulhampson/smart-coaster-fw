@@ -344,7 +344,10 @@ where
                 }
                 Either4::Fourth(setting_message) => {
                     let SettingsMessage::Change(changed_setting) = setting_message;
-                    trace!("Handling changed setting: {:?}", changed_setting);
+                    trace!(
+                        "Handling changed setting: {:?}",
+                        Debug2Format(&changed_setting)
+                    );
                     let mut do_update = false;
                     match changed_setting.setting_id {
                         SettingsAccessorId::MonitoringTargetHourly => {
