@@ -13,6 +13,7 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::storage::settings::StorageError;
+use core::future::Future;
 use core::ops::Range;
 use defmt::{debug, error, trace, warn};
 use embassy_embedded_hal::adapter::BlockingAsync;
@@ -35,16 +36,16 @@ pub struct StoredLogConfig {
 
 pub trait StorageManager {
     fn is_initialized(&self) -> bool;
-    fn clear_data(&mut self) -> impl core::future::Future<Output = Result<(), StorageError>>;
+    fn clear_data(&mut self) -> impl Future<Output = Result<(), StorageError>>;
     fn save_key_value_pair<'d, V: Value<'d>>(
         &mut self,
         key: u16,
         value: V,
-    ) -> impl core::future::Future<Output = Result<(), StorageError>>;
+    ) -> impl Future<Output = Result<(), StorageError>>;
     fn read_key_value_pair<V>(
         &mut self,
         key: u16,
-    ) -> impl core::future::Future<Output = Result<Option<V>, StorageError>>
+    ) -> impl Future<Output = Result<Option<V>, StorageError>>
     where
         for<'a> V: Value<'a>;
 
@@ -52,7 +53,12 @@ pub trait StorageManager {
         &mut self,
         config: &StoredLogConfig,
         data: &[u8],
-    ) -> impl core::future::Future<Output = Result<(), StorageError>>;
+    ) -> impl Future<Output = Result<(), StorageError>>;
+
+    fn get_space_remaining(
+        &mut self,
+        config: &StoredLogConfig,
+    ) -> impl Future<Output = Result<u32, StorageError>>;
 }
 
 pub type BlockingAsyncFlash =
@@ -229,6 +235,20 @@ where
             StorageError::SaveError
         })?;
         Ok(())
+    }
+
+    async fn get_space_remaining(&mut self, config: &StoredLogConfig) -> Result<u32, StorageError> {
+        let flash = self.flash.as_mut().unwrap();
+        sequential_storage::queue::space_left(
+            flash,
+            config.storage_range.clone(),
+            &mut NoCache::new(),
+        )
+        .await
+        .map_err(|e| {
+            warn!("Unable to get remaining space. Error: {:?}", e);
+            StorageError::CapacityCheckError
+        })
     }
 }
 

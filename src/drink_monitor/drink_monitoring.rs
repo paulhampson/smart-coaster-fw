@@ -18,7 +18,7 @@ use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitor
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::rtc::accessor::RtcAccessor;
 use crate::storage::historical::accessor::HistoricalLogAccessor;
-use crate::storage::historical::log_config;
+use crate::storage::historical::{log_config, LogEncodeDecode, LogEncodeDecodeError};
 use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::messaging::SettingsMessage;
 use crate::storage::settings::monitor::FlashSettingsMonitor;
@@ -32,6 +32,98 @@ use embassy_futures::select::{select4, Either4};
 use embassy_time::{Duration, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
+use sequential_storage::map::{SerializationError, Value};
+
+struct DrinkMonitorLogData {
+    hourly_consumption_target: StoredDataValue,
+    daily_consumption_target: StoredDataValue,
+    target_mode: StoredDataValue,
+    total_consumption: StoredDataValue,
+    daily_consumption_target_time: StoredDataValue,
+}
+
+impl DrinkMonitorLogData {
+    pub fn new(
+        hourly_consumption_target: f32,
+        daily_consumption_target: u32,
+        target_mode: MonitoringTargetPeriodOptions,
+        total_consumption: f32,
+        daily_consumption_target_time: NaiveTime,
+    ) -> Self {
+        Self {
+            hourly_consumption_target: StoredDataValue::Float(hourly_consumption_target),
+            daily_consumption_target: StoredDataValue::UInt(daily_consumption_target),
+            target_mode: StoredDataValue::SmallUInt(target_mode.into()),
+            total_consumption: StoredDataValue::Float(total_consumption),
+            daily_consumption_target_time: StoredDataValue::Time(daily_consumption_target_time),
+        }
+    }
+}
+
+impl LogEncodeDecode for DrinkMonitorLogData {
+    fn encode(&self, buf: &mut [u8]) -> Result<usize, LogEncodeDecodeError> {
+        let mut data_size = 0;
+        data_size += self
+            .hourly_consumption_target
+            .serialize_into(&mut buf[data_size..])
+            .map_err(|e| {
+                if e == SerializationError::BufferTooSmall {
+                    LogEncodeDecodeError::BufferTooSmall
+                } else {
+                    LogEncodeDecodeError::EncodeFailed
+                }
+            })?;
+        data_size += self
+            .daily_consumption_target
+            .serialize_into(&mut buf[data_size..])
+            .map_err(|e| {
+                if e == SerializationError::BufferTooSmall {
+                    LogEncodeDecodeError::BufferTooSmall
+                } else {
+                    LogEncodeDecodeError::EncodeFailed
+                }
+            })?;
+        data_size += self
+            .target_mode
+            .serialize_into(&mut buf[data_size..])
+            .map_err(|e| {
+                if e == SerializationError::BufferTooSmall {
+                    LogEncodeDecodeError::BufferTooSmall
+                } else {
+                    LogEncodeDecodeError::EncodeFailed
+                }
+            })?;
+        data_size += self
+            .total_consumption
+            .serialize_into(&mut buf[data_size..])
+            .map_err(|e| {
+                if e == SerializationError::BufferTooSmall {
+                    LogEncodeDecodeError::BufferTooSmall
+                } else {
+                    LogEncodeDecodeError::EncodeFailed
+                }
+            })?;
+        data_size += self
+            .daily_consumption_target_time
+            .serialize_into(&mut buf[data_size..])
+            .map_err(|e| {
+                if e == SerializationError::BufferTooSmall {
+                    LogEncodeDecodeError::BufferTooSmall
+                } else {
+                    LogEncodeDecodeError::EncodeFailed
+                }
+            })?;
+
+        Ok(data_size)
+    }
+
+    fn decode(&mut self, buf: &mut [u8]) -> Result<(), LogEncodeDecodeError>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+}
 
 #[derive(Clone, PartialEq, Copy, Debug)]
 pub enum MonitoringStateSubstates {
@@ -51,7 +143,7 @@ pub struct DrinkMonitoring<WS> {
     monitoring_start_time: NaiveDateTime,
     total_consumption: f32,
     daily_consumption_target_time: NaiveTime,
-    consumption_log: HistoricalLogAccessor,
+    monitoring_log: HistoricalLogAccessor,
 }
 
 impl<WS> DrinkMonitoring<WS>
@@ -76,7 +168,7 @@ where
             rtc_accessor,
             total_consumption: 0.0,
             daily_consumption_target_time: Default::default(),
-            consumption_log: HistoricalLogAccessor::new(log_config::Logs::ConsumptionLog),
+            monitoring_log: HistoricalLogAccessor::new(log_config::Logs::ConsumptionLog),
         }
     }
 
@@ -202,14 +294,29 @@ where
                 debug!("Hourly target is {}", self.hourly_consumption_target);
             }
         }
+
         self.send_monitoring_update(DrinkMonitoringUpdate::TargetRate(
             self.hourly_consumption_target,
         ))
         .await;
     }
 
+    async fn update(&mut self) {
+        self.update_targets().await;
+        self.update_consumption_rate().await;
+
+        let snapshot = DrinkMonitorLogData::new(
+            self.hourly_consumption_target,
+            self.daily_consumption_target,
+            self.target_mode,
+            self.total_consumption,
+            self.daily_consumption_target_time,
+        );
+        self.monitoring_log.log_data(snapshot).await;
+    }
+
     /// Sets internal monitoring mode state and retrieves associated target values.
-    async fn update_monitoring_mode(
+    async fn change_monitoring_mode(
         &mut self,
         mode: MonitoringTargetPeriodOptions,
         settings: &FlashSettingsAccessor,
@@ -259,7 +366,7 @@ where
                 }
             }
         }
-        self.update_targets().await;
+        self.update().await;
     }
 
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
@@ -282,7 +389,7 @@ where
         if let Some(SettingValue::SmallUInt(mode_id)) = mode_from_settings {
             let mode = mode_id.try_into().unwrap();
             debug!("Monitoring mode initialised to: {}", Debug2Format(&mode));
-            self.update_monitoring_mode(mode, &settings).await;
+            self.change_monitoring_mode(mode, &settings).await;
         } else {
             panic!(
                 "Unexpected monitoring mode initialisation data: {:?}",
@@ -309,12 +416,7 @@ where
                         let consumption = f32::max(0.0, vessel_placed_weight - new_stable_weight);
                         self.total_consumption += consumption;
 
-                        self.update_consumption_rate().await;
-                        self.update_targets().await;
-
-                        self.consumption_log
-                            .log(StoredDataValue::Float(consumption))
-                            .await;
+                        self.update().await;
 
                         self.send_monitoring_update(DrinkMonitoringUpdate::Consumption(f32::max(
                             0.0,
@@ -339,8 +441,7 @@ where
                 }
                 Either4::Second(_) => {
                     // check for tick over to next day and reset consumption
-                    self.update_consumption_rate().await;
-                    self.update_targets().await;
+                    self.update().await;
                 }
                 Either4::Third(app_message) => {
                     // This ensures that anything else in the system (e.g., LEDs, display) gets
@@ -348,8 +449,7 @@ where
                     if app_message
                         == ApplicationMessage::ApplicationStateUpdate(ApplicationState::Monitoring)
                     {
-                        self.update_targets().await;
-                        self.update_consumption_rate().await;
+                        self.update().await;
                     }
                 }
                 Either4::Fourth(setting_message) => {
@@ -399,7 +499,7 @@ where
                             if let SettingValue::SmallUInt(mode_id) = changed_setting.value {
                                 let new_mode = mode_id.try_into().unwrap();
                                 debug!("Monitoring mode changed to: {}", Debug2Format(&new_mode));
-                                self.update_monitoring_mode(new_mode, &settings).await;
+                                self.change_monitoring_mode(new_mode, &settings).await;
                             } else {
                                 warn!(
                                     "Unexpected MonitoringTargetType setting value: {}",
@@ -411,8 +511,7 @@ where
                     }
                     if do_update {
                         debug!("Updating after settings change");
-                        self.update_targets().await;
-                        self.update_consumption_rate().await;
+                        self.update().await;
                     }
                 }
             }

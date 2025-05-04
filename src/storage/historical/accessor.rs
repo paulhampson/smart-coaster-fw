@@ -15,7 +15,7 @@
 use crate::rtc::accessor::RtcAccessor;
 use crate::storage::historical::log_config::Logs;
 use crate::storage::historical::manager::LOG_STORE;
-use crate::storage::historical::LogEntry;
+use crate::storage::historical::{LogEncodeDecode, SimpleLogEntry};
 use crate::storage::storage_manager::StoredLogConfig;
 use crate::storage::StoredDataValue;
 use defmt::{warn, Debug2Format};
@@ -33,15 +33,24 @@ impl HistoricalLogAccessor {
         }
     }
 
-    pub async fn log(&mut self, data: StoredDataValue) {
+    pub async fn log_simple_data(&mut self, data: StoredDataValue) {
         let mut log_store = LOG_STORE.lock().await;
-        let log_entry = LogEntry {
-            timestamp: self.rtc_accessor.get_date_time(),
-            data,
-        };
+        let log_entry = SimpleLogEntry { data };
 
         let _ = log_store
-            .write_to_queue(&self.log_config, log_entry)
+            .write_to_queue(
+                &self.log_config,
+                self.rtc_accessor.get_date_time(),
+                log_entry,
+            )
+            .map_err(|e| warn!("Unable to write to log queue: {}", Debug2Format(&e)));
+    }
+
+    pub async fn log_data(&mut self, data: impl LogEncodeDecode) {
+        let mut log_store = LOG_STORE.lock().await;
+
+        let _ = log_store
+            .write_to_queue(&self.log_config, self.rtc_accessor.get_date_time(), data)
             .map_err(|e| warn!("Unable to write to log queue: {}", Debug2Format(&e)));
     }
 }
