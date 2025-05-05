@@ -17,7 +17,10 @@ use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMes
 use crate::drink_monitor::messaging::{DrinkMonitorChannelPublisher, DrinkMonitoringUpdate};
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::rtc::accessor::RtcAccessor;
-use crate::storage::historical::accessor::HistoricalLogAccessor;
+use crate::storage::historical::accessor::{
+    HistoricalLogAccessor, LogReadSignal, RetrievedLogEntry,
+};
+use crate::storage::historical::manager::MAX_READ_CHUNK_SIZE;
 use crate::storage::historical::{log_config, LogEncodeDecode, LogEncodeDecodeError};
 use crate::storage::settings::accessor::FlashSettingsAccessor;
 use crate::storage::settings::messaging::SettingsMessage;
@@ -25,8 +28,9 @@ use crate::storage::settings::monitor::FlashSettingsMonitor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
 use crate::storage::StoredDataValue;
 use crate::weight::WeighingSystem;
-use chrono::{NaiveDateTime, NaiveTime, Timelike};
+use chrono::{NaiveDateTime, NaiveTime, TimeDelta, Timelike};
 use core::cmp::PartialEq;
+use core::ops::Sub;
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select4, Either4};
 use embassy_time::{Duration, Ticker, Timer};
@@ -34,12 +38,15 @@ use heapless::HistoryBuffer;
 use micromath::F32Ext;
 use sequential_storage::map::{SerializationError, Value};
 
+pub static LOG_READ_SIGNAL: LogReadSignal = LogReadSignal::new();
+
 struct DrinkMonitorLogData {
     hourly_consumption_target: StoredDataValue,
     daily_consumption_target: StoredDataValue,
     target_mode: StoredDataValue,
     total_consumption: StoredDataValue,
     daily_consumption_target_time: StoredDataValue,
+    last_consumption: StoredDataValue,
 }
 
 impl DrinkMonitorLogData {
@@ -49,6 +56,7 @@ impl DrinkMonitorLogData {
         target_mode: MonitoringTargetPeriodOptions,
         total_consumption: f32,
         daily_consumption_target_time: NaiveTime,
+        last_consumption: f32,
     ) -> Self {
         Self {
             hourly_consumption_target: StoredDataValue::Float(hourly_consumption_target),
@@ -56,6 +64,7 @@ impl DrinkMonitorLogData {
             target_mode: StoredDataValue::SmallUInt(target_mode.into()),
             total_consumption: StoredDataValue::Float(total_consumption),
             daily_consumption_target_time: StoredDataValue::Time(daily_consumption_target_time),
+            last_consumption: StoredDataValue::Float(last_consumption),
         }
     }
 }
@@ -121,7 +130,65 @@ impl LogEncodeDecode for DrinkMonitorLogData {
     where
         Self: Sized,
     {
-        todo!()
+        if buf.len() < 25 {
+            error!("Not enough bytes to decode - got {} expected 25", buf.len());
+            return Err(LogEncodeDecodeError::BufferTooSmall);
+        }
+
+        let mut data_start: usize = 0;
+        let mut element_size = self
+            .hourly_consumption_target
+            .get_serialization_buffer_size();
+        self.hourly_consumption_target =
+            StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
+                .map_err(|e| {
+                    error!("Unable to decode data {}", e);
+                    LogEncodeDecodeError::DecodeFailed
+                })?;
+        data_start += element_size;
+
+        element_size = self
+            .daily_consumption_target
+            .get_serialization_buffer_size();
+        self.daily_consumption_target =
+            StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
+                .map_err(|e| {
+                    error!("Unable to decode data {}", e);
+                    LogEncodeDecodeError::DecodeFailed
+                })?;
+        data_start += element_size;
+
+        element_size = self.target_mode.get_serialization_buffer_size();
+        self.target_mode =
+            StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
+                .map_err(|e| {
+                    error!("Unable to decode data {}", e);
+                    LogEncodeDecodeError::DecodeFailed
+                })?;
+        data_start += element_size;
+
+        element_size = self.total_consumption.get_serialization_buffer_size();
+        self.total_consumption =
+            StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
+                .map_err(|e| {
+                    error!("Unable to decode data {}", e);
+                    LogEncodeDecodeError::DecodeFailed
+                })?;
+        data_start += element_size;
+
+        element_size = self
+            .daily_consumption_target_time
+            .get_serialization_buffer_size();
+        self.daily_consumption_target_time =
+            StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
+                .map_err(|e| {
+                    error!("Unable to decode data {}", e);
+                    LogEncodeDecodeError::DecodeFailed
+                })?;
+        data_start += element_size;
+        trace!("Decoded {} bytes", data_start);
+
+        Ok(())
     }
 }
 
@@ -241,7 +308,7 @@ where
             .await;
     }
 
-    async fn update_consumption_rate(&mut self) -> f32 {
+    async fn update_day_average_consumption_rate(&mut self) -> f32 {
         // daily reset logic
         let current_date_time = self.rtc_accessor.get_date_time();
         let current_date = NaiveDateTime::from(current_date_time.date());
@@ -256,10 +323,42 @@ where
             1.0, // this avoids getting meaningless consumption rate numbers when we are less than 1 hour from the start point
         );
         let consumption_rate = self.total_consumption / elapsed_time_in_hours;
-        self.send_monitoring_update(DrinkMonitoringUpdate::ConsumptionRate(consumption_rate))
-            .await;
+        self.send_monitoring_update(DrinkMonitoringUpdate::DayAverageHourlyConsumptionRate(
+            consumption_rate,
+        ))
+        .await;
         debug!("Consumption rate = {} ml/hr", consumption_rate.round());
         consumption_rate
+    }
+
+    async fn update_hourly_consumption_rate(&mut self) {
+        trace!("Updating hourly consumption rate - checking for read log data");
+
+        if let Some(retrieved_log_chunk) = LOG_READ_SIGNAL.try_take() {
+            debug!("Got {} log chunks", retrieved_log_chunk.count);
+            let mut last_hour_consumption = 0.0;
+            // TODO - process log data
+            self.send_monitoring_update(DrinkMonitoringUpdate::LastHourConsumptionRate(
+                last_hour_consumption,
+            ))
+            .await;
+            debug!(
+                "Last hour consumption rate = {} ml/hr",
+                last_hour_consumption.round()
+            );
+        }
+
+        let current_date_time = self.rtc_accessor.get_date_time();
+        let time_stamp_one_hour_ago = current_date_time.sub(TimeDelta::hours(1));
+
+        let entry_buffer = [RetrievedLogEntry::default(); MAX_READ_CHUNK_SIZE];
+        debug!("Requesting log entries for hourly consumption rate calculation");
+        self.monitoring_log
+            .get_log_data_after_timestamp(
+                time_stamp_one_hour_ago,
+                entry_buffer, /*&LOG_READ_SIGNAL*/
+            )
+            .await;
     }
 
     async fn update_targets(&mut self) {
@@ -301,9 +400,10 @@ where
         .await;
     }
 
-    async fn update(&mut self) {
+    async fn update(&mut self, new_consumption: f32) {
         self.update_targets().await;
-        self.update_consumption_rate().await;
+        self.update_day_average_consumption_rate().await;
+        self.update_hourly_consumption_rate().await;
 
         let snapshot = DrinkMonitorLogData::new(
             self.hourly_consumption_target,
@@ -311,6 +411,7 @@ where
             self.target_mode,
             self.total_consumption,
             self.daily_consumption_target_time,
+            new_consumption,
         );
         self.monitoring_log.log_data(snapshot).await;
     }
@@ -366,7 +467,7 @@ where
                 }
             }
         }
-        self.update().await;
+        self.update(0.0).await;
     }
 
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
@@ -416,7 +517,7 @@ where
                         let consumption = f32::max(0.0, vessel_placed_weight - new_stable_weight);
                         self.total_consumption += consumption;
 
-                        self.update().await;
+                        self.update(consumption).await;
 
                         self.send_monitoring_update(DrinkMonitoringUpdate::Consumption(f32::max(
                             0.0,
@@ -441,7 +542,7 @@ where
                 }
                 Either4::Second(_) => {
                     // check for tick over to next day and reset consumption
-                    self.update().await;
+                    self.update(0.0).await;
                 }
                 Either4::Third(app_message) => {
                     // This ensures that anything else in the system (e.g., LEDs, display) gets
@@ -449,7 +550,7 @@ where
                     if app_message
                         == ApplicationMessage::ApplicationStateUpdate(ApplicationState::Monitoring)
                     {
-                        self.update().await;
+                        self.update(0.0).await;
                     }
                 }
                 Either4::Fourth(setting_message) => {
@@ -511,7 +612,7 @@ where
                     }
                     if do_update {
                         debug!("Updating after settings change");
-                        self.update().await;
+                        self.update(0.0).await;
                     }
                 }
             }

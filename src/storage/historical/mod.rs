@@ -20,6 +20,7 @@ use crate::storage::StoredDataValue;
 use defmt::{error, Debug2Format};
 use sequential_storage::map::{SerializationError, Value};
 
+#[derive(Debug)]
 pub enum LogEncodeDecodeError {
     EncodeFailed,
     DecodeFailed,
@@ -40,26 +41,6 @@ pub struct SimpleLogEntry {
 
 impl LogEncodeDecode for SimpleLogEntry {
     fn encode(&self, buf: &mut [u8]) -> Result<usize, LogEncodeDecodeError> {
-        // if buf.len() < 10 {
-        //     return Err(LogEncodeDecodeError::BufferTooSmall);
-        // }
-        //
-        // // Date part
-        // buf[0] = self.timestamp.year() as u8; // Lower 8 bits of year
-        // buf[1] = (self.timestamp.year() >> 8) as u8; // Upper 8 bits of year
-        // buf[2] = self.timestamp.month() as u8;
-        // buf[3] = self.timestamp.day() as u8;
-        //
-        // // Time part
-        // buf[4] = self.timestamp.hour() as u8;
-        // buf[5] = self.timestamp.minute() as u8;
-        // buf[6] = self.timestamp.second() as u8;
-        //
-        // // Nanoseconds
-        // let nanos = self.timestamp.nanosecond();
-        // buf[7..10].copy_from_slice(&nanos.to_le_bytes()[..3]); // Using only 3 bytes for nanos
-        //
-        // let mut data_length = 10;
         let data_length = self.data.serialize_into(&mut buf[0..]).map_err(|e| {
             error!(
                 "Unable to encode log entry: {:?}. Because {:?}.",
@@ -79,7 +60,10 @@ impl LogEncodeDecode for SimpleLogEntry {
     where
         Self: Sized,
     {
-        todo!();
+        self.data = StoredDataValue::deserialize_from(&buf).map_err(|e| {
+            error!("Unable to decode data {}", e);
+            LogEncodeDecodeError::DecodeFailed
+        })?;
         Ok(())
     }
 }

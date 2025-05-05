@@ -137,7 +137,7 @@ where
                 }
                 Either3::Third(drink_monitor_update) => {
                     match drink_monitor_update {
-                        DrinkMonitoringUpdate::ConsumptionRate(new_rate) => {
+                        DrinkMonitoringUpdate::DayAverageHourlyConsumptionRate(new_rate) => {
                             self.consumption_rate = new_rate;
                         }
                         DrinkMonitoringUpdate::TargetRate(new_target_rate) => {
@@ -149,6 +149,7 @@ where
                         DrinkMonitoringUpdate::TargetConsumption(_) => {}
                         DrinkMonitoringUpdate::TargetMode(_) => {}
                         DrinkMonitoringUpdate::UpdateMonitoringSubstate(_) => {}
+                        DrinkMonitoringUpdate::LastHourConsumptionRate(_) => {}
                     }
                     if self.application_state == ApplicationState::Monitoring {
                         self.rate_update(self.consumption_rate, self.target_rate)

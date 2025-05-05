@@ -126,8 +126,7 @@ where
                 AnchorX::Center,
             ));
 
-        // write!(string_buffer, "{:.0}", data.last_hour_consumption_rate).unwrap();
-        write!(string_buffer, "--").unwrap(); // TODO when this data is available show it
+        write!(string_buffer, "{:.0}", data.last_hour_consumption_rate).unwrap();
         let mut pos = middle_display_area.bounding_box().center();
         pos.y = (value_char_style.line_height() / 2) as i32 + additional_top_padding;
         Text::with_text_style(

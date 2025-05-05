@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::storage::historical::manager::DATA_BUFFER_SIZE;
 use crate::storage::settings::StorageError;
 use core::future::Future;
 use core::ops::Range;
@@ -59,6 +60,14 @@ pub trait StorageManager {
         &mut self,
         config: &StoredLogConfig,
     ) -> impl Future<Output = Result<u32, StorageError>>;
+
+    fn get_log_items(
+        &mut self,
+        config: &StoredLogConfig,
+        start: usize,
+        count: usize,
+        buf: &mut [[u8; DATA_BUFFER_SIZE]],
+    ) -> impl Future<Output = Result<usize, StorageError>>;
 }
 
 pub type BlockingAsyncFlash =
@@ -82,8 +91,6 @@ where
     flash_cache: NoCache,
     storage_initialised: bool,
 }
-
-const DATA_BUFFER_SIZE: usize = 128;
 
 impl<E, F> StorageManagerSequentialStorage<E, F>
 where
@@ -249,6 +256,60 @@ where
             warn!("Unable to get remaining space. Error: {:?}", e);
             StorageError::CapacityCheckError
         })
+    }
+
+    async fn get_log_items(
+        &mut self,
+        config: &StoredLogConfig,
+        start: usize,
+        count: usize,
+        buf: &mut [[u8; DATA_BUFFER_SIZE]],
+    ) -> Result<usize, StorageError> {
+        trace!("Getting log items start = {}, max count = {}", start, count);
+        let flash = self.flash.as_mut().unwrap();
+        let mut cache = NoCache::new();
+        let mut storage_iter =
+            sequential_storage::queue::iter(flash, config.storage_range.clone(), &mut cache)
+                .await
+                .map_err(|e| {
+                    error!("Unable to get iterator for NVM queue - {}", e);
+                    StorageError::RetrieveError
+                })?;
+
+        let mut retrieved_count = 0;
+        let mut index = 0;
+
+        // skip entries
+        while index < start {
+            let mut temp_buf = [0; DATA_BUFFER_SIZE];
+            let entry = storage_iter.next(&mut temp_buf).await.map_err(|e| {
+                error!("Failed to read while skipping entries - {}", e);
+                StorageError::RetrieveError
+            })?;
+            if entry.is_none() {
+                break;
+            }
+            index += 1;
+        }
+
+        // retrieve entries
+        while index < start + count {
+            let entry = storage_iter
+                .next(&mut buf[retrieved_count])
+                .await
+                .map_err(|e| {
+                    error!("Failed to read while retrieving entries - {}", e);
+                    StorageError::RetrieveError
+                })?;
+            if entry.is_none() {
+                break;
+            }
+            retrieved_count += 1;
+            index += 1;
+        }
+
+        trace!("Retrieved {} entries", retrieved_count);
+        Ok(retrieved_count)
     }
 }
 

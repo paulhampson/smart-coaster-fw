@@ -20,7 +20,8 @@ use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DrinkMonitoringUpdate {
     Consumption(f32),
-    ConsumptionRate(f32),
+    DayAverageHourlyConsumptionRate(f32),
+    LastHourConsumptionRate(f32),
     TargetRate(f32),
     TotalConsumed(f32),
     TargetConsumption(f32),

@@ -24,7 +24,7 @@ cortex-m-rt = "0.7.3"
 cortex-m = { version = "0.7.6" }
 assign-resources = "0.4.1"
 
-embassy-executor = { version = "0.7", features = ["task-arena-size-16384", "arch-cortex-m", "executor-thread", "defmt", "executor-interrupt"] }
+embassy-executor = { version = "0.7", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread", "defmt", "executor-interrupt"] }
 embassy-rp = { version = "0.3", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl", "rp2040"] }
 embassy-sync = { version = "0.6" }
 embassy-time = { version = "0.4", features = ["defmt", "defmt-timestamp-uptime"] }

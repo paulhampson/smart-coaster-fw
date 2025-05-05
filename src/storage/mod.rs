@@ -37,6 +37,11 @@ impl StoredDataValue {
         // field, so we can read the discriminant without offsetting the pointer.
         unsafe { *<*const _>::from(self).cast::<u8>() }
     }
+
+    pub fn get_serialization_buffer_size(&self) -> usize {
+        let mut value_buffer: [u8; 10] = [0; 10];
+        self.serialize_into(&mut value_buffer).unwrap()
+    }
 }
 
 impl Default for StoredDataValue {

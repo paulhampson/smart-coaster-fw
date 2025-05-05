@@ -128,7 +128,7 @@ where
                 DrinkMonitoringUpdate::Consumption(new_consumption) => {
                     self.monitoring_data.last_consumption = new_consumption;
                 }
-                DrinkMonitoringUpdate::ConsumptionRate(new_consumption_rate) => {
+                DrinkMonitoringUpdate::DayAverageHourlyConsumptionRate(new_consumption_rate) => {
                     self.monitoring_data.day_consumption_rate = new_consumption_rate;
                 }
                 DrinkMonitoringUpdate::TotalConsumed(new_total_consumed) => {
@@ -145,6 +145,10 @@ where
                 }
                 DrinkMonitoringUpdate::TargetMode(new_target_mode) => {
                     self.monitoring_data.target_mode = new_target_mode;
+                }
+                DrinkMonitoringUpdate::LastHourConsumptionRate(new_last_hour_consumption_rate) => {
+                    self.monitoring_data.last_hour_consumption_rate =
+                        new_last_hour_consumption_rate;
                 }
             }
         }

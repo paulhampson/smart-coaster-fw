@@ -38,6 +38,7 @@ pub enum StorageError {
     NotInitialized,
     EraseError,
     CapacityCheckError,
+    DecodeError,
 }
 
 pub struct NumericSettingProperties<T> {
