@@ -67,6 +67,31 @@ impl DrinkMonitorLogData {
             last_consumption: StoredDataValue::Float(last_consumption),
         }
     }
+
+    pub fn get_last_consumption(&self) -> f32 {
+        if let StoredDataValue::Float(last_consumption) = self.last_consumption {
+            last_consumption
+        } else {
+            warn!(
+                "Unexpected stored data for last_consumption: {}",
+                Debug2Format(&self.last_consumption)
+            );
+            0.0
+        }
+    }
+}
+
+impl Default for DrinkMonitorLogData {
+    fn default() -> Self {
+        Self {
+            hourly_consumption_target: StoredDataValue::Float(f32::default()),
+            daily_consumption_target: StoredDataValue::UInt(u32::default()),
+            target_mode: StoredDataValue::SmallUInt(u8::default()),
+            total_consumption: StoredDataValue::Float(f32::default()),
+            daily_consumption_target_time: StoredDataValue::Time(NaiveTime::default()),
+            last_consumption: StoredDataValue::Float(f32::default()),
+        }
+    }
 }
 
 impl LogEncodeDecode for DrinkMonitorLogData {
@@ -122,73 +147,132 @@ impl LogEncodeDecode for DrinkMonitorLogData {
                     LogEncodeDecodeError::EncodeFailed
                 }
             })?;
+        data_size += self
+            .last_consumption
+            .serialize_into(&mut buf[data_size..])
+            .map_err(|e| {
+                if e == SerializationError::BufferTooSmall {
+                    LogEncodeDecodeError::BufferTooSmall
+                } else {
+                    LogEncodeDecodeError::EncodeFailed
+                }
+            })?;
 
         Ok(data_size)
     }
 
-    fn decode(&mut self, buf: &mut [u8]) -> Result<(), LogEncodeDecodeError>
+    fn from_bytes(buf: &[u8]) -> Result<Self, LogEncodeDecodeError>
     where
         Self: Sized,
     {
-        if buf.len() < 25 {
-            error!("Not enough bytes to decode - got {} expected 25", buf.len());
+        let expected_bytes = 30;
+        if buf.len() < expected_bytes {
+            error!(
+                "Not enough bytes to decode - got {} expected {}",
+                buf.len(),
+                expected_bytes
+            );
             return Err(LogEncodeDecodeError::BufferTooSmall);
         }
+        trace!("buffer: {}", &buf);
 
+        let mut s = Self::default();
         let mut data_start: usize = 0;
-        let mut element_size = self
-            .hourly_consumption_target
-            .get_serialization_buffer_size();
-        self.hourly_consumption_target =
+        let mut element_size = s.hourly_consumption_target.get_serialization_buffer_size();
+        s.hourly_consumption_target =
             StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
                 .map_err(|e| {
-                    error!("Unable to decode data {}", e);
+                    error!(
+                        "Unable to decode data {} - start: {} - element_size: {} - bytes: {}",
+                        e,
+                        data_start,
+                        element_size,
+                        &buf[data_start..data_start + element_size]
+                    );
                     LogEncodeDecodeError::DecodeFailed
                 })?;
         data_start += element_size;
 
-        element_size = self
-            .daily_consumption_target
-            .get_serialization_buffer_size();
-        self.daily_consumption_target =
+        element_size = s.daily_consumption_target.get_serialization_buffer_size();
+        s.daily_consumption_target =
             StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
                 .map_err(|e| {
-                    error!("Unable to decode data {}", e);
+                    error!(
+                        "Unable to decode data {} - start: {} - element_size: {} - bytes: {}",
+                        e,
+                        data_start,
+                        element_size,
+                        &buf[data_start..data_start + element_size]
+                    );
                     LogEncodeDecodeError::DecodeFailed
                 })?;
         data_start += element_size;
 
-        element_size = self.target_mode.get_serialization_buffer_size();
-        self.target_mode =
+        element_size = s.target_mode.get_serialization_buffer_size();
+        s.target_mode =
             StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
                 .map_err(|e| {
-                    error!("Unable to decode data {}", e);
+                    error!(
+                        "Unable to decode data {} - start: {} - element_size: {} - bytes: {}",
+                        e,
+                        data_start,
+                        element_size,
+                        &buf[data_start..data_start + element_size]
+                    );
                     LogEncodeDecodeError::DecodeFailed
                 })?;
         data_start += element_size;
 
-        element_size = self.total_consumption.get_serialization_buffer_size();
-        self.total_consumption =
+        element_size = s.total_consumption.get_serialization_buffer_size();
+        s.total_consumption =
             StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
                 .map_err(|e| {
-                    error!("Unable to decode data {}", e);
+                    error!(
+                        "Unable to decode data {} - start: {} - element_size: {} - bytes: {}",
+                        e,
+                        data_start,
+                        element_size,
+                        &buf[data_start..data_start + element_size]
+                    );
                     LogEncodeDecodeError::DecodeFailed
                 })?;
         data_start += element_size;
 
-        element_size = self
+        element_size = s
             .daily_consumption_target_time
             .get_serialization_buffer_size();
-        self.daily_consumption_target_time =
+        s.daily_consumption_target_time =
             StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
                 .map_err(|e| {
-                    error!("Unable to decode data {}", e);
+                    error!(
+                        "Unable to decode data {} - start: {} - element_size: {} - bytes: {}",
+                        e,
+                        data_start,
+                        element_size,
+                        &buf[data_start..data_start + element_size]
+                    );
                     LogEncodeDecodeError::DecodeFailed
                 })?;
         data_start += element_size;
+
+        element_size = s.last_consumption.get_serialization_buffer_size();
+        s.last_consumption =
+            StoredDataValue::deserialize_from(&buf[data_start..data_start + element_size])
+                .map_err(|e| {
+                    error!(
+                        "Unable to decode data {} - start: {} - element_size: {} - bytes: {}",
+                        e,
+                        data_start,
+                        element_size,
+                        &buf[data_start..data_start + element_size]
+                    );
+                    LogEncodeDecodeError::DecodeFailed
+                })?;
+        data_start += element_size;
+
         trace!("Decoded {} bytes", data_start);
 
-        Ok(())
+        Ok(s)
     }
 }
 
@@ -332,33 +416,56 @@ where
     }
 
     async fn update_hourly_consumption_rate(&mut self) {
-        trace!("Updating hourly consumption rate - checking for read log data");
-
-        if let Some(retrieved_log_chunk) = LOG_READ_SIGNAL.try_take() {
-            debug!("Got {} log chunks", retrieved_log_chunk.count);
-            let mut last_hour_consumption = 0.0;
-            // TODO - process log data
-            self.send_monitoring_update(DrinkMonitoringUpdate::LastHourConsumptionRate(
-                last_hour_consumption,
-            ))
-            .await;
-            debug!(
-                "Last hour consumption rate = {} ml/hr",
-                last_hour_consumption.round()
-            );
-        }
+        trace!("Updating hourly consumption rate");
 
         let current_date_time = self.rtc_accessor.get_date_time();
         let time_stamp_one_hour_ago = current_date_time.sub(TimeDelta::hours(1));
 
-        let entry_buffer = [RetrievedLogEntry::default(); MAX_READ_CHUNK_SIZE];
-        debug!("Requesting log entries for hourly consumption rate calculation");
-        self.monitoring_log
-            .get_log_data_after_timestamp(
-                time_stamp_one_hour_ago,
-                entry_buffer, /*&LOG_READ_SIGNAL*/
-            )
-            .await;
+        debug!(
+            "Retrieving logs for hourly consumption rate calculation since {}",
+            Debug2Format(&time_stamp_one_hour_ago)
+        );
+        let mut last_hour_consumption = 0.0;
+        let mut total_entries = 0;
+        let mut ts_to_request = time_stamp_one_hour_ago;
+        'process_hour_data: loop {
+            let entry_buffer = [RetrievedLogEntry::default(); MAX_READ_CHUNK_SIZE];
+            trace!("Requesting log entries for hourly consumption rate calculation");
+            self.monitoring_log
+                .get_log_data_after_timestamp(ts_to_request, entry_buffer, &LOG_READ_SIGNAL)
+                .await;
+
+            let retrieved_log_chunk = LOG_READ_SIGNAL.wait().await;
+            total_entries += retrieved_log_chunk.count;
+            trace!("Got {} log chunks", retrieved_log_chunk.count);
+            if retrieved_log_chunk.count == 0 {
+                break 'process_hour_data;
+            }
+            for entry in retrieved_log_chunk.entries[0..retrieved_log_chunk.count].iter() {
+                let log_entry = DrinkMonitorLogData::from_bytes(&entry.data)
+                    .map_err(|_| {
+                        error!("Failed to decode data from log");
+                    })
+                    .unwrap();
+                last_hour_consumption += log_entry.get_last_consumption();
+                trace!(
+                    "{} - consumption was {}",
+                    Debug2Format(&entry.timestamp),
+                    log_entry.get_last_consumption()
+                );
+                ts_to_request = entry.timestamp;
+            }
+        }
+
+        self.send_monitoring_update(DrinkMonitoringUpdate::LastHourConsumptionRate(
+            last_hour_consumption,
+        ))
+        .await;
+        debug!(
+            "Calculation complete over {} log entries - last hour consumption rate = {} ml/hr",
+            total_entries,
+            last_hour_consumption.round()
+        );
     }
 
     async fn update_targets(&mut self) {

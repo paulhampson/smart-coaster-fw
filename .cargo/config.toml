@@ -6,7 +6,7 @@ target = "thumbv6m-none-eabi"
 # rustflags = ["-Z emit-stack-sizes"]
 
 [env]
-DEFMT_LOG = "Smartcoaster::storage=trace,Smartcoaster::drink_monitor=trace,debug"
+DEFMT_LOG = "debug"
 # Module based logging:
 # "Smartcoaster=trace"
 # "Smartcoaster::storage=trace"

@@ -6,6 +6,11 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 
 ### Bugs / Things to fix
 
+* ***NEXT*** Log retrieval performance is poor and impacts user experience. Possible optimisations:
+    * Use a channel rather than a signal to create a stream of log data to the consumer - removes multiple skipping.
+    * Last consumption immediately added to hourly consumption rate to improve display responsiveness, move last hour
+      rate to be calculated only every 60s
+    * Make read queue processing event driven rather than timed polling
 * Device and system menu requires two clicks down from top before scrolling starts
 * Re-entering settings menu goes back to 'exit' entry
 
@@ -22,8 +27,8 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Reset consumption at midnight~~
     * ~~Set time to achieve consumption by (for daily mode)~~
     * ~~Use time to achieve consumption by (for daily mode)~~
-    * **NEXT** Add current consumption rate (last hour) as well as having daily hourly rate
-    * Retain last consumption data between power cycles, respect reset point
+    * ~~Add current consumption rate (last hour) as well as having daily hourly rate~~
+    * ***NEXT*** Retain last consumption data between power cycles, respect reset point
     * Manual add/subtract consumption
     * Celebration screen when target achieved for the day (for daily mode)
     * Display ideas
@@ -36,6 +41,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
         * Time based 'aggressiveness' - no cup for long period = more vigorous LEDs
 * Historical log of consumption
     * ~~Store history~~
+    * ~~Read history~~
     * can be viewed as a graph on device (sparkline?)
     * or transferred via USB.
 * Firmware update via USB
@@ -82,9 +88,12 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Calibration~~
     * ~~Set Date/Time~~
         * ~~Improve date/time setting screen to be on par with numerical setting~~
+    * ~~Heap status~~
+    * NVM storage status
+    * Factory Reset
     * TZ setting
         * see https://docs.rs/time-tz/latest/time_tz/timezones/index.html / https://crates.io/crates/chrono-tz
-    * Factory Reset
+
 * ~~'About' screen~~
 * Auto exit settings after period of time inactive
 * ~~Continue to monitor drink in background~~
@@ -99,9 +108,9 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 * ~~Store settings~~
 * ~~Key / Value pair / general settings store~~
 * ~~Read / write~~
-* **WIP** Historical data store / timestamped sequential data
+* ~~Historical data store / timestamped sequential data~~
     * ~~Write~~
-    * Read
+    * ~~Read~~
 * Error log
 * Factory reset
 

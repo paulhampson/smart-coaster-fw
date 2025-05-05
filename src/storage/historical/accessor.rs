@@ -72,8 +72,8 @@ impl RetrievedLogEntry {
             data: [0; DATA_BUFFER_SIZE],
         };
 
-        let data_len = s.data.len() - 11;
-        s.data[0..data_len].copy_from_slice(&buffer[11..]);
+        let data_len = s.data.len() - 10;
+        s.data[0..data_len].copy_from_slice(&buffer[10..]);
         Ok(s)
     }
 }
@@ -130,13 +130,9 @@ impl HistoricalLogAccessor {
         &self,
         start_timestamp: NaiveDateTime,
         entry_buffer: [RetrievedLogEntry; MAX_READ_CHUNK_SIZE],
-        // signal: &'static LogReadSignal,
+        signal: &'static LogReadSignal,
     ) {
         let mut log_store = LOG_STORE.lock().await;
-        let _ = log_store.queue_read(
-            &self.log_config,
-            start_timestamp,
-            entry_buffer, /* signal */
-        );
+        let _ = log_store.queue_read(&self.log_config, start_timestamp, entry_buffer, signal);
     }
 }

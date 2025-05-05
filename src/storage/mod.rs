@@ -39,7 +39,7 @@ impl StoredDataValue {
     }
 
     pub fn get_serialization_buffer_size(&self) -> usize {
-        let mut value_buffer: [u8; 10] = [0; 10];
+        let mut value_buffer: [u8; 11] = [0; 11];
         self.serialize_into(&mut value_buffer).unwrap()
     }
 }

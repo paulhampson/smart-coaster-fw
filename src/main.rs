@@ -328,7 +328,7 @@ async fn storage_task(storage_resources: StorageResources) {
     storage::settings::accessor::initialise_settings().await;
 
     loop {
-        Timer::after(Duration::from_millis(500)).await;
+        Timer::after(Duration::from_millis(200)).await;
         storage::settings::accessor::process_save_queue().await;
         storage::historical::manager::process_log_queues().await;
     }

@@ -12,9 +12,8 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::drink_monitor::drink_monitoring::LOG_READ_SIGNAL;
 use crate::storage::historical::accessor::RetrievedLogChunk;
-pub(crate) use crate::storage::historical::accessor::{LogReadSignal, RetrievedLogEntry};
+use crate::storage::historical::accessor::{LogReadSignal, RetrievedLogEntry};
 use crate::storage::historical::LogEncodeDecode;
 use crate::storage::settings::StorageError;
 use crate::storage::storage_manager::{StorageManager, StoredLogConfig, NV_STORAGE};
@@ -36,7 +35,7 @@ struct ReadLogQueueEntry {
     config: StoredLogConfig,
     start_timestamp: NaiveDateTime,
     buffer: [RetrievedLogEntry; MAX_READ_CHUNK_SIZE],
-    // signal: &'static LogReadSignal,
+    signal: &'static LogReadSignal,
 }
 
 impl ReadLogQueueEntry {
@@ -44,13 +43,13 @@ impl ReadLogQueueEntry {
         config: &StoredLogConfig,
         start_timestamp: NaiveDateTime,
         buffer: [RetrievedLogEntry; MAX_READ_CHUNK_SIZE],
-        //signal: &'static LogReadSignal,
+        signal: &'static LogReadSignal,
     ) -> Self {
         Self {
             config: config.clone(),
             start_timestamp,
             buffer,
-            // signal,
+            signal,
         }
     }
 }
@@ -134,9 +133,9 @@ impl HistoricalLogManager {
         config: &StoredLogConfig,
         start_timestamp: NaiveDateTime,
         buffer: [RetrievedLogEntry; MAX_READ_CHUNK_SIZE],
-        //signal: &'static LogReadSignal,
+        signal: &'static LogReadSignal,
     ) -> Result<(), StorageError> {
-        let queue_entry = ReadLogQueueEntry::new(config, start_timestamp, buffer /*signal*/);
+        let queue_entry = ReadLogQueueEntry::new(config, start_timestamp, buffer, signal);
         trace!("Queueing storage read");
         self.log_read_queue.enqueue(queue_entry).map_err(|_| {
             error!("Error writing read log queue request entry");
@@ -174,9 +173,7 @@ impl HistoricalLogManager {
                 count: retrieved_count,
                 entries: queue_entry.buffer,
             };
-            // queue_entry.signal.signal(retrieved_chunk);
-            // FIXME
-            LOG_READ_SIGNAL.signal(retrieved_chunk);
+            queue_entry.signal.signal(retrieved_chunk);
         }
         Ok(())
     }
@@ -226,7 +223,7 @@ impl HistoricalLogManager {
 
             for chunk_idx in 0..retrieved_count {
                 let entry = RetrievedLogEntry::from_buffer(&temp_buffer[chunk_idx])?;
-                if entry.timestamp >= timestamp {
+                if entry.timestamp > timestamp {
                     break 'find_start;
                 }
                 chunk_start += 1;

@@ -29,7 +29,7 @@ pub enum LogEncodeDecodeError {
 
 pub trait LogEncodeDecode {
     fn encode(&self, buf: &mut [u8]) -> Result<usize, LogEncodeDecodeError>;
-    fn decode(&mut self, buf: &mut [u8]) -> Result<(), LogEncodeDecodeError>
+    fn from_bytes(buf: &[u8]) -> Result<Self, LogEncodeDecodeError>
     where
         Self: Sized;
 }
@@ -37,6 +37,14 @@ pub trait LogEncodeDecode {
 #[derive(Debug)]
 pub struct SimpleLogEntry {
     pub data: StoredDataValue,
+}
+
+impl Default for SimpleLogEntry {
+    fn default() -> Self {
+        SimpleLogEntry {
+            data: StoredDataValue::default(),
+        }
+    }
 }
 
 impl LogEncodeDecode for SimpleLogEntry {
@@ -56,14 +64,15 @@ impl LogEncodeDecode for SimpleLogEntry {
         Ok(data_length)
     }
 
-    fn decode(&mut self, buf: &mut [u8]) -> Result<(), LogEncodeDecodeError>
+    fn from_bytes(buf: &[u8]) -> Result<Self, LogEncodeDecodeError>
     where
         Self: Sized,
     {
-        self.data = StoredDataValue::deserialize_from(&buf).map_err(|e| {
+        let mut s = SimpleLogEntry::default();
+        s.data = StoredDataValue::deserialize_from(&buf).map_err(|e| {
             error!("Unable to decode data {}", e);
             LogEncodeDecodeError::DecodeFailed
         })?;
-        Ok(())
+        Ok(s)
     }
 }
