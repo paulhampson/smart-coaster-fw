@@ -45,10 +45,11 @@ use crate::hmi::messaging::{
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::{debug, info};
+use defmt::info;
 
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
+#[cfg(feature = "multicore")]
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{FLASH, I2C0, I2C1, PIO0};
 use embassy_rp::pio::Pio;
@@ -90,6 +91,7 @@ static WEIGHT_CHANNEL: WeightChannel = PubSubChannel::new();
 static APP_CHANNEL: ApplicationChannel = PubSubChannel::new();
 static DRINK_MONITOR_CHANNEL: DrinkMonitorChannel = PubSubChannel::new();
 
+#[cfg(feature = "multicore")]
 const CORE1_STACK_SIZE: usize = 16 * 1024;
 const HEAP_SIZE: usize = 16 * 1024;
 
