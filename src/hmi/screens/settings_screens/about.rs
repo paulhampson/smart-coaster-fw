@@ -54,7 +54,7 @@ impl AboutScreen {
 
         let s = Self {
             start_entry_index: 0,
-            max_entries: 4,
+            max_entries: 5,
 
             repository_url_scroll_pos: 0,
             repository_url_string,
@@ -114,11 +114,24 @@ impl AboutScreen {
                 draw_message_screen_no_reformat(display, &message_string, Alignment::Center)
             }
             2 => {
+                if built_info::GIT_VERSION.is_some() {
+                    if built_info::GIT_VERSION.unwrap()
+                        != built_info::GIT_COMMIT_HASH_SHORT.unwrap()
+                    {
+                        write!(message_string, "Tag: {}", built_info::GIT_VERSION.unwrap())
+                            .expect("tag string too long");
+                    } else {
+                        write!(message_string, "No tag").expect("tag string too long");
+                    }
+                }
+                draw_message_screen_no_reformat(display, &message_string, Alignment::Center)
+            }
+            3 => {
                 write!(message_string, "License: {}", built_info::PKG_LICENSE,)
                     .expect("String too long");
                 draw_message_screen_no_reformat(display, &message_string, Alignment::Left)
             }
-            3 => {
+            4 => {
                 let (start_str_idx, end_str_idx) = Self::calc_scroll_text_substring(
                     display.bounding_box().size.width,
                     self.repository_url_scroll_pos,
