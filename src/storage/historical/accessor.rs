@@ -15,16 +15,13 @@
 use crate::rtc::accessor::RtcAccessor;
 use crate::storage::historical::log_config::Logs;
 use crate::storage::historical::manager::{DATA_BUFFER_SIZE, LOG_STORE, MAX_READ_CHUNK_SIZE};
+use crate::storage::historical::messaging::HistoricalLogChannel;
 use crate::storage::historical::{LogEncodeDecode, SimpleLogEntry};
 use crate::storage::settings::StorageError;
 use crate::storage::storage_manager::StoredLogConfig;
 use crate::storage::StoredDataValue;
 use chrono::NaiveDateTime;
 use defmt::{warn, Debug2Format};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
-
-pub type LogReadSignal = Signal<CriticalSectionRawMutex, RetrievedLogChunk>;
 
 #[derive(Debug, Copy, Clone)]
 pub struct RetrievedLogEntry {
@@ -129,10 +126,9 @@ impl HistoricalLogAccessor {
     pub async fn get_log_data_after_timestamp(
         &self,
         start_timestamp: NaiveDateTime,
-        entry_buffer: [RetrievedLogEntry; MAX_READ_CHUNK_SIZE],
-        signal: &'static LogReadSignal,
+        log_channel: &'static HistoricalLogChannel,
     ) {
         let mut log_store = LOG_STORE.lock().await;
-        let _ = log_store.queue_read(&self.log_config, start_timestamp, entry_buffer, signal);
+        let _ = log_store.queue_read(&self.log_config, start_timestamp, log_channel);
     }
 }

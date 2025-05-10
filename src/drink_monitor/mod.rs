@@ -13,4 +13,5 @@
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
 pub mod drink_monitoring;
+mod log_data;
 pub mod messaging;

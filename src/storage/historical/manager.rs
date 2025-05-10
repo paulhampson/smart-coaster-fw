@@ -12,8 +12,10 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::storage::historical::accessor::RetrievedLogChunk;
-use crate::storage::historical::accessor::{LogReadSignal, RetrievedLogEntry};
+use crate::storage::historical::accessor::RetrievedLogEntry;
+use crate::storage::historical::messaging::{
+    HistoricalLogChannel, HistoricalLogChannelPublisher, HistoricalLogMessage,
+};
 use crate::storage::historical::LogEncodeDecode;
 use crate::storage::settings::StorageError;
 use crate::storage::storage_manager::{StorageManager, StoredLogConfig, NV_STORAGE};
@@ -34,22 +36,19 @@ pub const MAX_READ_CHUNK_SIZE: usize = 5;
 struct ReadLogQueueEntry {
     config: StoredLogConfig,
     start_timestamp: NaiveDateTime,
-    buffer: [RetrievedLogEntry; MAX_READ_CHUNK_SIZE],
-    signal: &'static LogReadSignal,
+    log_channel: &'static HistoricalLogChannel,
 }
 
 impl ReadLogQueueEntry {
     fn new(
         config: &StoredLogConfig,
         start_timestamp: NaiveDateTime,
-        buffer: [RetrievedLogEntry; MAX_READ_CHUNK_SIZE],
-        signal: &'static LogReadSignal,
+        log_channel: &'static HistoricalLogChannel,
     ) -> Self {
         Self {
             config: config.clone(),
             start_timestamp,
-            buffer,
-            signal,
+            log_channel,
         }
     }
 }
@@ -132,10 +131,9 @@ impl HistoricalLogManager {
         &mut self,
         config: &StoredLogConfig,
         start_timestamp: NaiveDateTime,
-        buffer: [RetrievedLogEntry; MAX_READ_CHUNK_SIZE],
-        signal: &'static LogReadSignal,
+        log_channel: &'static HistoricalLogChannel,
     ) -> Result<(), StorageError> {
-        let queue_entry = ReadLogQueueEntry::new(config, start_timestamp, buffer, signal);
+        let queue_entry = ReadLogQueueEntry::new(config, start_timestamp, log_channel);
         trace!("Queueing storage read");
         self.log_read_queue.enqueue(queue_entry).map_err(|_| {
             error!("Error writing read log queue request entry");
@@ -161,19 +159,14 @@ impl HistoricalLogManager {
     }
 
     pub async fn process_read_queue(&mut self) -> Result<(), StorageError> {
-        while let Some(mut queue_entry) = self.log_read_queue.dequeue() {
+        while let Some(queue_entry) = self.log_read_queue.dequeue() {
             trace!("Processing log read queue request");
-            let retrieved_count = Self::get_entries_after_timestamp(
+            let _ = Self::get_entries_after_timestamp_to_channel(
                 &queue_entry.config,
                 queue_entry.start_timestamp,
-                &mut queue_entry.buffer,
+                queue_entry.log_channel.publisher().unwrap(),
             )
             .await?;
-            let retrieved_chunk = RetrievedLogChunk {
-                count: retrieved_count,
-                entries: queue_entry.buffer,
-            };
-            queue_entry.signal.signal(retrieved_chunk);
         }
         Ok(())
     }
@@ -201,47 +194,97 @@ impl HistoricalLogManager {
         Ok(())
     }
 
-    async fn get_entries_after_timestamp(
+    async fn get_entries_after_timestamp_to_channel(
         config: &StoredLogConfig,
-        timestamp: NaiveDateTime,
-        entry_data: &mut [RetrievedLogEntry],
+        target_timestamp: NaiveDateTime,
+        publisher: HistoricalLogChannelPublisher<'_>,
     ) -> Result<usize, StorageError> {
-        trace!("Geting log entries after {:?}", Debug2Format(&timestamp));
+        trace!(
+            "Getting log entries after {:?}",
+            Debug2Format(&target_timestamp)
+        );
         let mut temp_buffer = [[0u8; DATA_BUFFER_SIZE]; MAX_READ_CHUNK_SIZE];
         let mut storage = NV_STORAGE.lock().await;
+        trace!("Got storage lock");
 
-        // find starting point
+        // find starting point - this is a naive straight iteration. Could be improved by doing a
+        // bisecting search
         let mut chunk_start = 0;
         'find_start: loop {
             let retrieved_count = storage
                 .get_log_items(config, chunk_start, MAX_READ_CHUNK_SIZE, &mut temp_buffer)
                 .await
                 .unwrap_or(0);
+            trace!(
+                "Start search - retrieved {} items, starting at {}",
+                retrieved_count,
+                chunk_start
+            );
             if retrieved_count == 0 {
                 break 'find_start;
             }
 
-            for chunk_idx in 0..retrieved_count {
+            chunk_start += retrieved_count;
+            // search backwards in the chunk gives us early exit opportunity
+            let mut found_entries_after_start = false;
+            for chunk_idx in (0..retrieved_count).rev() {
                 let entry = RetrievedLogEntry::from_buffer(&temp_buffer[chunk_idx])?;
-                if entry.timestamp > timestamp {
-                    break 'find_start;
+                if entry.timestamp < target_timestamp {
+                    if found_entries_after_start {
+                        break 'find_start; // we found the start point in this chunk
+                    } else {
+                        trace!("Last entry in chunk is prior to target - early exit");
+                        continue 'find_start; // early exit
+                    }
+                } else {
+                    found_entries_after_start = true
                 }
-                chunk_start += 1;
+                chunk_start -= 1;
+                if chunk_idx == 0 {
+                    trace!("Found start in first entry of chunk");
+                    break 'find_start; // we found the start point in this chunk, it is the first entry
+                }
             }
         }
-        trace!("Skipped {} entries", chunk_start);
+        trace!("Found start point - skipped {} entries", chunk_start);
 
-        // get the log data
-        let retrieved_count = storage
-            .get_log_items(config, chunk_start, entry_data.len(), &mut temp_buffer)
-            .await
-            .unwrap_or(0);
+        let mut total_count = 0;
+        'transfer_entries: loop {
+            // get the log data and push it over the channel
+            let retrieved_count = storage
+                .get_log_items(config, chunk_start, MAX_READ_CHUNK_SIZE, &mut temp_buffer)
+                .await
+                .unwrap_or(0);
+            total_count += retrieved_count;
+            if retrieved_count == 0 {
+                break 'transfer_entries;
+            }
 
-        for chunk_idx in 0..retrieved_count {
-            entry_data[chunk_idx] = RetrievedLogEntry::from_buffer(&temp_buffer[chunk_idx])?;
+            for chunk_idx in 0..retrieved_count {
+                let entry = RetrievedLogEntry::from_buffer(&temp_buffer[chunk_idx]);
+                if entry.is_err() {
+                    error!(
+                        "Error parsing record: {}",
+                        Debug2Format(&entry.unwrap_err())
+                    );
+                    let message = HistoricalLogMessage::Error();
+                    publisher.publish(message).await;
+                    break 'transfer_entries;
+                }
+
+                trace!("Sending record");
+                let message = HistoricalLogMessage::Record(entry?);
+                publisher.publish(message).await;
+            }
+
+            chunk_start += retrieved_count;
         }
 
-        Ok(retrieved_count)
+        trace!("Signalling end of data read");
+        let message = HistoricalLogMessage::EndOfRead();
+        publisher.publish(message).await;
+
+        Ok(total_count)
     }
 }
 

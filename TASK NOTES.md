@@ -7,7 +7,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 ### Bugs / Things to fix
 
 * ***NEXT*** Log retrieval performance is poor and impacts user experience. Possible optimisations:
-    * Use a channel rather than a signal to create a stream of log data to the consumer - removes multiple skipping.
+    * ~~Use a channel rather than a signal to create a stream of log data to the consumer - removes multiple skipping.~~
     * Last consumption immediately added to hourly consumption rate to improve display responsiveness, move last hour
       rate to be calculated only every 60s
     * Make read queue processing event driven rather than timed polling

@@ -15,6 +15,7 @@
 pub mod accessor;
 pub mod log_config;
 pub mod manager;
+pub mod messaging;
 
 use crate::storage::StoredDataValue;
 use defmt::{error, Debug2Format};
