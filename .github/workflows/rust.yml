@@ -8,6 +8,8 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -44,6 +46,3 @@ jobs:
           files: target/thumbv6m-none-eabi/release/Smartcoaster
           draft: yes
           generate_release_notes: yes
-
-
-
