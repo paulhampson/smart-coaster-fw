@@ -102,7 +102,7 @@ where
             .build();
         let line_padding = value_char_style.line_height() as i32 / 4;
 
-        let mut string_buffer = String::<10>::new();
+        let mut string_buffer = String::<20>::new();
         write!(string_buffer, "{:4.0}", data.day_consumption_rate).unwrap();
         let mut pos = right_display_area.bounding_box().center();
         pos.x = 0;
@@ -112,10 +112,10 @@ where
                 .draw(&mut right_display_area)?;
 
         next_pos.x += unit_char_style.font.character_size.width as i32;
-        next_pos.y -= 2; // expected baseline to manage this, but doesn't seem to for different font sizes.
+        next_pos.y -= unit_char_style.line_height() as i32; // up one line as next unit label is two lines
 
         string_buffer.clear();
-        write!(string_buffer, "ml/hr").unwrap();
+        write!(string_buffer, "average\nml/hr").unwrap();
         next_pos = Text::with_text_style(
             string_buffer.as_str(),
             next_pos,

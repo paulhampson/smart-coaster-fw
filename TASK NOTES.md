@@ -40,7 +40,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * Celebration screen when target achieved for the day (for daily mode)
     * Display ideas
         * Show visual representation of target 'flight path'
-        * Show required drink amount to get back on target
+        * ***NEXT*** Show required drink amount to get back on target
         * Rate history as bar graph over last N hours
         * Progress bar to a daily target
     * Build custom screens based on standard 'widgets' (3x2 grid?)
@@ -81,6 +81,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Target Value~~
     * ~~Day length (?) / day resets at HH:MM / achieve daily target by HH:MM~~
         * Day start? / end
+    * ***NEXT*** clear history
     * Target is minimum or maximum (decides which way is over/under consumption)
     * (?) Reset current consumption -> puts directly back on the target 'flight path'
     * Large consumption threshold (to ask if new cup)
