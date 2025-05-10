@@ -29,7 +29,7 @@ use crate::weight::WeighingSystem;
 use chrono::{NaiveDateTime, NaiveTime, TimeDelta, Timelike};
 use core::cmp::PartialEq;
 use core::ops::Sub;
-use defmt::{debug, error, trace, warn, Debug2Format};
+use defmt::{debug, error, info, trace, warn, Debug2Format};
 use embassy_futures::select::{select4, Either4};
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::{Duration, Ticker, Timer};
@@ -110,7 +110,10 @@ where
     async fn get_weight_reading_managed_error(&mut self) -> f32 {
         match self.weighing_system.get_reading().await {
             Ok(w) => w,
-            Err(_) => self.manage_error("Scale reading failed").await,
+            Err(_) => {
+                self.manage_error("Scale reading failed. Restart device")
+                    .await
+            }
         }
     }
 
@@ -347,6 +350,56 @@ where
         self.update(0.0).await;
     }
 
+    async fn initialise_total_consumption(&mut self) {
+        let current_date = self.rtc_accessor.get_date_time().date();
+        let day_start = NaiveDateTime::from(current_date);
+
+        debug!("Retrieving logs for today's consumption");
+        let mut total_consumption = 0.0;
+        let mut total_entries = 0;
+        trace!("Requesting log entries for hourly consumption rate calculation");
+        self.monitoring_log
+            .get_log_data_after_timestamp(day_start, &LOG_READ_CHANNEL)
+            .await;
+
+        let mut log_subscriber = LOG_READ_CHANNEL.subscriber().unwrap();
+        'process_log_data: loop {
+            trace!("Waiting for log data");
+            let retrieved_log_message = log_subscriber.next_message_pure().await;
+            trace!("Got log message");
+            match retrieved_log_message {
+                HistoricalLogMessage::Error() => {
+                    self.total_consumption = total_consumption;
+                    error!("Log retrieval error when calculating historical consumption. Assuming {} ml", total_consumption.round());
+                    break 'process_log_data;
+                }
+                HistoricalLogMessage::EndOfRead() => {
+                    self.total_consumption = total_consumption;
+                    info!(
+                        "Looking at {} log entries - consumption since day start = {} ml",
+                        total_entries,
+                        self.total_consumption.round()
+                    );
+                    break 'process_log_data;
+                }
+                HistoricalLogMessage::Record(entry) => {
+                    total_entries += 1;
+                    let log_entry = DrinkMonitorLogData::from_bytes(&entry.data)
+                        .map_err(|_| {
+                            error!("Failed to decode data from log");
+                        })
+                        .unwrap();
+                    total_consumption += log_entry.get_last_consumption();
+                    trace!(
+                        "{} - consumption was {}",
+                        Debug2Format(&entry.timestamp),
+                        log_entry.get_last_consumption()
+                    );
+                }
+            }
+        }
+    }
+
     /// Monitor the weight scale for large deltas. Compare the positives and negatives to estimate
     /// how much fluid has been added and consumed. Report the consumption rate.
     pub async fn run(
@@ -366,7 +419,7 @@ where
             .await;
         if let Some(SettingValue::SmallUInt(mode_id)) = mode_from_settings {
             let mode = mode_id.try_into().unwrap();
-            debug!("Monitoring mode initialised to: {}", Debug2Format(&mode));
+            info!("Monitoring mode initialised to: {}", Debug2Format(&mode));
             self.change_monitoring_mode(mode, &settings).await;
         } else {
             panic!(
@@ -374,6 +427,11 @@ where
                 &mode_from_settings
             );
         }
+
+        self.initialise_total_consumption().await;
+        self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(self.total_consumption))
+            .await;
+        self.update(0.0).await;
 
         loop {
             let weight_update_or_consumption_tick_or_app_data = select4(

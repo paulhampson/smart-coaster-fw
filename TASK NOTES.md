@@ -35,7 +35,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Set time to achieve consumption by (for daily mode)~~
     * ~~Use time to achieve consumption by (for daily mode)~~
     * ~~Add current consumption rate (last hour) as well as having daily hourly rate~~
-    * ***NEXT*** Retain last consumption data between power cycles, respect reset point
+    * ~~Retain last consumption data between power cycles, respect reset point~~
     * Manual add/subtract consumption
     * Celebration screen when target achieved for the day (for daily mode)
     * Display ideas
