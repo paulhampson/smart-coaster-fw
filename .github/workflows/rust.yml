@@ -21,6 +21,11 @@ jobs:
         run: rustup target add thumbv6m-none-eabi
       - name: Build
         run: cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Smartcoaster
+          path: target/thumbv6m-none-eabi/release/Smartcoaster
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
@@ -28,11 +33,6 @@ jobs:
           files: target/thumbv6m-none-eabi/release/Smartcoaster
           draft: yes
           generate_release_notes: yes
-      - name: Upload release artifact
-        uses: actions/upload-artifact@v4
-        if: github.ref_type == 'tag'
-        with:
-          name: Smartcoaster
-          path: target/thumbv6m-none-eabi/release/Smartcoaster
+
 
 
