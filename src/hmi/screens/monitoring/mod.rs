@@ -15,6 +15,7 @@
 mod monitoring_screen_1;
 mod monitoring_screen_2;
 mod monitoring_screen_3;
+mod monitoring_screen_4;
 mod monitoring_screen_debug;
 mod top_status_bar;
 
@@ -26,6 +27,7 @@ use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::monitoring::monitoring_screen_1::MonitoringScreen1;
 use crate::hmi::screens::monitoring::monitoring_screen_2::MonitoringScreen2;
 use crate::hmi::screens::monitoring::monitoring_screen_3::MonitoringScreen3;
+use crate::hmi::screens::monitoring::monitoring_screen_4::MonitoringScreen4;
 use crate::hmi::screens::monitoring::monitoring_screen_debug::MonitoringScreenDebug;
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
@@ -48,6 +50,7 @@ struct MonitoringData {
     day_target_consumption: f32,
     target_mode: MonitoringTargetPeriodOptions,
     last_hour_consumption_rate: f32,
+    last_hour: bool,
 }
 
 trait MonitoringScreenContent<D>
@@ -65,9 +68,10 @@ where
 static SCREEN_LAYOUT_1: MonitoringScreen1 = MonitoringScreen1 {};
 static SCREEN_LAYOUT_2: MonitoringScreen2 = MonitoringScreen2 {};
 static SCREEN_LAYOUT_3: MonitoringScreen3 = MonitoringScreen3 {};
+static SCREEN_LAYOUT_4: MonitoringScreen4 = MonitoringScreen4 {};
 static SCREEN_LAYOUT_DEBUG: MonitoringScreenDebug = MonitoringScreenDebug {};
 
-const MAX_SCREENS: u8 = 3;
+const MAX_SCREENS: u8 = 5;
 fn get_screen_layout<D>(index: &u8) -> &dyn MonitoringScreenContent<D>
 where
     D: DrawTarget<Color = BinaryColor>,
@@ -76,7 +80,8 @@ where
         0 => &SCREEN_LAYOUT_1,
         1 => &SCREEN_LAYOUT_2,
         2 => &SCREEN_LAYOUT_3,
-        3 => &SCREEN_LAYOUT_DEBUG,
+        3 => &SCREEN_LAYOUT_4,
+        4 => &SCREEN_LAYOUT_DEBUG,
         _ => &SCREEN_LAYOUT_1,
     }
 }
@@ -114,6 +119,7 @@ where
                 day_target_consumption: 0.0,
                 target_mode: MonitoringTargetPeriodOptions::Daily,
                 last_hour_consumption_rate: 0.0,
+                last_hour: false,
             },
             state: MonitoringStateSubstates::WaitingForActivity,
             active_screen_index,
@@ -149,6 +155,9 @@ where
                 DrinkMonitoringUpdate::LastHourConsumptionRate(new_last_hour_consumption_rate) => {
                     self.monitoring_data.last_hour_consumption_rate =
                         new_last_hour_consumption_rate;
+                }
+                DrinkMonitoringUpdate::LastHour(last_hour) => {
+                    self.monitoring_data.last_hour = last_hour;
                 }
             }
         }

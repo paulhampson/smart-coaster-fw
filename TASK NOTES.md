@@ -20,6 +20,8 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * Last consumption immediately added to hourly consumption rate to improve display responsiveness, move last hour
       rate to be calculated only every 60s
     * Make read queue processing event driven rather than timed polling
+* Decide on best approach for the 'hourly' target mode. Do we want to just monitor the last hour (which is what the
+  drink x ml to stay on currently track shows)? or are we really wanting to target that rate as an average for the day?
 
 ### Feature List
 
@@ -39,8 +41,8 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * Manual add/subtract consumption
     * Celebration screen when target achieved for the day (for daily mode)
     * Display ideas
+        * ~~Show required drink amount to get back on target~~
         * Show visual representation of target 'flight path'
-        * ***NEXT*** Show required drink amount to get back on target
         * Rate history as bar graph over last N hours
         * Progress bar to a daily target
     * Build custom screens based on standard 'widgets' (3x2 grid?)
@@ -55,6 +57,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 * Live consumption data streamed over USB to be accessible by a local web page
 * Timezones
     * Daylight savings
+    * Time display format
 * Visual alarm
 * Pomodoro mode
 * ~~Screen off after period of inactivity to save OLED~~
@@ -82,6 +85,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Day length (?) / day resets at HH:MM / achieve daily target by HH:MM~~
         * Day start? / end
     * ~~clear history~~
+        * confirmation screen - long press to confirm, fill bar to indicate to user
     * Target is minimum or maximum (decides which way is over/under consumption)
     * (?) Reset current consumption -> puts directly back on the target 'flight path'
     * Large consumption threshold (to ask if new cup)

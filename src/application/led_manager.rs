@@ -17,6 +17,7 @@ use crate::application::messaging::{
     ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
 };
 use crate::drink_monitor::messaging::{DrinkMonitorChannelSubscriber, DrinkMonitoringUpdate};
+use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::led::led_control::{LedArrayMode, LedControl};
 use defmt::trace;
 use embassy_futures::select::{select3, Either3};
@@ -32,6 +33,8 @@ pub struct LedManager<LC> {
     application_state: ApplicationState,
     consumption_rate: f32,
     target_rate: f32,
+    monitoring_mode: MonitoringTargetPeriodOptions,
+    monitoring_last_hour: bool,
 }
 
 impl<LC> LedManager<LC>
@@ -50,6 +53,8 @@ where
             application_state: ApplicationState::Startup,
             consumption_rate: 0.0,
             target_rate: 0.0,
+            monitoring_mode: MonitoringTargetPeriodOptions::Hourly,
+            monitoring_last_hour: false,
         }
     }
 
@@ -138,8 +143,10 @@ where
                 }
                 Either3::Third(drink_monitor_update) => {
                     match drink_monitor_update {
-                        DrinkMonitoringUpdate::DayAverageHourlyConsumptionRate(new_rate) => {
-                            self.consumption_rate = new_rate;
+                        DrinkMonitoringUpdate::DayAverageHourlyConsumptionRate(_new_rate) => {
+                            // if self.monitoring_mode == MonitoringTargetPeriodOptions::Hourly {
+                            //     self.consumption_rate = _new_rate;
+                            // }
                         }
                         DrinkMonitoringUpdate::TargetRate(new_target_rate) => {
                             self.target_rate = new_target_rate;
@@ -148,9 +155,18 @@ where
                         DrinkMonitoringUpdate::Consumption(_) => {}
                         DrinkMonitoringUpdate::TotalConsumed(_) => {}
                         DrinkMonitoringUpdate::TargetConsumption(_) => {}
-                        DrinkMonitoringUpdate::TargetMode(_) => {}
+                        DrinkMonitoringUpdate::TargetMode(mode) => {
+                            self.monitoring_mode = mode;
+                        }
                         DrinkMonitoringUpdate::UpdateMonitoringSubstate(_) => {}
-                        DrinkMonitoringUpdate::LastHourConsumptionRate(_) => {}
+                        DrinkMonitoringUpdate::LastHourConsumptionRate(new_rate) => {
+                            // if self.monitoring_mode == MonitoringTargetPeriodOptions::Daily {
+                            self.consumption_rate = new_rate;
+                            // }
+                        }
+                        DrinkMonitoringUpdate::LastHour(last_hour) => {
+                            self.monitoring_last_hour = last_hour;
+                        }
                     }
                     if self.application_state == ApplicationState::Monitoring {
                         self.rate_update(self.consumption_rate, self.target_rate)
@@ -162,21 +178,27 @@ where
     }
 
     async fn rate_update(&mut self, consumption_rate: f32, target_rate: f32) {
-        let rate_delta = consumption_rate - target_rate;
+        let rate_delta;
+        if self.monitoring_last_hour {
+            rate_delta = -target_rate;
+        } else {
+            rate_delta = consumption_rate - target_rate;
+        }
+
         trace!("Rate delta = {}", rate_delta);
-        if rate_delta >= 0.0 {
+        if rate_delta >= -50.0 {
             self.led_control.set_mode(LedArrayMode::SingleColourWheel {
                 colour: RGB8::new(50, 168, 82), // green
                 repetitions: 3.0,
                 speed: 0.25,
             })
-        } else if rate_delta < -250.0 {
+        } else if rate_delta < -200.0 {
             self.led_control.set_mode(LedArrayMode::SingleColourWheel {
                 colour: RGB8::new(227, 54, 54), // red
                 repetitions: 3.0,
                 speed: 0.75, // faster
             })
-        } else if rate_delta < 0.0 {
+        } else if rate_delta < -50.0 {
             self.led_control.set_mode(LedArrayMode::SingleColourWheel {
                 colour: RGB8::new(245, 203, 66), // red
                 repetitions: 3.0,

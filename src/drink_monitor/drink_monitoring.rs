@@ -57,6 +57,7 @@ pub struct DrinkMonitoring<WS> {
     total_consumption: f32,
     daily_consumption_target_time: NaiveTime,
     monitoring_log: HistoricalLogAccessor,
+    last_hour_consumption: f32,
 }
 
 impl<WS> DrinkMonitoring<WS>
@@ -82,6 +83,7 @@ where
             total_consumption: 0.0,
             daily_consumption_target_time: Default::default(),
             monitoring_log: HistoricalLogAccessor::new(log_config::Logs::ConsumptionLog),
+            last_hour_consumption: 0.0,
         }
     }
 
@@ -212,8 +214,9 @@ where
                     break 'process_log_data;
                 }
                 HistoricalLogMessage::EndOfRead() => {
+                    self.last_hour_consumption = last_hour_consumption;
                     self.send_monitoring_update(DrinkMonitoringUpdate::LastHourConsumptionRate(
-                        last_hour_consumption,
+                        self.last_hour_consumption,
                     ))
                     .await;
                     debug!(
@@ -250,6 +253,8 @@ where
                 if hours_left <= 1.0 {
                     hours_left = 1.0;
                 }
+                self.send_monitoring_update(DrinkMonitoringUpdate::LastHour(hours_left == 1.0))
+                    .await;
 
                 self.hourly_consumption_target =
                     (self.daily_consumption_target as f32 - self.total_consumption) / hours_left;
@@ -283,7 +288,6 @@ where
     async fn update(&mut self, new_consumption: f32) {
         self.update_targets().await;
         self.update_day_average_consumption_rate().await;
-        self.update_hourly_consumption_rate().await;
 
         let snapshot = DrinkMonitorLogData::new(
             self.hourly_consumption_target,
@@ -305,6 +309,9 @@ where
         self.target_mode = mode;
         self.drink_monitor_publisher
             .publish(DrinkMonitoringUpdate::TargetMode(mode))
+            .await;
+        self.drink_monitor_publisher
+            .publish(DrinkMonitoringUpdate::LastHour(false))
             .await;
 
         match self.target_mode {
@@ -431,6 +438,7 @@ where
         self.initialise_total_consumption().await;
         self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(self.total_consumption))
             .await;
+        self.update_hourly_consumption_rate().await;
         self.update(0.0).await;
 
         loop {
@@ -451,6 +459,16 @@ where
                             .await;
                         let consumption = f32::max(0.0, vessel_placed_weight - new_stable_weight);
                         self.total_consumption += consumption;
+
+                        // this is not strictly accurate, but only for up to a minute and makes things more responsive,
+                        // with less penalty caused by reading the flash for the history
+                        self.last_hour_consumption += consumption;
+                        self.send_monitoring_update(
+                            DrinkMonitoringUpdate::LastHourConsumptionRate(
+                                self.last_hour_consumption,
+                            ),
+                        )
+                        .await;
 
                         self.update(consumption).await;
 
@@ -476,7 +494,8 @@ where
                     last_stable_weight = new_stable_weight;
                 }
                 Either4::Second(_) => {
-                    // check for tick over to next day and reset consumption
+                    // Periodic update
+                    self.update_hourly_consumption_rate().await;
                     self.update(0.0).await;
                 }
                 Either4::Third(app_message) => {
@@ -489,7 +508,14 @@ where
                     }
                     if app_message == ApplicationMessage::ClearHistoricalConsumptionLog {
                         self.monitoring_log.clear_log().await;
+                        self.last_hour_consumption = 0.0;
                         self.total_consumption = 0.0;
+                        self.send_monitoring_update(
+                            DrinkMonitoringUpdate::LastHourConsumptionRate(
+                                self.last_hour_consumption,
+                            ),
+                        )
+                        .await;
                         self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(
                             self.total_consumption,
                         ))

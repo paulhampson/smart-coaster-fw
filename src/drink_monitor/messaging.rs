@@ -27,6 +27,7 @@ pub enum DrinkMonitoringUpdate {
     TargetConsumption(f32),
     TargetMode(MonitoringTargetPeriodOptions),
     UpdateMonitoringSubstate(MonitoringStateSubstates),
+    LastHour(bool),
 }
 
 const CHANNEL_DEPTH: usize = 10;
