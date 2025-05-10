@@ -4,15 +4,22 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 
 ## Software
 
-### Bugs / Things to fix
+### Bugs / Things to fix / be aware of
 
-* ***NEXT*** Log retrieval performance is poor and impacts user experience. Possible optimisations:
+* Device and system menu requires two clicks down from top before scrolling starts
+* Re-entering settings menu goes back to 'exit' entry
+* Multicore doesn't work with InterruptExecutors (see https://github.com/embassy-rs/embassy/issues/1634).
+    * Fundamentally you can't cross core wake
+      tasks (https://github.com/embassy-rs/embassy/issues/1634#issuecomment-2648641407)
+    * Interrupt executors are required to support pre-emptive prioritisation in embassy. However, single core
+      performance seems adequate with correct priorities.
+* ~~Log retrieval performance is poor and impacts user experience.~~ Possible optimisations for log
+  retrieval:
     * ~~Use a channel rather than a signal to create a stream of log data to the consumer - removes multiple skipping.~~
+    * ~~Use interrupt executors to manage task priorities and ensure LEDs and HMI are not overrun~~
     * Last consumption immediately added to hourly consumption rate to improve display responsiveness, move last hour
       rate to be calculated only every 60s
     * Make read queue processing event driven rather than timed polling
-* Device and system menu requires two clicks down from top before scrolling starts
-* Re-entering settings menu goes back to 'exit' entry
 
 ### Feature List
 

@@ -9,7 +9,7 @@ pub enum HistoricalLogMessage {
     Record(RetrievedLogEntry),
 }
 
-const CHANNEL_DEPTH: usize = 10;
+const CHANNEL_DEPTH: usize = 1;
 const CHANNEL_SUBS: usize = 1;
 const CHANNEL_PUBS: usize = 1;
 

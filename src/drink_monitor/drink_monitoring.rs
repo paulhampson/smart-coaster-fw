@@ -100,6 +100,10 @@ where
 
     async fn send_monitoring_update(&mut self, d: DrinkMonitoringUpdate) {
         trace!("Sending {}", Debug2Format(&d));
+        trace!(
+            "Space in queue - {}",
+            self.drink_monitor_publisher.free_capacity()
+        );
         self.drink_monitor_publisher.publish(d).await;
     }
 

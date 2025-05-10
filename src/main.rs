@@ -14,6 +14,9 @@
 #![no_std]
 #![no_main]
 
+#[cfg(feature = "multicore")]
+compile_error!("Check if https://github.com/embassy-rs/embassy/issues/1634 has been resolved");
+
 #[cfg(all(feature = "flat_board", feature = "pcb_rev1"))]
 compile_error!("cannot configure for flat_board and pcb_rev1 at the same time");
 
@@ -29,7 +32,7 @@ pub mod storage;
 mod weight;
 
 use core::ops::Range;
-use embassy_executor::{Executor, Spawner};
+use embassy_executor::{Executor, InterruptExecutor, SendSpawner, Spawner};
 use embassy_time::{Duration, Timer};
 #[allow(unused_imports)]
 use {defmt_rtt as _, panic_probe as _};
@@ -42,14 +45,15 @@ use crate::hmi::messaging::{
 use crate::hmi::rotary_encoder::DebouncedRotaryEncoder;
 use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
-use defmt::info;
+use defmt::{debug, info};
+
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{FLASH, I2C0, I2C1, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
-use embassy_rp::{bind_interrupts, flash, peripherals, pio};
+use embassy_rp::{bind_interrupts, flash, interrupt, peripherals, pio};
 use embassy_sync::pubsub::PubSubChannel;
 use hmi::debouncer::Debouncer;
 use sh1106::{prelude::*, Builder};
@@ -72,7 +76,9 @@ use crate::drink_monitor::messaging::{
 };
 use crate::rtc::{RtcControl, SystemRtc};
 use core::ptr::addr_of_mut;
+use cortex_m_rt::entry;
 use ds323x::Ds323x;
+use embassy_rp::interrupt::{InterruptExt, Priority};
 use embedded_alloc::LlffHeap as Heap;
 use storage::settings::accessor::FlashSettingsAccessor;
 
@@ -166,12 +172,15 @@ assign_resources! {
     }
 }
 
-struct Core0Resources {
+struct Core0HighPrioResources {
     hmi_inputs: HmiInputPins,
     led_control: LedControlResources,
     strain_gauge_io: StrainGaugeResources,
-    storage: StorageResources,
     rtc: RtcResources,
+}
+
+struct Core0LowPrioResources {
+    storage: StorageResources,
 }
 
 struct Core1Resources {
@@ -190,11 +199,20 @@ bind_interrupts!(struct I2c1Irqs {
     I2C1_IRQ => i2c::InterruptHandler<I2C1>;
 });
 
-static mut CORE1_STACK: Stack<CORE1_STACK_SIZE> = Stack::new();
-static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
-static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+static CORE0_LOW_PRIO_EXECUTOR: StaticCell<Executor> = StaticCell::new();
+static CORE0_HIGH_PRIO_EXECUTOR: InterruptExecutor = InterruptExecutor::new();
 
-#[cortex_m_rt::entry]
+#[cfg(feature = "multicore")]
+static mut CORE1_STACK: Stack<CORE1_STACK_SIZE> = Stack::new();
+#[cfg(feature = "multicore")]
+static CORE1_LOW_PRIO_EXECUTOR: StaticCell<Executor> = StaticCell::new();
+
+#[interrupt]
+unsafe fn SWI_IRQ_0() {
+    CORE0_HIGH_PRIO_EXECUTOR.on_interrupt()
+}
+
+#[entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
     let resources = split_resources! {p};
@@ -207,92 +225,100 @@ fn main() -> ! {
         unsafe { HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
     }
 
-    let core0_resources = Core0Resources {
+    let core0_high_prio_resources = Core0HighPrioResources {
         hmi_inputs: resources.hmi_inputs,
         led_control: resources.led_control,
         strain_gauge_io: resources.strain_gauge_io,
-        storage: resources.storage,
         rtc: resources.rtc,
+    };
+    let core0_low_prio_resources = Core0LowPrioResources {
+        storage: resources.storage,
     };
     let core1_resources = Core1Resources {
         display_i2c: resources.display_i2c,
     };
 
-    info!("Launching application across cores");
+    #[cfg(feature = "multicore")]
+    {
+        info!("Launching application across cores");
+        spawn_core1(
+            p.CORE1,
+            unsafe { &mut *addr_of_mut!(CORE1_STACK) },
+            move || {
+                let executor1 = CORE1_LOW_PRIO_EXECUTOR.init(Executor::new());
+                executor1.run(|spawner| core1_main(spawner, core1_resources, &HEAP));
+            },
+        );
+    }
 
-    spawn_core1(
-        p.CORE1,
-        unsafe { &mut *addr_of_mut!(CORE1_STACK) },
-        move || {
-            let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| core1_main(spawner, core1_resources, &HEAP));
-        },
-    );
+    interrupt::SWI_IRQ_0.set_priority(Priority::P2);
+    let core0_hp_spawner = CORE0_HIGH_PRIO_EXECUTOR.start(interrupt::SWI_IRQ_0);
+    core0_high_prio_main(core0_hp_spawner, core0_high_prio_resources);
 
-    let executor0 = EXECUTOR0.init(Executor::new());
-    executor0.run(|spawner| core0_main(spawner, core0_resources));
+    let core0_lp_executor = CORE0_LOW_PRIO_EXECUTOR.init(Executor::new());
+    core0_lp_executor.run(|spawner| {
+        core0_low_prio_main(spawner, core0_low_prio_resources);
+        #[cfg(not(feature = "multicore"))]
+        core1_main(spawner, core1_resources, &HEAP)
+    });
 }
 
-fn core0_main(spawner: Spawner, resources: Core0Resources) {
-    spawner.spawn(storage_task(resources.storage)).unwrap();
-    spawner
-        .spawn(hmi_input_task(
-            resources.hmi_inputs,
-            HMI_CHANNEL.publisher().unwrap(),
-        ))
-        .unwrap();
-    spawner
-        .spawn(led_task(
-            resources.led_control,
-            APP_CHANNEL.subscriber().unwrap(),
-            DRINK_MONITOR_CHANNEL.subscriber().unwrap(),
-        ))
-        .unwrap();
-    spawner
-        .spawn(weighing_task(
-            resources.strain_gauge_io,
-            APP_CHANNEL.subscriber().unwrap(),
-            WEIGHT_CHANNEL.publisher().unwrap(),
-        ))
-        .unwrap();
-    spawner.spawn(rtc_task(resources.rtc)).unwrap();
+fn core0_low_prio_main(spawner: Spawner, resources: Core0LowPrioResources) {
+    info!("Spawning storage task");
+    spawner.must_spawn(storage_task(resources.storage));
+}
+
+fn core0_high_prio_main(spawner: SendSpawner, resources: Core0HighPrioResources) {
+    info!("Spawning HMI task");
+    spawner.must_spawn(hmi_input_task(
+        resources.hmi_inputs,
+        HMI_CHANNEL.publisher().unwrap(),
+    ));
+    info!("Spawning LED task");
+    spawner.must_spawn(led_task(
+        resources.led_control,
+        APP_CHANNEL.subscriber().unwrap(),
+        DRINK_MONITOR_CHANNEL.subscriber().unwrap(),
+    ));
+    info!("Spawning Weighing task");
+    spawner.must_spawn(weighing_task(
+        resources.strain_gauge_io,
+        APP_CHANNEL.subscriber().unwrap(),
+        WEIGHT_CHANNEL.publisher().unwrap(),
+    ));
+    info!("Spawning RTC task");
+    spawner.must_spawn(rtc_task(resources.rtc));
 }
 
 fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) {
-    spawner
-        .spawn(display_task(
-            resources.display_i2c,
-            APP_CHANNEL.subscriber().unwrap(),
-            UI_ACTION_CHANNEL.publisher().unwrap(),
-        ))
-        .unwrap();
+    spawner.must_spawn(display_task(
+        resources.display_i2c,
+        APP_CHANNEL.subscriber().unwrap(),
+        UI_ACTION_CHANNEL.publisher().unwrap(),
+    ));
 
     let ws = WeighingSystemOverChannel::new(
         WEIGHT_CHANNEL.subscriber().unwrap(),
         APP_CHANNEL.publisher().unwrap(),
     );
-    spawner
-        .spawn(application_task(
-            APP_CHANNEL.publisher().unwrap(),
-            HMI_CHANNEL.subscriber().unwrap(),
-            UI_ACTION_CHANNEL.subscriber().unwrap(),
-            DRINK_MONITOR_CHANNEL.subscriber().unwrap(),
-            ws,
-            heap,
-        ))
-        .unwrap();
+    spawner.must_spawn(application_task(
+        APP_CHANNEL.publisher().unwrap(),
+        HMI_CHANNEL.subscriber().unwrap(),
+        UI_ACTION_CHANNEL.subscriber().unwrap(),
+        DRINK_MONITOR_CHANNEL.subscriber().unwrap(),
+        ws,
+        heap,
+    ));
 
     let drink_monitor_ws = WeighingSystemOverChannel::new(
         WEIGHT_CHANNEL.subscriber().unwrap(),
         APP_CHANNEL.publisher().unwrap(),
     );
-    spawner
-        .spawn(drink_monitor_task(
-            DRINK_MONITOR_CHANNEL.publisher().unwrap(),
-            APP_CHANNEL.subscriber().unwrap(),
-            drink_monitor_ws,
-        ))
-        .unwrap();
+    spawner.must_spawn(drink_monitor_task(
+        DRINK_MONITOR_CHANNEL.publisher().unwrap(),
+        APP_CHANNEL.subscriber().unwrap(),
+        drink_monitor_ws,
+    ));
 }
 
 #[embassy_executor::task]
