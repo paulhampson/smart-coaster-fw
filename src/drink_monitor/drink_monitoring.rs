@@ -490,6 +490,10 @@ where
                     if app_message == ApplicationMessage::ClearHistoricalConsumptionLog {
                         self.monitoring_log.clear_log().await;
                         self.total_consumption = 0.0;
+                        self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(
+                            self.total_consumption,
+                        ))
+                        .await;
                         self.update(0.0).await;
                     }
                 }
