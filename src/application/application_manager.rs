@@ -12,7 +12,9 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::application_state::{ApplicationState, CalibrationStateSubstates};
+use crate::application::application_state::{
+    ApplicationState, CalibrationStateSubstates, ConfirmationId,
+};
 use crate::application::messaging::ApplicationData::MonitoringUpdate;
 use crate::application::messaging::{
     ApplicationChannelPublisher, ApplicationData, ApplicationMessage,
@@ -146,6 +148,15 @@ where
                             next_state,
                         )
                         .await;
+                }
+                ApplicationState::ConfirmationScreen(confirmation_id) => {
+                    next_state = self
+                        .confirmation_screen(
+                            &mut ui_action_receiver,
+                            &mut hmi_subscriber,
+                            confirmation_id,
+                        )
+                        .await
                 }
                 ApplicationState::HeapStatus => {
                     next_state = self
@@ -346,6 +357,7 @@ where
                             ))
                             .await
                     }
+                    UiRequestMessage::ClearHistoricalConsumptionLog() => {}
                 },
                 Either::Second(hmi_message) => {
                     self.app_publisher
@@ -498,6 +510,41 @@ where
 
             match ui_or_hmi {
                 Either::First(ui_action_message) => {
+                    if let UiRequestMessage::ChangeState(new_state) = ui_action_message {
+                        return new_state;
+                    }
+                }
+                Either::Second(hmi_message) => {
+                    self.app_publisher
+                        .publish(ApplicationMessage::HmiInput(hmi_message))
+                        .await;
+                }
+            }
+        }
+    }
+
+    async fn confirmation_screen(
+        &mut self,
+        ui_action_subscriber: &mut UiActionChannelSubscriber<'_>,
+        hmi_subscriber: &mut HmiChannelSubscriber<'_>,
+        confirmation_id: ConfirmationId,
+    ) -> ApplicationState {
+        self.update_application_state(ApplicationState::ConfirmationScreen(confirmation_id))
+            .await;
+        loop {
+            let ui_or_hmi = select(
+                ui_action_subscriber.next_message_pure(),
+                hmi_subscriber.next_message_pure(),
+            )
+            .await;
+
+            match ui_or_hmi {
+                Either::First(ui_action_message) => {
+                    if let UiRequestMessage::ClearHistoricalConsumptionLog() = ui_action_message {
+                        self.app_publisher
+                            .publish(ApplicationMessage::ClearHistoricalConsumptionLog)
+                            .await
+                    }
                     if let UiRequestMessage::ChangeState(new_state) = ui_action_message {
                         return new_state;
                     }

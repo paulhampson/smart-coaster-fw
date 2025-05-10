@@ -56,6 +56,11 @@ pub trait StorageManager {
         data: &[u8],
     ) -> impl Future<Output = Result<(), StorageError>>;
 
+    fn clear_log_data(
+        &mut self,
+        config: &StoredLogConfig,
+    ) -> impl Future<Output = Result<(), StorageError>>;
+
     fn get_space_remaining(
         &mut self,
         config: &StoredLogConfig,
@@ -241,6 +246,22 @@ where
             warn!("Unable to write log data. Error: {:?}", e);
             StorageError::SaveError
         })?;
+        Ok(())
+    }
+
+    async fn clear_log_data(&mut self, config: &StoredLogConfig) -> Result<(), StorageError> {
+        if !self.flash.is_some() {
+            error!("Trying to read from storage before initialisation");
+            return Err(StorageError::NotInitialized);
+        }
+
+        let flash = self.flash.as_mut().unwrap();
+        sequential_storage::erase_all(flash, config.storage_range.clone())
+            .await
+            .map_err(|e| {
+                error!("Unable to erase data. Error: {:?}", e);
+                StorageError::EraseError
+            })?;
         Ok(())
     }
 

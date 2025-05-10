@@ -101,6 +101,7 @@ where
                                 ApplicationState::NumberEntry(_) => {}
                                 ApplicationState::TimeEntry(_) => {}
                                 ApplicationState::DateTimeEntry(_) => {}
+                                ApplicationState::ConfirmationScreen(_) => {}
                             }
                         }
 

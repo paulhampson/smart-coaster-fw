@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::application_state::ApplicationState;
+use crate::application::application_state::{ApplicationState, ConfirmationId};
 use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::settings_menu::display_options::{
     DisplayBrightnessOptions, DisplayTimeoutOptions,
@@ -50,6 +50,7 @@ pub enum SettingMenuIdentifier {
     DisplayTimeout,
     AboutScreen,
     SetDailyTargetTime,
+    ClearHistoricalMonitoringData,
 }
 
 pub struct SettingMenu<'a, SA>
@@ -104,6 +105,10 @@ where
         menu.add_action(
             "Daily Target Time",
             SettingMenuIdentifier::SetDailyTargetTime,
+        );
+        menu.add_action(
+            "Clear logged data",
+            SettingMenuIdentifier::ClearHistoricalMonitoringData,
         );
         menu.add_back("Back", SettingMenuIdentifier::None);
     }
@@ -286,6 +291,7 @@ where
             SettingMenuIdentifier::SetMonitoringTargetValue => {}
             SettingMenuIdentifier::AboutScreen => {}
             SettingMenuIdentifier::SetDailyTargetTime => {}
+            SettingMenuIdentifier::ClearHistoricalMonitoringData => {}
         }
     }
 
@@ -324,6 +330,12 @@ where
                         ApplicationState::TimeEntry(SettingsAccessorId::MonitoringDailyTargetTime),
                     ))
                 }
+                SettingMenuIdentifier::ClearHistoricalMonitoringData => ui_action_publisher
+                    .publish_immediate(UiRequestMessage::ChangeState(
+                        ApplicationState::ConfirmationScreen(
+                            ConfirmationId::ClearHistoricalConsumptionLog,
+                        ),
+                    )),
                 _ => {}
             },
             SelectedData::MultiOption { id, option_id } => {

@@ -111,6 +111,7 @@ impl HistoricalLogAccessor {
                 &self.log_config,
                 self.rtc_accessor.get_date_time(),
                 log_entry,
+                false,
             )
             .map_err(|e| warn!("Unable to write to log queue: {}", Debug2Format(&e)));
     }
@@ -119,7 +120,12 @@ impl HistoricalLogAccessor {
         let mut log_store = LOG_STORE.lock().await;
 
         let _ = log_store
-            .queue_write(&self.log_config, self.rtc_accessor.get_date_time(), data)
+            .queue_write(
+                &self.log_config,
+                self.rtc_accessor.get_date_time(),
+                data,
+                false,
+            )
             .map_err(|e| warn!("Unable to write to log queue: {}", Debug2Format(&e)));
     }
 
@@ -130,5 +136,15 @@ impl HistoricalLogAccessor {
     ) {
         let mut log_store = LOG_STORE.lock().await;
         let _ = log_store.queue_read(&self.log_config, start_timestamp, log_channel);
+    }
+
+    pub async fn clear_log(&mut self) {
+        let mut log_store = LOG_STORE.lock().await;
+        let _ = log_store.queue_write(
+            &self.log_config,
+            self.rtc_accessor.get_date_time(),
+            SimpleLogEntry::default(),
+            true,
+        );
     }
 }

@@ -487,6 +487,11 @@ where
                     {
                         self.update(0.0).await;
                     }
+                    if app_message == ApplicationMessage::ClearHistoricalConsumptionLog {
+                        self.monitoring_log.clear_log().await;
+                        self.total_consumption = 0.0;
+                        self.update(0.0).await;
+                    }
                 }
                 Either4::Fourth(setting_message) => {
                     let SettingsMessage::Change(changed_setting) = setting_message;

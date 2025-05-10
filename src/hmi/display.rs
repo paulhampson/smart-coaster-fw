@@ -12,17 +12,18 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::application_state::ApplicationState;
+use crate::application::application_state::{ApplicationState, ConfirmationId};
 use crate::application::messaging::{
     ApplicationChannelSubscriber, ApplicationData, ApplicationMessage,
 };
-use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher};
+use crate::hmi::messaging::{HmiMessage, UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::rotary_encoder::Direction;
 use crate::hmi::screens::monitoring::MonitoringScreen;
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::hmi::screens::settings_menu::SettingMenu;
 use crate::hmi::screens::settings_screens::about::AboutScreen;
 use crate::hmi::screens::settings_screens::calibration::CalibrationScreens;
+use crate::hmi::screens::settings_screens::confirmation::ConfirmationScreen;
 use crate::hmi::screens::settings_screens::heap_status::HeapStatusScreen;
 use crate::hmi::screens::settings_screens::set_date_time::SetDateTimeScreen;
 use crate::hmi::screens::settings_screens::set_number::SetNumberScreen;
@@ -62,6 +63,7 @@ where
     set_date_time_screen: SetDateTimeScreen,
     number_setting_screen: SetNumberScreen,
     time_entry_screen: SetTimeScreen,
+    confirmation_screen: ConfirmationScreen,
     about_screen: AboutScreen,
 
     settings: &'a SA,
@@ -117,6 +119,11 @@ where
                 "Default",
                 NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
                 SettingsAccessorId::MonitoringDailyTargetTime,
+            ),
+            confirmation_screen: ConfirmationScreen::new(
+                "Default",
+                "Default",
+                UiRequestMessage::ClearHistoricalConsumptionLog(),
             ),
             about_screen: AboutScreen::new(),
 
@@ -192,6 +199,14 @@ where
         )
     }
 
+    async fn setup_consumption_log_reset_confirmation(&mut self) {
+        self.confirmation_screen = ConfirmationScreen::new(
+            "",
+            "Are you sure you wish to clear the historical consumption data?",
+            UiRequestMessage::ClearHistoricalConsumptionLog(),
+        )
+    }
+
     async fn setup_monitoring_target_value_selection(&mut self) {
         let monitoring_target_id = if let SettingValue::SmallUInt(value) = self
             .settings
@@ -246,6 +261,11 @@ where
                 self.setup_monitoring_target_time_selection().await
             }
         }
+        if let ApplicationState::ConfirmationScreen(confirmation_id) = display_state {
+            if confirmation_id == ConfirmationId::ClearHistoricalConsumptionLog {
+                self.setup_consumption_log_reset_confirmation().await;
+            }
+        }
 
         if let ApplicationState::SetSystemDateTime = display_state {
             self.setup_system_date_time_setting().await;
@@ -296,6 +316,9 @@ where
             }
             ApplicationState::TimeEntry(_) => {
                 self.time_entry_screen.draw(&mut self.display).unwrap()
+            }
+            ApplicationState::ConfirmationScreen(_) => {
+                self.confirmation_screen.draw(&mut self.display).unwrap()
             }
         }
 
@@ -350,6 +373,11 @@ where
                     .ui_input_handler(input, &self.ui_action_publisher)
                     .await
             }
+            ApplicationState::ConfirmationScreen(_) => {
+                self.confirmation_screen
+                    .ui_input_handler(input, &self.ui_action_publisher)
+                    .await;
+            }
             ApplicationState::AboutScreen => {
                 self.about_screen
                     .ui_input_handler(input, &self.ui_action_publisher)
@@ -377,6 +405,7 @@ where
                         warn! {"Display lost {} messages from HMI channel", count}
                     }
                     WaitResult::Message(message) => match message {
+                        ApplicationMessage::ClearHistoricalConsumptionLog => {}
                         ApplicationMessage::HmiInput(hmi_message) => {
                             last_activity = Instant::now();
                             match hmi_message {

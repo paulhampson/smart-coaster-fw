@@ -15,6 +15,11 @@
 use crate::storage::settings::SettingsAccessorId;
 use defmt::Format;
 
+#[derive(Clone, Copy, Debug, PartialEq, Format)]
+pub enum ConfirmationId {
+    ClearHistoricalConsumptionLog,
+}
+
 #[derive(Debug, Format, Clone, Copy, PartialEq)]
 pub enum ApplicationState {
     Startup,
@@ -29,6 +34,7 @@ pub enum ApplicationState {
     NumberEntry(SettingsAccessorId),
     TimeEntry(SettingsAccessorId),
     AboutScreen,
+    ConfirmationScreen(ConfirmationId),
 }
 
 #[derive(Clone, PartialEq)]

@@ -81,7 +81,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Target Value~~
     * ~~Day length (?) / day resets at HH:MM / achieve daily target by HH:MM~~
         * Day start? / end
-    * ***NEXT*** clear history
+    * ~~clear history~~
     * Target is minimum or maximum (decides which way is over/under consumption)
     * (?) Reset current consumption -> puts directly back on the target 'flight path'
     * Large consumption threshold (to ask if new cup)

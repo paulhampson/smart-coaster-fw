@@ -25,6 +25,7 @@ pub enum ApplicationMessage {
     ApplicationStateUpdate(ApplicationState),
     ApplicationDataUpdate(ApplicationData),
     HmiInput(HmiMessage),
+    ClearHistoricalConsumptionLog,
 }
 
 #[derive(Clone, PartialEq)]

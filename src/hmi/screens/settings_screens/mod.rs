@@ -14,6 +14,7 @@
 
 pub mod about;
 pub mod calibration;
+pub mod confirmation;
 pub mod heap_status;
 pub mod set_date_time;
 pub mod set_number;

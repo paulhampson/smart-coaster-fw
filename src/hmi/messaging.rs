@@ -29,6 +29,7 @@ pub enum UiRequestMessage {
     ChangeLedBrightness(u8),
     ChangeDisplayBrightness(u8),
     ChangeDisplayTimeout(u8),
+    ClearHistoricalConsumptionLog(),
 }
 
 const CHANNEL_DEPTH: usize = 10;

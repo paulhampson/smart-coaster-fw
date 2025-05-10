@@ -21,7 +21,7 @@ use crate::storage::settings::StorageError;
 use crate::storage::storage_manager::{StorageManager, StoredLogConfig, NV_STORAGE};
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use core::fmt::Debug;
-use defmt::{debug, error, trace, Debug2Format};
+use defmt::{debug, error, info, trace, Debug2Format};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use heapless::spsc::Queue;
@@ -58,6 +58,7 @@ struct WriteLogQueueEntry {
     config: StoredLogConfig,
     data: [u8; DATA_BUFFER_SIZE],
     entry_size: usize,
+    clear: bool,
 }
 
 impl WriteLogQueueEntry {
@@ -65,6 +66,7 @@ impl WriteLogQueueEntry {
         config: &StoredLogConfig,
         timestamp: NaiveDateTime,
         entry: impl LogEncodeDecode,
+        clear: bool,
     ) -> Result<Self, StorageError> {
         let mut data = [0; DATA_BUFFER_SIZE];
 
@@ -95,6 +97,7 @@ impl WriteLogQueueEntry {
             config: config.clone(),
             data,
             entry_size,
+            clear,
         })
     }
 }
@@ -117,8 +120,9 @@ impl HistoricalLogManager {
         config: &StoredLogConfig,
         timestamp: NaiveDateTime,
         entry: impl LogEncodeDecode,
+        clear: bool,
     ) -> Result<(), StorageError> {
-        let queue_entry = WriteLogQueueEntry::new(config, timestamp, entry)?;
+        let queue_entry = WriteLogQueueEntry::new(config, timestamp, entry, clear)?;
 
         self.log_write_queue.enqueue(queue_entry).map_err(|e| {
             error!("Error writing log queue entry: {:?}", Debug2Format(&e));
@@ -145,15 +149,21 @@ impl HistoricalLogManager {
     pub async fn process_write_queue(&mut self) -> Result<(), StorageError> {
         while let Some(queue_entry) = self.log_write_queue.dequeue() {
             trace!("Processing log write queue request");
-            self.write_entry(queue_entry.config, queue_entry.data, queue_entry.entry_size)
-                .await
-                .map_err(|e| {
-                    error!(
-                        "Error while processing log queue entry {:?}",
-                        Debug2Format(&e)
-                    );
-                    StorageError::SaveError
-                })?;
+            if queue_entry.clear {
+                info!("Clearing log data");
+                let mut storage = NV_STORAGE.lock().await;
+                storage.clear_log_data(&queue_entry.config).await?;
+            } else {
+                self.write_entry(queue_entry.config, queue_entry.data, queue_entry.entry_size)
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            "Error while processing log queue entry {:?}",
+                            Debug2Format(&e)
+                        );
+                        StorageError::SaveError
+                    })?;
+            }
         }
         Ok(())
     }
