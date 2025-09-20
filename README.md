@@ -1,7 +1,23 @@
-# Smart Coaster - Firmware
+# Smart Coaster Firmware
 
 This is the code repository for the smart coaster firmware. The hardware design for the device can be found at
 https://github.com/paulhampson/smart-coaster-hw
+
+## Install via USB
+
+Coming Soon :tm:
+
+## Install the latest release to hardware via debugger
+
+Assuming you have `probe-rs` installed ([instructions](https://probe.rs/docs/getting-started/installation/)) and the
+debugger attached:
+
+```aiignore
+cd /tmp && \
+curl -L https://github.com/paulhampson/smart-coaster-fw/releases/latest/download/Smartcoaster > Smartcoaster-latest && \
+probe-rs download --chip RP2040 --speed 10000 Smartcoaster-latest && \
+probe-rs reset --chip RP2040
+```
 
 ## Setting up for development
 
