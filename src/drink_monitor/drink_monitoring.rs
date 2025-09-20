@@ -31,7 +31,7 @@ use core::cmp::PartialEq;
 use core::ops::Sub;
 use defmt::{debug, error, info, trace, warn, Debug2Format};
 use embassy_futures::select::{select4, Either4};
-use embassy_sync::pubsub::PubSubChannel;
+use embassy_sync::pubsub::{PubSubChannel, WaitResult};
 use embassy_time::{Duration, Ticker, Timer};
 use heapless::HistoryBuffer;
 use micromath::F32Ext;
@@ -122,7 +122,9 @@ where
     async fn wait_for_weight_activity(&mut self) -> f32 {
         const MINIMUM_DELTA_FOR_ACTIVITY: f32 = 10.0;
         let mut last_weight = self.get_weight_reading_managed_error().await;
+        let mut weight_reading_tick = Ticker::every(Duration::from_hz(5));
         loop {
+            weight_reading_tick.next().await;
             let current_weight = self.get_weight_reading_managed_error().await;
             let weight_delta = current_weight - last_weight;
             last_weight = current_weight;
@@ -445,7 +447,7 @@ where
             let weight_update_or_consumption_tick_or_app_data = select4(
                 self.wait_for_weight_activity(),
                 consumption_update_ticker.next(),
-                application_channel_subscriber.next_message_pure(),
+                application_channel_subscriber.next_message(),
                 settings_monitor.listen_for_changes_ignore_lag(),
             )
             .await;
@@ -498,31 +500,38 @@ where
                     self.update_hourly_consumption_rate().await;
                     self.update(0.0).await;
                 }
-                Either4::Third(app_message) => {
-                    // This ensures that anything else in the system (e.g., LEDs, display) gets
-                    // updated data on the switch to monitoring mode
-                    if app_message
-                        == ApplicationMessage::ApplicationStateUpdate(ApplicationState::Monitoring)
-                    {
-                        self.update(0.0).await;
+                Either4::Third(message) => match message {
+                    WaitResult::Lagged(missed) => {
+                        warn!("Missed {} messages", missed);
                     }
-                    if app_message == ApplicationMessage::ClearHistoricalConsumptionLog {
-                        self.monitoring_log.clear_log().await;
-                        self.last_hour_consumption = 0.0;
-                        self.total_consumption = 0.0;
-                        self.send_monitoring_update(
-                            DrinkMonitoringUpdate::LastHourConsumptionRate(
-                                self.last_hour_consumption,
-                            ),
-                        )
-                        .await;
-                        self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(
-                            self.total_consumption,
-                        ))
-                        .await;
-                        self.update(0.0).await;
+                    WaitResult::Message(app_message) => {
+                        // This ensures that anything else in the system (e.g., LEDs, display) gets
+                        // updated data on the switch to monitoring mode
+                        if app_message
+                            == ApplicationMessage::ApplicationStateUpdate(
+                                ApplicationState::Monitoring,
+                            )
+                        {
+                            self.update(0.0).await;
+                        }
+                        if app_message == ApplicationMessage::ClearHistoricalConsumptionLog {
+                            self.monitoring_log.clear_log().await;
+                            self.last_hour_consumption = 0.0;
+                            self.total_consumption = 0.0;
+                            self.send_monitoring_update(
+                                DrinkMonitoringUpdate::LastHourConsumptionRate(
+                                    self.last_hour_consumption,
+                                ),
+                            )
+                            .await;
+                            self.send_monitoring_update(DrinkMonitoringUpdate::TotalConsumed(
+                                self.total_consumption,
+                            ))
+                            .await;
+                            self.update(0.0).await;
+                        }
                     }
-                }
+                },
                 Either4::Fourth(setting_message) => {
                     let SettingsMessage::Change(changed_setting) = setting_message;
                     trace!(

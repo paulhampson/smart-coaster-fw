@@ -17,7 +17,9 @@ use crate::weight::messaging::{
     WeighingError, WeightChannelPublisher, WeightEvents, WeightRequest,
 };
 use crate::weight::WeighingSystem;
+use defmt::warn;
 use embassy_futures::select::{select, Either};
+use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Ticker};
 
 /// Acts as a bridge between the pubsub channel and the real weight scale subsystem
@@ -47,16 +49,21 @@ where
         let mut periodic_timer = Ticker::every(Duration::from_millis(250));
         loop {
             let request_or_timer = select(
-                self.app_channel_subscriber.next_message_pure(),
+                self.app_channel_subscriber.next_message(),
                 periodic_timer.next(),
             )
             .await;
             match request_or_timer {
-                Either::First(message) => {
-                    if let ApplicationMessage::WeighSystemRequest(weight_request) = message {
-                        self.handle_request(weight_request).await;
+                Either::First(message) => match message {
+                    WaitResult::Message(message) => {
+                        if let ApplicationMessage::WeighSystemRequest(weight_request) = message {
+                            self.handle_request(weight_request).await;
+                        }
                     }
-                }
+                    WaitResult::Lagged(missed) => {
+                        warn!("Missed {} messages", missed);
+                    }
+                },
                 Either::Second(_) => {
                     self.do_measurement().await;
                 }

@@ -19,8 +19,9 @@ use crate::application::messaging::{
 use crate::drink_monitor::messaging::{DrinkMonitorChannelSubscriber, DrinkMonitoringUpdate};
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
 use crate::led::led_control::{LedArrayMode, LedControl};
-use defmt::trace;
+use defmt::{trace, warn};
 use embassy_futures::select::{select3, Either3};
+use embassy_sync::pubsub::WaitResult;
 use embassy_time::{Duration, Ticker};
 use smart_leds::RGB8;
 
@@ -63,7 +64,7 @@ where
         loop {
             let timer_or_state_change = select3(
                 ticker.next(),
-                self.app_channel.next_message_pure(),
+                self.app_channel.next_message(),
                 self.drink_monitor_channel.next_message_pure(),
             )
             .await;
@@ -71,8 +72,11 @@ where
                 Either3::First(_) => {
                     self.led_control.led_update().await;
                 }
-                Either3::Second(message) => {
-                    match message {
+                Either3::Second(message) => match message {
+                    WaitResult::Lagged(missed_count) => {
+                        warn!("Lost {} messages", missed_count);
+                    }
+                    WaitResult::Message(message) => match message {
                         ApplicationMessage::ApplicationStateUpdate(new_state) => {
                             self.application_state = new_state;
                             match new_state {
@@ -138,9 +142,8 @@ where
                             _ => {}
                         },
                         _ => {}
-                    }
-                    self.led_control.led_update().await;
-                }
+                    },
+                },
                 Either3::Third(drink_monitor_update) => {
                     match drink_monitor_update {
                         DrinkMonitoringUpdate::DayAverageHourlyConsumptionRate(_new_rate) => {
@@ -205,6 +208,5 @@ where
                 speed: 0.25,
             })
         }
-        self.led_control.led_update().await;
     }
 }

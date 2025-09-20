@@ -405,7 +405,7 @@ where
             match wait_result {
                 Either3::First(w) => match w {
                     WaitResult::Lagged(count) => {
-                        warn! {"Display lost {} messages from HMI channel", count}
+                        warn! {"Display lost {} messages from application channel", count}
                     }
                     WaitResult::Message(message) => {
                         trace!("App message: {}", Debug2Format(&message));
