@@ -281,6 +281,7 @@ where
         if self.last_display_update.elapsed().as_millis() < Self::FRAME_TIMING_MS as u64 {
             return;
         }
+        trace!("Update screen");
         self.update_now().await;
     }
 
@@ -329,6 +330,7 @@ where
     }
 
     async fn route_ui_input(&mut self, input: UiInput) {
+        trace!("Route UI input received: {}", Debug2Format(&input));
         match self.display_state {
             ApplicationState::Startup => {}
             ApplicationState::ErrorScreenWithMessage(_) => {}
@@ -393,6 +395,7 @@ where
         let mut screen_off = false;
 
         loop {
+            trace!("Waiting for next display update message or tick");
             let wait_result = select3(
                 self.app_channel_subscriber.next_message(),
                 update_ticker.next(),
@@ -402,92 +405,105 @@ where
             match wait_result {
                 Either3::First(w) => match w {
                     WaitResult::Lagged(count) => {
-                        warn! {"Display lost {} messages from HMI channel", count}
+                        warn! {"Display lost {} messages from application channel", count}
                     }
-                    WaitResult::Message(message) => match message {
-                        ApplicationMessage::ClearHistoricalConsumptionLog => {}
-                        ApplicationMessage::HmiInput(hmi_message) => {
-                            last_activity = Instant::now();
-                            match hmi_message {
-                                HmiMessage::EncoderUpdate(direction) => {
-                                    trace!("Encoder update: {:?}", Debug2Format(&direction));
-                                    match direction {
-                                        Direction::Clockwise => {
-                                            self.route_ui_input(UiInput::EncoderClockwise).await
-                                        }
-                                        Direction::CounterClockwise => {
-                                            self.route_ui_input(UiInput::EncoderCounterClockwise)
-                                                .await
-                                        }
-                                        Direction::None => {}
-                                    }
-                                }
-                                HmiMessage::PushButtonPressed(is_pressed) => {
-                                    trace!("Button pressed {:?} ", is_pressed);
-                                    match is_pressed {
-                                        true => self.route_ui_input(UiInput::ButtonPress).await,
-                                        false => self.route_ui_input(UiInput::ButtonRelease).await,
-                                    }
-                                }
-                            }
-                        }
-                        ApplicationMessage::ApplicationStateUpdate(new_state) => {
-                            trace!("Set display state");
-                            self.set_display_state(new_state).await;
-                            last_activity = Instant::now();
-                        }
-                        ApplicationMessage::ApplicationDataUpdate(data_update) => match data_update
-                        {
-                            ApplicationData::DisplayBrightness(new_display_brightness) => {
+                    WaitResult::Message(message) => {
+                        trace!("App message: {}", Debug2Format(&message));
+                        match message {
+                            ApplicationMessage::ClearHistoricalConsumptionLog => {}
+                            ApplicationMessage::HmiInput(hmi_message) => {
                                 last_activity = Instant::now();
-                                trace!("Brightness update: {:?}", new_display_brightness);
-                                self.display
-                                    .set_contrast(new_display_brightness)
-                                    .unwrap_or_else(|_| warn!("Failed to set display brightness"));
-                                self.settings
-                                    .save_setting(
-                                        SettingsAccessorId::SystemDisplayBrightness,
-                                        SettingValue::SmallUInt(new_display_brightness),
-                                    )
-                                    .await
-                                    .unwrap_or_else(|e| {
-                                        warn!(
-                                            "Failed to save display brightness: {}",
-                                            Debug2Format(&e)
-                                        );
-                                    });
-                            }
-                            ApplicationData::DisplayTimeout(new_display_timeout) => {
-                                trace!("New display timeout: {:?}", new_display_timeout);
-                                self.display_timeout =
-                                    Duration::from_secs((new_display_timeout * 60) as u64);
-                                self.settings
-                                    .save_setting(
-                                        SettingsAccessorId::DisplayTimeoutMinutes,
-                                        SettingValue::SmallUInt(new_display_timeout),
-                                    )
-                                    .await
-                                    .unwrap_or_else(|e| {
-                                        warn!(
-                                            "Failed to save display timeout: {}",
-                                            Debug2Format(&e)
-                                        );
-                                    });
-                            }
-                            _ => {
-                                trace!("App data update");
-                                if let ApplicationData::MonitoringUpdate(_) = data_update {
-                                    last_activity = Instant::now();
+                                match hmi_message {
+                                    HmiMessage::EncoderUpdate(direction) => {
+                                        trace!("Encoder update: {:?}", Debug2Format(&direction));
+                                        match direction {
+                                            Direction::Clockwise => {
+                                                self.route_ui_input(UiInput::EncoderClockwise).await
+                                            }
+                                            Direction::CounterClockwise => {
+                                                self.route_ui_input(
+                                                    UiInput::EncoderCounterClockwise,
+                                                )
+                                                .await
+                                            }
+                                            Direction::None => {}
+                                        }
+                                    }
+                                    HmiMessage::PushButtonPressed(is_pressed) => {
+                                        trace!("Button pressed {:?} ", is_pressed);
+                                        match is_pressed {
+                                            true => self.route_ui_input(UiInput::ButtonPress).await,
+                                            false => {
+                                                self.route_ui_input(UiInput::ButtonRelease).await
+                                            }
+                                        }
+                                    }
                                 }
-                                self.route_ui_input(UiInput::ApplicationData(data_update))
-                                    .await;
                             }
-                        },
-                        ApplicationMessage::WeighSystemRequest(..) => {}
-                    },
+                            ApplicationMessage::ApplicationStateUpdate(new_state) => {
+                                trace!("Set display state");
+                                self.set_display_state(new_state).await;
+                                last_activity = Instant::now();
+                            }
+                            ApplicationMessage::ApplicationDataUpdate(data_update) => {
+                                match data_update {
+                                    ApplicationData::DisplayBrightness(new_display_brightness) => {
+                                        last_activity = Instant::now();
+                                        trace!("Brightness update: {:?}", new_display_brightness);
+                                        self.display
+                                            .set_contrast(new_display_brightness)
+                                            .unwrap_or_else(|_| {
+                                                warn!("Failed to set display brightness")
+                                            });
+                                        self.settings
+                                            .save_setting(
+                                                SettingsAccessorId::SystemDisplayBrightness,
+                                                SettingValue::SmallUInt(new_display_brightness),
+                                            )
+                                            .await
+                                            .unwrap_or_else(|e| {
+                                                warn!(
+                                                    "Failed to save display brightness: {}",
+                                                    Debug2Format(&e)
+                                                );
+                                            });
+                                    }
+                                    ApplicationData::DisplayTimeout(new_display_timeout) => {
+                                        trace!("New display timeout: {:?}", new_display_timeout);
+                                        self.display_timeout =
+                                            Duration::from_secs((new_display_timeout * 60) as u64);
+                                        self.settings
+                                            .save_setting(
+                                                SettingsAccessorId::DisplayTimeoutMinutes,
+                                                SettingValue::SmallUInt(new_display_timeout),
+                                            )
+                                            .await
+                                            .unwrap_or_else(|e| {
+                                                warn!(
+                                                    "Failed to save display timeout: {}",
+                                                    Debug2Format(&e)
+                                                );
+                                            });
+                                    }
+                                    _ => {
+                                        trace!("App data update");
+                                        if let ApplicationData::MonitoringUpdate(_) = data_update {
+                                            last_activity = Instant::now();
+                                        }
+                                        self.route_ui_input(UiInput::ApplicationData(data_update))
+                                            .await;
+                                    }
+                                }
+                            }
+                            ApplicationMessage::WeighSystemRequest(..) => {}
+                        }
+                    }
                 },
-                Either3::Second(_) => {}
+                Either3::Second(_) => {
+                    trace!("Display update tick");
+                }
                 Either3::Third(dt) => {
+                    trace!("RTC update");
                     if self.display_state != ApplicationState::SetSystemDateTime {
                         trace!("DateTime update");
                         self.route_ui_input(UiInput::DateTimeUpdate(dt)).await;

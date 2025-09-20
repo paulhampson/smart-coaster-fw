@@ -40,6 +40,12 @@ Steps:
     5. Apply, then build, then set the Executable binary (
        `$ProjectFileDir$/target/thumbv6m-none-eabi/debug/rp2040-embassy`)
 
+### Running from CLI
+
+```aiignore
+cargo run --release
+```
+
 # Design
 
 See [DESIGN_NOTES.md](DESIGN_NOTES.md)

@@ -19,7 +19,7 @@ use crate::weight::messaging::WeightRequest;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum ApplicationMessage {
     WeighSystemRequest(WeightRequest),
     ApplicationStateUpdate(ApplicationState),
@@ -28,7 +28,7 @@ pub enum ApplicationMessage {
     ClearHistoricalConsumptionLog,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum ApplicationData {
     Weight(f32),
     CalibrationSubstate(CalibrationStateSubstates),

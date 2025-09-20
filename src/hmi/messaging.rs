@@ -32,7 +32,7 @@ pub enum UiRequestMessage {
     ClearHistoricalConsumptionLog(),
 }
 
-const CHANNEL_DEPTH: usize = 10;
+const CHANNEL_DEPTH: usize = 20;
 const CHANNEL_SUBS: usize = 2;
 const CHANNEL_PUBS: usize = 1;
 

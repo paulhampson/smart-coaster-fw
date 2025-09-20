@@ -21,11 +21,13 @@ use crate::application::messaging::{
 };
 use crate::drink_monitor::messaging::DrinkMonitorChannelSubscriber;
 use crate::hmi::messaging::HmiMessage::PushButtonPressed;
-use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiRequestMessage};
+use crate::hmi::messaging::{
+    HmiChannelSubscriber, HmiMessage, UiActionChannelSubscriber, UiRequestMessage,
+};
 use crate::storage::settings::SettingsAccessorId;
 use crate::weight::WeighingSystem;
 use crate::Heap;
-use defmt::debug;
+use defmt::{debug, trace, warn, Debug2Format};
 use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::{Duration, Instant, Timer};
 
@@ -53,6 +55,21 @@ where
         }
     }
 
+    async fn publish_application_hmi_message(&mut self, hmi_message: HmiMessage) {
+        trace!(
+            "Publishing application HMI message: {:?}",
+            Debug2Format(&hmi_message)
+        );
+
+        if self.app_publisher.is_full() {
+            warn!("Application channel is full during HMI message send - skipping input");
+            return;
+        }
+
+        self.app_publisher
+            .publish_immediate(ApplicationMessage::HmiInput(hmi_message));
+    }
+
     async fn clear_out_hmi_rx(&mut self, hmi_subscriber: &mut HmiChannelSubscriber<'_>) {
         while hmi_subscriber.try_next_message_pure().is_some() {}
     }
@@ -69,6 +86,7 @@ where
     }
 
     async fn update_application_state(&mut self, state: ApplicationState) {
+        // deliberately wait on this so it's synchronous
         self.app_publisher
             .publish(ApplicationMessage::ApplicationStateUpdate(state))
             .await;
@@ -88,8 +106,7 @@ where
 
     async fn send_application_data_update(&mut self, d: ApplicationData) {
         self.app_publisher
-            .publish(ApplicationMessage::ApplicationDataUpdate(d))
-            .await;
+            .publish_immediate(ApplicationMessage::ApplicationDataUpdate(d));
     }
 
     pub async fn run(
@@ -249,16 +266,14 @@ where
                     }
                 }
                 Either3::Second(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                 }
                 Either3::Third(drink_monitor_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::ApplicationDataUpdate(MonitoringUpdate(
+                    self.app_publisher.publish_immediate(
+                        ApplicationMessage::ApplicationDataUpdate(MonitoringUpdate(
                             drink_monitor_message,
-                        )))
-                        .await;
+                        )),
+                    );
                 }
             }
         }
@@ -283,9 +298,7 @@ where
 
             match hmi_or_weight_message {
                 Either::First(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                     match hmi_message {
                         PushButtonPressed(true) => {
                             press_start = Instant::now();
@@ -302,11 +315,11 @@ where
                 Either::Second(weight_reading) => {
                     match weight_reading {
                         Ok(w) => {
-                            self.app_publisher
-                                .publish(ApplicationMessage::ApplicationDataUpdate(
-                                    ApplicationData::Weight(w),
-                                ))
-                                .await;
+                            self.app_publisher.publish_immediate(
+                                ApplicationMessage::ApplicationDataUpdate(ApplicationData::Weight(
+                                    w,
+                                )),
+                            );
                         } // just send on weight for now so it updates on screen
                         Err(_) => self.manage_error("Scale reading failed").await,
                     }
@@ -332,37 +345,38 @@ where
             .await;
 
             match ui_or_hmi {
-                Either::First(ui_action_message) => match ui_action_message {
-                    UiRequestMessage::ChangeState(new_state) => {
-                        return new_state;
+                Either::First(ui_action_message) => {
+                    trace!("UI Request Message: {:?}", Debug2Format(&ui_action_message));
+                    match ui_action_message {
+                        UiRequestMessage::ChangeState(new_state) => {
+                            return new_state;
+                        }
+                        UiRequestMessage::ChangeLedBrightness(new_brightness) => {
+                            self.app_publisher.publish_immediate(
+                                ApplicationMessage::ApplicationDataUpdate(
+                                    ApplicationData::LedBrightness(new_brightness),
+                                ),
+                            );
+                        }
+                        UiRequestMessage::ChangeDisplayBrightness(new_brightness) => {
+                            self.app_publisher.publish_immediate(
+                                ApplicationMessage::ApplicationDataUpdate(
+                                    ApplicationData::DisplayBrightness(new_brightness),
+                                ),
+                            );
+                        }
+                        UiRequestMessage::ChangeDisplayTimeout(new_timeout) => {
+                            self.app_publisher.publish_immediate(
+                                ApplicationMessage::ApplicationDataUpdate(
+                                    ApplicationData::DisplayTimeout(new_timeout),
+                                ),
+                            );
+                        }
+                        UiRequestMessage::ClearHistoricalConsumptionLog() => {}
                     }
-                    UiRequestMessage::ChangeLedBrightness(new_brightness) => {
-                        self.app_publisher
-                            .publish(ApplicationMessage::ApplicationDataUpdate(
-                                ApplicationData::LedBrightness(new_brightness),
-                            ))
-                            .await
-                    }
-                    UiRequestMessage::ChangeDisplayBrightness(new_brightness) => {
-                        self.app_publisher
-                            .publish(ApplicationMessage::ApplicationDataUpdate(
-                                ApplicationData::DisplayBrightness(new_brightness),
-                            ))
-                            .await
-                    }
-                    UiRequestMessage::ChangeDisplayTimeout(new_timeout) => {
-                        self.app_publisher
-                            .publish(ApplicationMessage::ApplicationDataUpdate(
-                                ApplicationData::DisplayTimeout(new_timeout),
-                            ))
-                            .await
-                    }
-                    UiRequestMessage::ClearHistoricalConsumptionLog() => {}
-                },
+                }
                 Either::Second(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                 }
             }
         }
@@ -389,9 +403,7 @@ where
                     }
                 }
                 Either::Second(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                 }
             }
         }
@@ -418,9 +430,7 @@ where
                     }
                 }
                 Either::Second(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                 }
             }
         }
@@ -455,9 +465,7 @@ where
                     _ => {}
                 },
                 Either::Second(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                 }
             }
         }
@@ -485,9 +493,7 @@ where
                     }
                 }
                 Either::Second(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                 }
             }
         }
@@ -515,9 +521,7 @@ where
                     }
                 }
                 Either::Second(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                 }
             }
         }
@@ -542,17 +546,14 @@ where
                 Either::First(ui_action_message) => {
                     if let UiRequestMessage::ClearHistoricalConsumptionLog() = ui_action_message {
                         self.app_publisher
-                            .publish(ApplicationMessage::ClearHistoricalConsumptionLog)
-                            .await
+                            .publish_immediate(ApplicationMessage::ClearHistoricalConsumptionLog);
                     }
                     if let UiRequestMessage::ChangeState(new_state) = ui_action_message {
                         return new_state;
                     }
                 }
                 Either::Second(hmi_message) => {
-                    self.app_publisher
-                        .publish(ApplicationMessage::HmiInput(hmi_message))
-                        .await;
+                    self.publish_application_hmi_message(hmi_message).await;
                 }
             }
         }
