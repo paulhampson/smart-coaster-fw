@@ -12,9 +12,8 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::messaging::{ApplicationChannelSubscriber, ApplicationMessage};
 use crate::weight::messaging::{
-    WeighingError, WeightChannelPublisher, WeightEvents, WeightRequest,
+    WeighingError, WeightChannelPublisher, WeightEvents, WeightRequest, WeightRequestSubscriber,
 };
 use crate::weight::WeighingSystem;
 use defmt::warn;
@@ -24,7 +23,7 @@ use embassy_time::{Duration, Ticker};
 
 /// Acts as a bridge between the pubsub channel and the real weight scale subsystem
 pub struct WeighingManager<WS> {
-    app_channel_subscriber: ApplicationChannelSubscriber<'static>,
+    weight_request_channel_subscriber: WeightRequestSubscriber<'static>,
     weight_channel_publisher: WeightChannelPublisher<'static>,
     weight_scale: WS,
 }
@@ -34,12 +33,12 @@ where
     WS: WeighingSystem,
 {
     pub fn new(
-        app_channel_subscriber: ApplicationChannelSubscriber<'static>,
+        weight_request_subscriber: WeightRequestSubscriber<'static>,
         weight_channel_publisher: WeightChannelPublisher<'static>,
         weight_scale: WS,
     ) -> Self {
         Self {
-            app_channel_subscriber,
+            weight_request_channel_subscriber: weight_request_subscriber,
             weight_channel_publisher,
             weight_scale,
         }
@@ -49,16 +48,14 @@ where
         let mut periodic_timer = Ticker::every(Duration::from_millis(250));
         loop {
             let request_or_timer = select(
-                self.app_channel_subscriber.next_message(),
+                self.weight_request_channel_subscriber.next_message(),
                 periodic_timer.next(),
             )
             .await;
             match request_or_timer {
                 Either::First(message) => match message {
-                    WaitResult::Message(message) => {
-                        if let ApplicationMessage::WeighSystemRequest(weight_request) = message {
-                            self.handle_request(weight_request).await;
-                        }
+                    WaitResult::Message(weight_request) => {
+                        self.handle_request(weight_request).await;
                     }
                     WaitResult::Lagged(missed) => {
                         warn!("Missed {} messages", missed);

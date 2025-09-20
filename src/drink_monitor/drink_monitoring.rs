@@ -137,9 +137,10 @@ where
     async fn get_stabilised_weight(&mut self) -> f32 {
         const BUFFER_SIZE: usize = 4;
         let mut readings = HistoryBuffer::<_, BUFFER_SIZE>::new();
+        let mut reading_tick = Ticker::every(Duration::from_hz(10));
         loop {
+            reading_tick.next().await;
             readings.write(self.get_weight_reading_managed_error().await);
-
             if readings.len() == BUFFER_SIZE {
                 let min_reading: f32 = *readings
                     .as_slice()

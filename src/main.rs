@@ -67,7 +67,10 @@ use crate::application::messaging::{
 use crate::application::weighing_manager::WeighingManager;
 use crate::hmi::display::DisplayManager;
 use crate::led::led_control::LedController;
-use crate::weight::messaging::{WeighingSystemOverChannel, WeightChannel, WeightChannelPublisher};
+use crate::weight::messaging::{
+    WeighingSystemOverChannel, WeightChannel, WeightChannelPublisher, WeightRequestChannel,
+    WeightRequestSubscriber,
+};
 use crate::weight::weight::WeightScale;
 use static_cell::StaticCell;
 
@@ -88,6 +91,7 @@ static HEAP: Heap = Heap::empty();
 static HMI_CHANNEL: HmiChannel = PubSubChannel::new();
 static UI_ACTION_CHANNEL: UiActionChannel = PubSubChannel::new();
 static WEIGHT_CHANNEL: WeightChannel = PubSubChannel::new();
+static WEIGHT_REQUEST_CHANNEL: WeightRequestChannel = PubSubChannel::new();
 static APP_CHANNEL: ApplicationChannel = PubSubChannel::new();
 static DRINK_MONITOR_CHANNEL: DrinkMonitorChannel = PubSubChannel::new();
 
@@ -285,7 +289,7 @@ fn core0_high_prio_main(spawner: SendSpawner, resources: Core0HighPrioResources)
     info!("Spawning Weighing task");
     spawner.must_spawn(weighing_task(
         resources.strain_gauge_io,
-        APP_CHANNEL.subscriber().unwrap(),
+        WEIGHT_REQUEST_CHANNEL.subscriber().unwrap(),
         WEIGHT_CHANNEL.publisher().unwrap(),
     ));
     info!("Spawning RTC task");
@@ -301,7 +305,7 @@ fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) 
 
     let ws = WeighingSystemOverChannel::new(
         WEIGHT_CHANNEL.subscriber().unwrap(),
-        APP_CHANNEL.publisher().unwrap(),
+        WEIGHT_REQUEST_CHANNEL.publisher().unwrap(),
     );
     spawner.must_spawn(application_task(
         APP_CHANNEL.publisher().unwrap(),
@@ -314,7 +318,7 @@ fn core1_main(spawner: Spawner, resources: Core1Resources, heap: &'static Heap) 
 
     let drink_monitor_ws = WeighingSystemOverChannel::new(
         WEIGHT_CHANNEL.subscriber().unwrap(),
-        APP_CHANNEL.publisher().unwrap(),
+        WEIGHT_REQUEST_CHANNEL.publisher().unwrap(),
     );
     spawner.must_spawn(drink_monitor_task(
         DRINK_MONITOR_CHANNEL.publisher().unwrap(),
@@ -437,7 +441,7 @@ async fn led_task(
 #[embassy_executor::task]
 async fn weighing_task(
     strain_gauge_resources: StrainGaugeResources,
-    app_subscriber: ApplicationChannelSubscriber<'static>,
+    weight_request_subscriber: WeightRequestSubscriber<'static>,
     weight_event_sender: WeightChannelPublisher<'static>,
 ) {
     let clk_pin_out = Output::new(strain_gauge_resources.clk_pin, Level::Low);
@@ -447,7 +451,7 @@ async fn weighing_task(
     let weight_scale = WeightScale::new(strain_gauge, settings).await.unwrap();
 
     let mut weighing_manager =
-        WeighingManager::new(app_subscriber, weight_event_sender, weight_scale);
+        WeighingManager::new(weight_request_subscriber, weight_event_sender, weight_scale);
     weighing_manager.run().await;
 }
 

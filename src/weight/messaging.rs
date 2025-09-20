@@ -12,7 +12,6 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::application::messaging::{ApplicationChannelPublisher, ApplicationMessage};
 use crate::weight::WeighingSystem;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
@@ -44,6 +43,30 @@ const CHANNEL_DEPTH: usize = 10;
 const CHANNEL_SUBS: usize = 2;
 const CHANNEL_PUBS: usize = 2;
 
+pub type WeightRequestChannel = PubSubChannel<
+    CriticalSectionRawMutex,
+    WeightRequest,
+    CHANNEL_DEPTH,
+    CHANNEL_SUBS,
+    CHANNEL_PUBS,
+>;
+pub type WeightRequestSubscriber<'a> = Subscriber<
+    'a,
+    CriticalSectionRawMutex,
+    WeightRequest,
+    CHANNEL_DEPTH,
+    CHANNEL_SUBS,
+    CHANNEL_PUBS,
+>;
+pub type WeightRequestPublisher<'a> = Publisher<
+    'a,
+    CriticalSectionRawMutex,
+    WeightRequest,
+    CHANNEL_DEPTH,
+    CHANNEL_SUBS,
+    CHANNEL_PUBS,
+>;
+
 pub type WeightChannel =
     PubSubChannel<CriticalSectionRawMutex, WeightEvents, CHANNEL_DEPTH, CHANNEL_SUBS, CHANNEL_PUBS>;
 pub type WeightChannelSubscriber<'a> = Subscriber<
@@ -59,16 +82,16 @@ pub type WeightChannelPublisher<'a> =
 
 pub struct WeighingSystemOverChannel {
     weight_event_rx: WeightChannelSubscriber<'static>,
-    app_tx: ApplicationChannelPublisher<'static>,
+    weight_request_tx: WeightRequestPublisher<'static>,
 }
 
 impl WeighingSystemOverChannel {
     pub(crate) fn new(
         weight_event_rx: WeightChannelSubscriber<'static>,
-        app_tx: ApplicationChannelPublisher<'static>,
+        weight_request_tx: WeightRequestPublisher<'static>,
     ) -> Self {
         Self {
-            app_tx,
+            weight_request_tx,
             weight_event_rx,
         }
     }
@@ -106,32 +129,26 @@ impl WeighingSystem for WeighingSystemOverChannel {
     type Error = WeighingError;
 
     async fn stabilize_measurements(&mut self) -> Result<(), Self::Error> {
-        self.app_tx
-            .publish_immediate(ApplicationMessage::WeighSystemRequest(
-                WeightRequest::Stabilisation,
-            ));
+        self.weight_request_tx
+            .publish_immediate(WeightRequest::Stabilisation);
         self.get_result().await
     }
 
     async fn tare(&mut self) -> Result<(), Self::Error> {
-        self.app_tx
-            .publish_immediate(ApplicationMessage::WeighSystemRequest(WeightRequest::Tare));
+        self.weight_request_tx
+            .publish_immediate(WeightRequest::Tare);
         self.get_result().await
     }
 
     async fn calibrate(&mut self, calibration_mass: f32) -> Result<(), Self::Error> {
-        self.app_tx
-            .publish_immediate(ApplicationMessage::WeighSystemRequest(
-                WeightRequest::CalibrationAtMass(calibration_mass),
-            ));
+        self.weight_request_tx
+            .publish_immediate(WeightRequest::CalibrationAtMass(calibration_mass));
         self.get_result().await
     }
 
     async fn get_instantaneous_weight_grams(&mut self) -> Result<f32, Self::Error> {
-        self.app_tx
-            .publish_immediate(ApplicationMessage::WeighSystemRequest(
-                WeightRequest::Weight,
-            ));
+        self.weight_request_tx
+            .publish_immediate(WeightRequest::Weight);
         self.get_weight().await
     }
 

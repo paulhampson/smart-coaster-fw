@@ -15,13 +15,11 @@
 use crate::application::application_state::{ApplicationState, CalibrationStateSubstates};
 use crate::drink_monitor::messaging::DrinkMonitoringUpdate;
 use crate::hmi::messaging::HmiMessage;
-use crate::weight::messaging::WeightRequest;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum ApplicationMessage {
-    WeighSystemRequest(WeightRequest),
     ApplicationStateUpdate(ApplicationState),
     ApplicationDataUpdate(ApplicationData),
     HmiInput(HmiMessage),
@@ -39,9 +37,9 @@ pub enum ApplicationData {
     MonitoringUpdate(DrinkMonitoringUpdate),
 }
 
-const CHANNEL_DEPTH: usize = 10;
+const CHANNEL_DEPTH: usize = 20;
 const CHANNEL_SUBS: usize = 4;
-const CHANNEL_PUBS: usize = 4; // (1) application manager, (2) WeighingSystemOverChannel, (3) DrinkMonitoring
+const CHANNEL_PUBS: usize = 1;
 
 pub type ApplicationChannel = PubSubChannel<
     CriticalSectionRawMutex,

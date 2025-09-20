@@ -495,7 +495,6 @@ where
                                     }
                                 }
                             }
-                            ApplicationMessage::WeighSystemRequest(..) => {}
                         }
                     }
                 },
