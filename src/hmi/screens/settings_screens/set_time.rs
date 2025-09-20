@@ -20,8 +20,7 @@ use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorI
 use chrono::{NaiveTime, TimeDelta, Timelike};
 use core::cmp::PartialEq;
 use core::fmt::Write;
-use defmt::error;
-use defmt::Debug2Format;
+use defmt::{error, trace, Debug2Format};
 use embedded_graphics::mono_font::ascii::{FONT_6X13_BOLD, FONT_8X13};
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
 use embedded_graphics::pixelcolor::BinaryColor;
@@ -147,6 +146,7 @@ impl UiInputHandler for SetTimeScreen {
                     ));
                 }
                 _ => {
+                    trace!("Toggling element active: {}", self.element_active);
                     self.element_active = !self.element_active;
                 }
             },

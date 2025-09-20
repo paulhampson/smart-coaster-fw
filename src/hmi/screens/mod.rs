@@ -29,6 +29,7 @@ pub mod monitoring;
 pub mod settings_menu;
 pub mod settings_screens;
 
+#[derive(Debug)]
 pub enum UiInput {
     EncoderClockwise,
     EncoderCounterClockwise,

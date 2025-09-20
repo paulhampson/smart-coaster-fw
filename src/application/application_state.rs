@@ -37,7 +37,7 @@ pub enum ApplicationState {
     ConfirmationScreen(ConfirmationId),
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum CalibrationStateSubstates {
     Tare,
     Wait,

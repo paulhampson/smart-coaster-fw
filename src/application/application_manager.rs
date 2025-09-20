@@ -25,7 +25,7 @@ use crate::hmi::messaging::{HmiChannelSubscriber, UiActionChannelSubscriber, UiR
 use crate::storage::settings::SettingsAccessorId;
 use crate::weight::WeighingSystem;
 use crate::Heap;
-use defmt::debug;
+use defmt::{debug, trace, Debug2Format};
 use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::{Duration, Instant, Timer};
 
@@ -332,34 +332,41 @@ where
             .await;
 
             match ui_or_hmi {
-                Either::First(ui_action_message) => match ui_action_message {
-                    UiRequestMessage::ChangeState(new_state) => {
-                        return new_state;
+                Either::First(ui_action_message) => {
+                    trace!("UI Request Message: {:?}", Debug2Format(&ui_action_message));
+                    match ui_action_message {
+                        UiRequestMessage::ChangeState(new_state) => {
+                            return new_state;
+                        }
+                        UiRequestMessage::ChangeLedBrightness(new_brightness) => {
+                            self.app_publisher
+                                .publish(ApplicationMessage::ApplicationDataUpdate(
+                                    ApplicationData::LedBrightness(new_brightness),
+                                ))
+                                .await
+                        }
+                        UiRequestMessage::ChangeDisplayBrightness(new_brightness) => {
+                            self.app_publisher
+                                .publish(ApplicationMessage::ApplicationDataUpdate(
+                                    ApplicationData::DisplayBrightness(new_brightness),
+                                ))
+                                .await
+                        }
+                        UiRequestMessage::ChangeDisplayTimeout(new_timeout) => {
+                            self.app_publisher
+                                .publish(ApplicationMessage::ApplicationDataUpdate(
+                                    ApplicationData::DisplayTimeout(new_timeout),
+                                ))
+                                .await
+                        }
+                        UiRequestMessage::ClearHistoricalConsumptionLog() => {}
                     }
-                    UiRequestMessage::ChangeLedBrightness(new_brightness) => {
-                        self.app_publisher
-                            .publish(ApplicationMessage::ApplicationDataUpdate(
-                                ApplicationData::LedBrightness(new_brightness),
-                            ))
-                            .await
-                    }
-                    UiRequestMessage::ChangeDisplayBrightness(new_brightness) => {
-                        self.app_publisher
-                            .publish(ApplicationMessage::ApplicationDataUpdate(
-                                ApplicationData::DisplayBrightness(new_brightness),
-                            ))
-                            .await
-                    }
-                    UiRequestMessage::ChangeDisplayTimeout(new_timeout) => {
-                        self.app_publisher
-                            .publish(ApplicationMessage::ApplicationDataUpdate(
-                                ApplicationData::DisplayTimeout(new_timeout),
-                            ))
-                            .await
-                    }
-                    UiRequestMessage::ClearHistoricalConsumptionLog() => {}
-                },
+                }
                 Either::Second(hmi_message) => {
+                    trace!(
+                        "Publishing application HMI message: {:?}",
+                        Debug2Format(&hmi_message)
+                    );
                     self.app_publisher
                         .publish(ApplicationMessage::HmiInput(hmi_message))
                         .await;

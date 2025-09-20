@@ -16,6 +16,7 @@ use crate::hmi::debouncer::Debouncer;
 use crate::hmi::messaging::HmiChannelPublisher;
 use crate::hmi::messaging::HmiMessage;
 use crate::hmi::rotary_encoder::RotaryEncoder;
+use defmt::{trace, Debug2Format};
 use embassy_futures::select::{select, Either};
 use embassy_rp::gpio::Level;
 
@@ -28,6 +29,7 @@ pub async fn hmi_input_handler(
 ) {
     let mut next_btn_level = PRESSED_LEVEL; // assumes we start unpressed
     loop {
+        trace!("Waiting for input");
         let hmi_io_event = select(
             rotary_encoder.state_change(),
             debounced_btn.wait_for_change_to(next_btn_level),
@@ -36,9 +38,11 @@ pub async fn hmi_input_handler(
 
         match hmi_io_event {
             Either::First(encoder_moved) => {
+                trace!("Encoder moved: {}", Debug2Format(&encoder_moved));
                 hmi_event_channel.publish_immediate(HmiMessage::EncoderUpdate(encoder_moved))
             }
             Either::Second(_) => {
+                trace!("Button pressed: {}", Debug2Format(&next_btn_level));
                 hmi_event_channel.publish_immediate(HmiMessage::PushButtonPressed(
                     next_btn_level == PRESSED_LEVEL,
                 ));
