@@ -25,6 +25,12 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 
 ### Feature List
 
+* Firmware update via USB - *WIP*
+    * Add bootloader
+    * Modify flash interfaces used by settings to play nicely with bootloader
+    * Add firmware transfer via Serial over USB
+    * Basic firmware update web page that uses web serial to transfer firmware
+    * Bootloader shows screens to indicate update activity
 * Time to drink reminder mode (flash LED when time since last drink has elapsed)
 * Monitoring functionality
     * ~~Monitor drink in background if in settings menu~~
@@ -44,7 +50,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
         * ~~Show required drink amount to get back on target~~
         * Show visual representation of target 'flight path'
         * Rate history as bar graph over last N hours
-        * Progress bar to a daily target
+        * Progress bar to a daily target alongside 'drink X ml to stay on target'
     * Build custom screens based on standard 'widgets' (3x2 grid?)
     * Behaviours when vessel is missing
         * Time based 'aggressiveness' - no cup for long period = more vigorous LEDs
@@ -53,7 +59,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Read history~~
     * can be viewed as a graph on device (sparkline?)
     * or transferred via USB.
-* Firmware update via USB
+
 * Live consumption data streamed over USB to be accessible by a local web page
 * Timezones
     * Daylight savings
