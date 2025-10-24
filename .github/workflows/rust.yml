@@ -44,7 +44,7 @@ jobs:
       - name: Upload application
         uses: actions/upload-artifact@v4
         with:
-          name: smartcoaster-bootloader
+          name: smartcoaster-application
           path: target/thumbv6m-none-eabi/release/smartcoaster-application
       - name: Release
         uses: softprops/action-gh-release@v2
