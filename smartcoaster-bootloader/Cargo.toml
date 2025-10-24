@@ -19,6 +19,7 @@ embedded-storage-async = "0.4.0"
 cfg-if = "1.0.0"
 
 [features]
+default = ["defmt"]
 defmt = [
     "dep:defmt",
     "dep:defmt-rtt",
