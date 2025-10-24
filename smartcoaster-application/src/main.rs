@@ -54,6 +54,7 @@ use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{FLASH, I2C0, I2C1, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
+use embassy_rp::watchdog::Watchdog;
 use embassy_rp::{bind_interrupts, flash, interrupt, peripherals, pio};
 use embassy_sync::pubsub::PubSubChannel;
 use hmi::debouncer::Debouncer;
@@ -100,9 +101,10 @@ const CORE1_STACK_SIZE: usize = 16 * 1024;
 const HEAP_SIZE: usize = 16 * 1024;
 
 // Ensure this matches memory.x
-const FLASH_SIZE: usize = 2 * 1024 * 1024;
+const FLASH_SIZE: usize = 16 * 1024 * 1024;
 const NVM_PAGE_SIZE: usize = 256;
 
+// Application NVM for settings and activity log is at the end of flash
 const SETTINGS_SIZE: usize = 0x2000;
 const SETTINGS_NVM_FLASH_OFFSET_RANGE: Range<u32> =
     (FLASH_SIZE - SETTINGS_SIZE) as u32..FLASH_SIZE as u32;
@@ -244,6 +246,9 @@ fn main() -> ! {
         display_i2c: resources.display_i2c,
     };
 
+    // Override bootloader watchdog
+    let mut watchdog = Watchdog::new(p.WATCHDOG);
+
     #[cfg(feature = "multicore")]
     {
         info!("Launching application across cores");
@@ -267,6 +272,8 @@ fn main() -> ! {
         #[cfg(not(feature = "multicore"))]
         core1_main(spawner, core1_resources, &HEAP)
     });
+
+    info!("Marking firmware as OK");
 }
 
 fn core0_low_prio_main(spawner: Spawner, resources: Core0LowPrioResources) {
@@ -349,6 +356,10 @@ async fn storage_task(storage_resources: StorageResources) {
         storage_resources.dma_channel,
     );
     let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
+
+    let config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash, &flash);
+    let mut aligned = AlignedBuffer([0; 1]);
+    let mut updater = BlockingFirmwareUpdater::new(config, &mut aligned.0);
 
     storage::storage_manager::initialise_storage(
         flash,

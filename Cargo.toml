@@ -1,61 +1,14 @@
-[package]
-edition = "2021"
-name = "Smartcoaster"
-version = "0.1.2"
+[workspace]
+members = ["smartcoaster-application", "smartcoaster-bootloader"]
 resolver = "2"
-authors = ["Paul Hampson"]
-license = "GPL-3.0"
-repository = "https://github.com/paulhampson/smart-coaster-fw"
-
-
-[dependencies]
-defmt = "1.0.1"
-defmt-rtt = "1.0.0"
-panic-probe = { version = "1.0.0", features = ["print-defmt"] }
-
-
-embedded-hal = "1.0"
-embedded-hal-async = "1.0"
-embedded-storage = "0.3.1"
-
-cortex-m-rt = "0.7.3"
-cortex-m = { version = "0.7.6" }
-assign-resources = "0.4.1" # 0.5.0 breaks because of embassy change - introduction of ::Peri
-
-embassy-executor = { version = "0.7", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread", "defmt", "executor-interrupt"] }
-embassy-rp = { version = "0.4.0", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl", "rp2040"] }
-embassy-sync = { version = "0.6" }
-embassy-time = { version = "0.4", features = ["defmt", "defmt-timestamp-uptime"] }
-embassy-futures = "0.1.1"
-embassy-embedded-hal = "0.3"
-
-embedded-graphics = "0.8.1"
-sh1106 = "0.5.0"
-heapless = "0.8.0"
-smart-leds = "0.4.0"
-portable-atomic = { version = "1.11.0", features = ["critical-section"] }
-static_cell = "2.1.0"
-micromath = { version = "2.1.0", features = ["statistics", "vector"] }
-embedded-alloc = "0.6.0"
-embedded-layout = "0.4.2"
-simple-embedded-graphics-menu = { git = "https://github.com/paulhampson/simple-embedded-graphics-menu.git" }
-sequential-storage = { version = "4.0.1", features = ["defmt-03"] }
-embedded-storage-async = "0.4.1"
-strum = { version = "0.27", default-features = false, features = ["derive"] }
-ds323x = "0.6.0"
-chrono = { version = "0.4.41", default-features = false, features = ["serde"] }
-embedded-icon = { version = "0.0.1", features = ["32px", "48px", "24px", "iconoir", "mdi"] }
 
 [profile.release]
 debug = 2
+opt-level = 's'
 lto = 'fat' # for call stack analysis support
 
-
-[build-dependencies]
-built = { version = "0.8", features = ["git2"] }
-
-[features]
-default = ["pcb_rev1"]
-pcb_rev1 = []
-flat_board = []
-multicore = []
+# Default profile for build/run commands
+[profile.dev]
+debug = 2
+opt-level = 's'
+lto = 'fat' # for call stack analysis support

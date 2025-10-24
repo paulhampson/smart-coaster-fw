@@ -28,25 +28,34 @@ use std::io::Write;
 use std::path::PathBuf;
 
 fn main() {
-    built::write_built_file().expect("Failed to acquire build-time information");
+    // built::write_built_file().expect("Failed to acquire build-time information");
 
-    // Put `memory.x` in our output directory and ensure it's
+    // Gather linker files in our output directory and ensure they're
     // on the linker search path.
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
     File::create(out.join("memory.x"))
         .unwrap()
         .write_all(include_bytes!("memory.x"))
         .unwrap();
+    File::create(out.join("memory_common.x"))
+        .unwrap()
+        .write_all(include_bytes!("../memory_common.x"))
+        .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
 
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`
-    // here, we ensure the build script is only re-run when
-    // `memory.x` is changed.
+    // here, we can ensure the build script is only re-run when
+    // `memory.x` is changed - **BUT** we don't want to do this
+    // as the build script also collects version information so it
+    // should always be re-run.
     // println!("cargo:rerun-if-changed=memory.x");
 
     println!("cargo:rustc-link-arg-bins=--nmagic");
     println!("cargo:rustc-link-arg-bins=-Tlink.x");
-    println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
     println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
+
+    if env::var("CARGO_FEATURE_DEFMT").is_ok() {
+        println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
+    }
 }

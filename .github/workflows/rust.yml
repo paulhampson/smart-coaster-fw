@@ -33,12 +33,19 @@ jobs:
       - name: Add required target
         run: rustup target add thumbv6m-none-eabi
       - name: Build
-        run: cargo build --release
-      - name: Upload artifact
+        run: |
+          cargo build --release --package smartcoaster-bootloader
+          cargo build --release --package smartcoaster-firmware
+      - name: Upload bootloader
         uses: actions/upload-artifact@v4
         with:
-          name: Smartcoaster
-          path: target/thumbv6m-none-eabi/release/Smartcoaster
+          name: smartcoaster-bootloader
+          path: target/thumbv6m-none-eabi/release/smartcoaster-bootloader
+      - name: Upload application
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartcoaster-bootloader
+          path: target/thumbv6m-none-eabi/release/smartcoaster-application
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'

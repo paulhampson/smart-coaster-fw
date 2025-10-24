@@ -10,7 +10,16 @@ Coming Soon :tm:
 ## Install the latest release to hardware via debugger
 
 Assuming you have `probe-rs` installed ([instructions](https://probe.rs/docs/getting-started/installation/)) and the
-debugger attached:
+debugger attached follow these steps in a directory where you are happy
+to download the firmware to.
+
+```aiignore
+curl -L https://github.com/paulhampson/smart-coaster-fw/releases/latest/download/smartcoaster-application > smartcoaster-application && \
+curl -L https://github.com/paulhampson/smart-coaster-fw/releases/latest/download/smartcoaster-bootloader > smartcoaster-bootloader && \
+probe-rs download --chip RP2040 --speed 10000 smartcoaster-application && \
+probe-rs reset --chip RP2040 && \
+probe-rs download --chip RP2040 --speed 10000 smartcoaster-application
+```
 
 ```aiignore
 cd /tmp && \
@@ -58,8 +67,16 @@ Steps:
 
 ### Running from CLI
 
+Flash the bootloader:
+
 ```aiignore
-cargo run --release
+cargo flash --manifest-path smartcoaster-bootloader/Cargo.toml --release --chip RP2040
+```
+
+Load the application:
+
+```aiignore
+cargo run --manifest-path smartcoaster-application/Cargo.toml --release --chip RP2040
 ```
 
 # Design
