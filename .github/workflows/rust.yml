@@ -35,7 +35,7 @@ jobs:
       - name: Build
         run: |
           cargo build --release --package smartcoaster-bootloader
-          cargo build --release --package smartcoaster-firmware
+          cargo build --release --package smartcoaster-application
       - name: Upload bootloader
         uses: actions/upload-artifact@v4
         with:
