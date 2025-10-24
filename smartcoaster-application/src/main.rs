@@ -17,11 +17,12 @@
 #[cfg(feature = "multicore")]
 compile_error!("Check if https://github.com/embassy-rs/embassy/issues/1634 has been resolved");
 
-#[cfg(all(feature = "flat_board", feature = "pcb_rev1"))]
-compile_error!("cannot configure for flat_board and pcb_rev1 at the same time");
+// Re-add if multiple PCB revisions are supported
+// #[cfg(all(feature = "pcb_rev1"))]
+// compile_error!("cannot configure for XX and pcb_rev1 at the same time");
 
-#[cfg(not(any(feature = "flat_board", feature = "pcb_rev1")))]
-compile_error!("no board configured - use feature \"flat_board\" or \"pcb_rev1\"");
+#[cfg(not(any(feature = "pcb_rev1")))]
+compile_error!("no board configured - use feature \"pcb_rev1\"");
 
 mod application;
 mod drink_monitor;
@@ -55,6 +56,7 @@ use embassy_rp::peripherals::{FLASH, I2C0, I2C1, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use embassy_rp::watchdog::Watchdog;
+use embassy_rp::Peri;
 use embassy_rp::{bind_interrupts, flash, interrupt, peripherals, pio};
 use embassy_sync::pubsub::PubSubChannel;
 use hmi::debouncer::Debouncer;
@@ -114,38 +116,8 @@ const ACTIVITY_LOG_NVM_FLASH_OFFSET_RANGE: Range<u32> = (SETTINGS_NVM_FLASH_OFFS
     - ACTIVITY_LOG_SIZE as u32)
     ..SETTINGS_NVM_FLASH_OFFSET_RANGE.start;
 
-#[cfg(feature = "flat_board")]
-const LED_COUNT: usize = 8;
-
 #[cfg(feature = "pcb_rev1")]
 const LED_COUNT: usize = 12;
-
-#[cfg(feature = "flat_board")]
-assign_resources! {
-    display_i2c: DisplayI2cPins{
-        sda_pin: PIN_4,
-        scl_pin: PIN_5,
-        i2c_peripheral: I2C0
-    },
-    hmi_inputs: HmiInputPins {
-        rotary_dt_pin: PIN_7,
-        rotary_clk_pin: PIN_8,
-        push_btn_pin: PIN_6,
-    },
-    led_control: LedControlResources {
-        pio: PIO0,
-        dma_channel: DMA_CH0,
-        data_pin: PIN_16,
-    }
-    strain_gauge_io: StrainGaugeResources {
-        clk_pin: PIN_14,
-        data_pin: PIN_15,
-    }
-    storage: StorageResources {
-        flash: FLASH,
-        dma_channel: DMA_CH1,
-    }
-}
 
 #[cfg(feature = "pcb_rev1")]
 assign_resources! {
@@ -247,7 +219,7 @@ fn main() -> ! {
     };
 
     // Override bootloader watchdog
-    let mut watchdog = Watchdog::new(p.WATCHDOG);
+    let _watchdog = Watchdog::new(p.WATCHDOG);
 
     #[cfg(feature = "multicore")]
     {
@@ -272,8 +244,6 @@ fn main() -> ! {
         #[cfg(not(feature = "multicore"))]
         core1_main(spawner, core1_resources, &HEAP)
     });
-
-    info!("Marking firmware as OK");
 }
 
 fn core0_low_prio_main(spawner: Spawner, resources: Core0LowPrioResources) {
@@ -356,10 +326,6 @@ async fn storage_task(storage_resources: StorageResources) {
         storage_resources.dma_channel,
     );
     let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
-
-    let config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash, &flash);
-    let mut aligned = AlignedBuffer([0; 1]);
-    let mut updater = BlockingFirmwareUpdater::new(config, &mut aligned.0);
 
     storage::storage_manager::initialise_storage(
         flash,

@@ -16,16 +16,9 @@ to download the firmware to.
 ```aiignore
 curl -L https://github.com/paulhampson/smart-coaster-fw/releases/latest/download/smartcoaster-application > smartcoaster-application && \
 curl -L https://github.com/paulhampson/smart-coaster-fw/releases/latest/download/smartcoaster-bootloader > smartcoaster-bootloader && \
-probe-rs download --chip RP2040 --speed 10000 smartcoaster-application && \
+probe-rs download --chip RP2040 --speed 10000 smartcoaster-bootloader && \
 probe-rs reset --chip RP2040 && \
 probe-rs download --chip RP2040 --speed 10000 smartcoaster-application
-```
-
-```aiignore
-cd /tmp && \
-curl -L https://github.com/paulhampson/smart-coaster-fw/releases/latest/download/Smartcoaster > Smartcoaster-latest && \
-probe-rs download --chip RP2040 --speed 10000 Smartcoaster-latest && \
-probe-rs reset --chip RP2040
 ```
 
 ## Setting up for development
@@ -70,13 +63,13 @@ Steps:
 Flash the bootloader:
 
 ```aiignore
-cargo flash --manifest-path smartcoaster-bootloader/Cargo.toml --release --chip RP2040
+cargo flash --release --package smartcoaster-bootloader --chip RP2040
 ```
 
 Load the application:
 
 ```aiignore
-cargo run --manifest-path smartcoaster-application/Cargo.toml --release --chip RP2040
+cargo flash --release --package smartcoaster-application --chip RP2040
 ```
 
 # Design

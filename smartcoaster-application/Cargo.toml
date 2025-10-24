@@ -20,15 +20,15 @@ embedded-storage = "0.3.1"
 
 cortex-m-rt = "0.7.3"
 cortex-m = { version = "0.7.6" }
-assign-resources = "0.4.1" # 0.5.0 breaks because of embassy change - introduction of ::Peri
+assign-resources = { git = "https://github.com/adamgreig/assign-resources", rev = "bd22cb7a92031fb16f74a5da42469d466c33383e" }
 
-embassy-executor = { version = "0.7", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread", "defmt", "executor-interrupt"] }
-embassy-rp = { version = "0.4.0", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl", "rp2040"] }
+embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread", "defmt", "executor-interrupt"] }
+embassy-rp = { version = "0.8.0", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl", "rp2040"] }
 embassy-boot-rp = { version = "0.8.0", features = [] }
-embassy-sync = { version = "0.6" }
-embassy-time = { version = "0.4", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-sync = { version = "0.7.2" }
+embassy-time = { version = "0.5.0", features = ["defmt", "defmt-timestamp-uptime"] }
 embassy-futures = "0.1.1"
-embassy-embedded-hal = "0.3"
+embassy-embedded-hal = "0.5.0"
 
 embedded-graphics = "0.8.1"
 sh1106 = "0.5.0"
@@ -46,8 +46,6 @@ strum = { version = "0.27", default-features = false, features = ["derive"] }
 ds323x = "0.6.0"
 chrono = { version = "0.4.41", default-features = false, features = ["serde"] }
 embedded-icon = { version = "0.0.1", features = ["32px", "48px", "24px", "iconoir", "mdi"] }
-
-
 
 
 [build-dependencies]

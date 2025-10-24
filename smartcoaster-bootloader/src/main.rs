@@ -4,9 +4,11 @@
 use core::cell::RefCell;
 
 use cortex_m_rt::{entry, exception};
+use defmt::{error, info};
 #[cfg(feature = "defmt")]
 use defmt_rtt as _;
 use embassy_boot_rp::*;
+use embassy_rp::flash::Flash;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_time::Duration;
 
@@ -18,18 +20,32 @@ fn main() -> ! {
 
     // Uncomment this if you are debugging the bootloader with debugger/RTT attached,
     // as it prevents a hard fault when accessing flash 'too early' after boot.
-    /*
-    for i in 0..10000000 {
-        cortex_m::asm::nop();
-    }
-    */
 
-    let flash = WatchdogFlash::<FLASH_SIZE>::start(p.FLASH, p.WATCHDOG, Duration::from_secs(8));
+    // for i in 0..10000000 {
+    //     cortex_m::asm::nop();
+    // }
+
+    info!("Bootloader starting");
+
+    // let flash = WatchdogFlash::<FLASH_SIZE>::start(p.FLASH, p.WATCHDOG, Duration::from_secs(8));
+    let flash = Flash::<_, _, FLASH_SIZE>::new_blocking(p.FLASH);
     let flash = Mutex::new(RefCell::new(flash));
 
     let config = BootLoaderConfig::from_linkerfile_blocking(&flash, &flash, &flash);
     let active_offset = config.active.offset();
     let bl: BootLoader = BootLoader::prepare(config);
+
+    info!("Marking ok");
+
+    // TODO - move this into the firmware, it's done here for now as the interfaces aren't yet compatable with the applications flash management
+    let fw_config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash, &flash);
+    let mut aligned = AlignedBuffer([0; 1]);
+    let mut updater = BlockingFirmwareUpdater::new(fw_config, &mut aligned.0);
+    updater
+        .mark_booted()
+        .expect("Unabled to mark update successful");
+
+    info!("Booting application");
 
     unsafe { bl.load(embassy_rp::flash::FLASH_BASE as u32 + active_offset) }
 }
