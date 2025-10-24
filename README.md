@@ -72,6 +72,12 @@ Load the application:
 cargo flash --release --package smartcoaster-application --chip RP2040
 ```
 
+Attach to the application:
+
+```aiignore
+probe-rs attach --chip rp2040 target/thumbv6m-none-eabi/release/smartcoaster-application
+```
+
 # Design
 
 See [DESIGN_NOTES.md](DESIGN_NOTES.md)

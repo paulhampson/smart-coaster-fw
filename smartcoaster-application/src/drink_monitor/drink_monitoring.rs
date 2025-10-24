@@ -432,10 +432,12 @@ where
             info!("Monitoring mode initialised to: {}", Debug2Format(&mode));
             self.change_monitoring_mode(mode, &settings).await;
         } else {
-            panic!(
-                "Unexpected monitoring mode initialisation data: {:?}",
-                &mode_from_settings
+            let mode = MonitoringTargetPeriodOptions::Daily;
+            warn!(
+                "No saved monitoring mode found. Initialising to: {}",
+                Debug2Format(&mode)
             );
+            self.change_monitoring_mode(mode, &settings).await;
         }
 
         self.initialise_total_consumption().await;
