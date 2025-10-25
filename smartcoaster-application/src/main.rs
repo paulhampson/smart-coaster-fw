@@ -189,7 +189,7 @@ static CORE1_LOW_PRIO_EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 #[interrupt]
 unsafe fn SWI_IRQ_0() {
-    CORE0_HIGH_PRIO_EXECUTOR.on_interrupt()
+    unsafe { CORE0_HIGH_PRIO_EXECUTOR.on_interrupt() }
 }
 
 #[entry]
