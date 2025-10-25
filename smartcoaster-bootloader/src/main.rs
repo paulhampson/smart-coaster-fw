@@ -35,16 +35,6 @@ fn main() -> ! {
     let active_offset = config.active.offset();
     let bl: BootLoader = BootLoader::prepare(config);
 
-    info!("Marking ok");
-
-    // TODO - move this into the firmware, it's done here for now as the interfaces aren't yet compatable with the applications flash management
-    let fw_config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash, &flash);
-    let mut aligned = AlignedBuffer([0; 1]);
-    let mut updater = BlockingFirmwareUpdater::new(fw_config, &mut aligned.0);
-    updater
-        .mark_booted()
-        .expect("Unabled to mark update successful");
-
     info!("Booting application");
 
     unsafe { bl.load(embassy_rp::flash::FLASH_BASE as u32 + active_offset) }

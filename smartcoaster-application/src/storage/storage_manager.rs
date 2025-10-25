@@ -14,17 +14,18 @@
 
 use crate::storage::historical::manager::DATA_BUFFER_SIZE;
 use crate::storage::settings::StorageError;
+use core::cell::RefCell;
 use core::future::Future;
 use core::ops::Range;
 use defmt::{debug, error, trace, warn};
 use embassy_embedded_hal::adapter::BlockingAsync;
+use embassy_embedded_hal::flash::partition::BlockingPartition;
 use embassy_rp::flash;
-use embassy_rp::flash::{Error, Flash};
 use embassy_rp::peripherals::FLASH;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
-use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
+use embedded_storage_async::nor_flash::NorFlash;
 use sequential_storage::cache::NoCache;
 use sequential_storage::map;
 use sequential_storage::map::Value;
@@ -75,21 +76,21 @@ pub trait StorageManager {
     ) -> impl Future<Output = Result<usize, StorageError>>;
 }
 
-pub type BlockingAsyncFlash =
-    BlockingAsync<Flash<'static, FLASH, flash::Async, { crate::FLASH_SIZE }>>;
+pub type BlockingFlash =
+    embassy_rp::flash::Flash<'static, FLASH, flash::Blocking, { crate::FLASH_SIZE }>;
+
+pub type BlockingAsyncPartition =
+    BlockingAsync<BlockingPartition<'static, CriticalSectionRawMutex, BlockingFlash>>;
 
 pub type StorageManagerMutex =
-    Mutex<CriticalSectionRawMutex, StorageManagerSequentialStorage<Error, BlockingAsyncFlash>>;
+    Mutex<CriticalSectionRawMutex, StorageManagerSequentialStorage<BlockingAsyncPartition>>;
 
-pub static NV_STORAGE: StorageManagerMutex = Mutex::<
-    CriticalSectionRawMutex,
-    StorageManagerSequentialStorage<Error, BlockingAsyncFlash>,
->::new(StorageManagerSequentialStorage::new());
+pub static NV_STORAGE: StorageManagerMutex =
+    StorageManagerMutex::new(StorageManagerSequentialStorage::new());
 
-pub struct StorageManagerSequentialStorage<E, F>
+pub struct StorageManagerSequentialStorage<F>
 where
-    E: defmt::Format,
-    F: NorFlash + MultiwriteNorFlash<Error = E>,
+    F: NorFlash,
 {
     flash: Option<F>,
     key_value_range: Option<Range<u32>>,
@@ -97,10 +98,9 @@ where
     storage_initialised: bool,
 }
 
-impl<E, F> StorageManagerSequentialStorage<E, F>
+impl<F> StorageManagerSequentialStorage<F>
 where
-    E: defmt::Format,
-    F: MultiwriteNorFlash<Error = E>,
+    F: NorFlash,
 {
     pub const fn new() -> Self {
         Self {
@@ -111,7 +111,8 @@ where
         }
     }
 
-    async fn initialise(&mut self, flash: F, storage_range: Range<u32>, _page_size: usize) {
+    async fn initialise(&mut self, flash: F) {
+        let storage_range = 0..flash.capacity() as u32;
         self.flash = Some(flash);
         self.key_value_range = Some(storage_range);
         debug!(
@@ -126,10 +127,9 @@ where
     }
 }
 
-impl<E, F> StorageManager for StorageManagerSequentialStorage<E, F>
+impl<F> StorageManager for StorageManagerSequentialStorage<F>
 where
-    E: defmt::Format,
-    F: MultiwriteNorFlash<Error = E>,
+    F: NorFlash,
 {
     fn is_initialized(&self) -> bool {
         trace!(
@@ -150,8 +150,8 @@ where
         let storage_range = self.key_value_range.clone().unwrap().clone();
         sequential_storage::erase_all(flash, storage_range)
             .await
-            .map_err(|e| {
-                warn!("Unable to erase storage. Error: {:?}", e);
+            .map_err(|_| {
+                warn!("Unable to erase storage.");
                 StorageError::EraseError
             })?;
 
@@ -186,8 +186,8 @@ where
             &value,
         )
         .await
-        .map_err(|e| {
-            warn!("Unable to save key/value. Error {:?}", e);
+        .map_err(|_| {
+            warn!("Unable to save key/value.");
             StorageError::SaveError
         })?;
 
@@ -216,8 +216,8 @@ where
             &key,
         )
         .await
-        .map_err(|e| {
-            warn!("Unable to read key value pair data. Error: {:?}", e);
+        .map_err(|_| {
+            warn!("Unable to read key value pair data.");
             StorageError::RetrieveError
         })?;
         Ok(value)
@@ -242,8 +242,8 @@ where
             config.allow_overwrite_old,
         )
         .await
-        .map_err(|e| {
-            warn!("Unable to write log data. Error: {:?}", e);
+        .map_err(|_| {
+            warn!("Unable to write log data");
             StorageError::SaveError
         })?;
         Ok(())
@@ -258,8 +258,8 @@ where
         let flash = self.flash.as_mut().unwrap();
         sequential_storage::erase_all(flash, config.storage_range.clone())
             .await
-            .map_err(|e| {
-                error!("Unable to erase data. Error: {:?}", e);
+            .map_err(|_| {
+                error!("Unable to erase data.");
                 StorageError::EraseError
             })?;
         Ok(())
@@ -273,8 +273,8 @@ where
             &mut NoCache::new(),
         )
         .await
-        .map_err(|e| {
-            warn!("Unable to get remaining space. Error: {:?}", e);
+        .map_err(|_| {
+            warn!("Unable to get remaining space.");
             StorageError::CapacityCheckError
         })
     }
@@ -292,8 +292,8 @@ where
         let mut storage_iter =
             sequential_storage::queue::iter(flash, config.storage_range.clone(), &mut cache)
                 .await
-                .map_err(|e| {
-                    error!("Unable to get iterator for NVM queue - {}", e);
+                .map_err(|_| {
+                    error!("Unable to get iterator for NVM queue");
                     StorageError::RetrieveError
                 })?;
 
@@ -303,8 +303,8 @@ where
         // skip entries
         while index < start {
             let mut temp_buf = [0; DATA_BUFFER_SIZE];
-            let entry = storage_iter.next(&mut temp_buf).await.map_err(|e| {
-                error!("Failed to read while skipping entries - {}", e);
+            let entry = storage_iter.next(&mut temp_buf).await.map_err(|_| {
+                error!("Failed to read while skipping entries");
                 StorageError::RetrieveError
             })?;
             if entry.is_none() {
@@ -318,8 +318,8 @@ where
             let entry = storage_iter
                 .next(&mut buf[retrieved_count])
                 .await
-                .map_err(|e| {
-                    error!("Failed to read while retrieving entries - {}", e);
+                .map_err(|_| {
+                    error!("Failed to read while retrieving entries");
                     StorageError::RetrieveError
                 })?;
             if entry.is_none() {
@@ -334,9 +334,23 @@ where
     }
 }
 
-pub async fn initialise_storage(flash: BlockingAsyncFlash, range: Range<u32>, page_size: usize) {
+pub async fn initialise_storage(
+    flash_mutex: &'static mut embassy_sync::blocking_mutex::Mutex<
+        CriticalSectionRawMutex,
+        RefCell<BlockingFlash>,
+    >,
+    settings_range: Range<u32>,
+) {
+    let settings_partition = BlockingPartition::new(
+        flash_mutex,
+        settings_range.start,
+        settings_range.len() as u32,
+    );
+    let blocking_async_partition = BlockingAsync::new(settings_partition);
+
     let mut settings = NV_STORAGE.lock().await;
-    settings.initialise(flash, range, page_size).await;
+
+    settings.initialise(blocking_async_partition).await;
 }
 
 pub async fn wait_for_storage_initialisation() {

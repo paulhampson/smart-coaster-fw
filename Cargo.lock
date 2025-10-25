@@ -1952,6 +1952,7 @@ dependencies = [
  "defmt 1.0.1",
  "defmt-rtt",
  "ds323x",
+ "embassy-boot",
  "embassy-boot-rp",
  "embassy-embedded-hal",
  "embassy-executor",

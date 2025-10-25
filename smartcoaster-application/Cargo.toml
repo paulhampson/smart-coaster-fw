@@ -46,6 +46,7 @@ strum = { version = "0.27", default-features = false, features = ["derive"] }
 ds323x = "0.6.0"
 chrono = { version = "0.4.41", default-features = false, features = ["serde"] }
 embedded-icon = { version = "0.0.1", features = ["32px", "48px", "24px", "iconoir", "mdi"] }
+embassy-boot = "0.6.1"
 
 
 [build-dependencies]
