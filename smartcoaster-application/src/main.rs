@@ -32,6 +32,7 @@ mod rtc;
 pub mod storage;
 mod weight;
 
+use core::cell::RefCell;
 use core::ops::Range;
 use embassy_executor::{Executor, InterruptExecutor, SendSpawner, Spawner};
 use embassy_time::{Duration, Timer};
@@ -48,19 +49,19 @@ use crate::weight::interface::hx711async::{Hx711Async, Hx711Gain};
 use assign_resources::assign_resources;
 use defmt::info;
 
+use embassy_rp::Peri;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{self, Config};
 #[cfg(feature = "multicore")]
-use embassy_rp::multicore::{spawn_core1, Stack};
+use embassy_rp::multicore::{Stack, spawn_core1};
 use embassy_rp::peripherals::{FLASH, I2C0, I2C1, PIO0};
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use embassy_rp::watchdog::Watchdog;
-use embassy_rp::Peri;
 use embassy_rp::{bind_interrupts, flash, interrupt, peripherals, pio};
 use embassy_sync::pubsub::PubSubChannel;
 use hmi::debouncer::Debouncer;
-use sh1106::{prelude::*, Builder};
+use sh1106::{Builder, prelude::*};
 
 use crate::application::application_manager::ApplicationManager;
 use crate::application::led_manager::LedManager;
@@ -82,10 +83,14 @@ use crate::drink_monitor::messaging::{
     DrinkMonitorChannel, DrinkMonitorChannelPublisher, DrinkMonitorChannelSubscriber,
 };
 use crate::rtc::{RtcControl, SystemRtc};
+use crate::storage::storage_manager::BlockingFlash;
 use core::ptr::addr_of_mut;
 use cortex_m_rt::entry;
 use ds323x::Ds323x;
+use embassy_boot::{AlignedBuffer, BlockingFirmwareUpdater, FirmwareUpdaterConfig};
 use embassy_rp::interrupt::{InterruptExt, Priority};
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embedded_alloc::LlffHeap as Heap;
 use storage::settings::accessor::FlashSettingsAccessor;
 
@@ -104,7 +109,7 @@ const HEAP_SIZE: usize = 16 * 1024;
 
 // Ensure this matches memory.x
 const FLASH_SIZE: usize = 16 * 1024 * 1024;
-const NVM_PAGE_SIZE: usize = 256;
+const _NVM_PAGE_SIZE: usize = 256;
 
 // Application NVM for settings and activity log is at the end of flash
 const SETTINGS_SIZE: usize = 0x2000;
@@ -319,18 +324,35 @@ async fn rtc_task(rtc_resources: RtcResources) {
     rtc_control.run().await;
 }
 
+static FLASH_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, RefCell<BlockingFlash>>> =
+    StaticCell::new();
+
 #[embassy_executor::task]
 async fn storage_task(storage_resources: StorageResources) {
-    let flash = embassy_rp::flash::Flash::<FLASH, flash::Async, FLASH_SIZE>::new(
+    let flash = embassy_rp::flash::Flash::<FLASH, flash::Blocking, FLASH_SIZE>::new_blocking(
         storage_resources.flash,
-        storage_resources.dma_channel,
     );
-    let flash = embassy_embedded_hal::adapter::BlockingAsync::new(flash);
+
+    // Initialise with NoopRawMutex for firmware updater only
+    let flash_mutex_updater = Mutex::<NoopRawMutex, _>::new(RefCell::new(flash));
+    let config =
+        FirmwareUpdaterConfig::from_linkerfile_blocking(&flash_mutex_updater, &flash_mutex_updater);
+
+    info!("Marking boot ok");
+    let mut aligned = AlignedBuffer([0; 1]);
+    let mut updater = BlockingFirmwareUpdater::new(config, &mut aligned.0);
+    updater
+        .mark_booted()
+        .expect("Unable to mark boot successful");
+
+    // Now re-wrap the refcell with CriticalSectionRawMutex
+    let refcell_flash = flash_mutex_updater.into_inner();
+    let flash_mutex = Mutex::<CriticalSectionRawMutex, _>::new(refcell_flash);
+    let flash_mutex = FLASH_MUTEX.init(flash_mutex);
 
     storage::storage_manager::initialise_storage(
-        flash,
-        SETTINGS_NVM_FLASH_OFFSET_RANGE,
-        NVM_PAGE_SIZE,
+        flash_mutex,
+        SETTINGS_NVM_FLASH_OFFSET_RANGE.clone(),
     )
     .await;
 
