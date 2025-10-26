@@ -17,7 +17,7 @@ use crate::storage::settings::StorageError;
 use core::cell::RefCell;
 use core::future::Future;
 use core::ops::Range;
-use defmt::{debug, error, trace, warn};
+use defmt::{Debug2Format, debug, error, trace, warn};
 use embassy_embedded_hal::adapter::BlockingAsync;
 use embassy_embedded_hal::flash::partition::BlockingPartition;
 use embassy_rp::flash;
@@ -111,10 +111,9 @@ where
         }
     }
 
-    async fn initialise(&mut self, flash: F) {
-        let storage_range = 0..flash.capacity() as u32;
+    async fn initialise(&mut self, flash: F, settings_range_in_partition: Range<u32>) {
         self.flash = Some(flash);
-        self.key_value_range = Some(storage_range);
+        self.key_value_range = Some(settings_range_in_partition);
         debug!(
             "Storage initialising. KeyValue flash address range: 0x{:x} to 0x{:x}, flash size: {}",
             self.key_value_range.clone().unwrap().start,
@@ -242,8 +241,8 @@ where
             config.allow_overwrite_old,
         )
         .await
-        .map_err(|_| {
-            warn!("Unable to write log data");
+        .map_err(|e| {
+            warn!("Unable to write log data: {:?}", Debug2Format(&e));
             StorageError::SaveError
         })?;
         Ok(())
@@ -339,18 +338,21 @@ pub async fn initialise_storage(
         CriticalSectionRawMutex,
         RefCell<BlockingFlash>,
     >,
-    settings_range: Range<u32>,
+    partition_range_in_flash: Range<u32>,
+    settings_range_in_partition: Range<u32>,
 ) {
-    let settings_partition = BlockingPartition::new(
+    let nvm_partition = BlockingPartition::new(
         flash_mutex,
-        settings_range.start,
-        settings_range.len() as u32,
+        partition_range_in_flash.start,
+        partition_range_in_flash.len() as u32,
     );
-    let blocking_async_partition = BlockingAsync::new(settings_partition);
+    let blocking_async_nvm_partition = BlockingAsync::new(nvm_partition);
 
-    let mut settings = NV_STORAGE.lock().await;
+    let mut nvm_storage = NV_STORAGE.lock().await;
 
-    settings.initialise(blocking_async_partition).await;
+    nvm_storage
+        .initialise(blocking_async_nvm_partition, settings_range_in_partition)
+        .await;
 }
 
 pub async fn wait_for_storage_initialisation() {
