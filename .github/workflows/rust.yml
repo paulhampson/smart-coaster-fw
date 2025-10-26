@@ -16,11 +16,14 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - smartcoaster-bootloader
+          - smartcoaster-application
 
     steps:
-
       - uses: actions/checkout@v4
       - name: Cache
         uses: actions/cache@v4
@@ -32,24 +35,28 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Add required target
         run: rustup target add thumbv6m-none-eabi
-      - name: Build
-        run: |
-          cargo build --release --package smartcoaster-bootloader
-          cargo build --release --package smartcoaster-application
-      - name: Upload bootloader
+      - name: Build ${{ matrix.package }}
+        run: cargo build --release --package ${{ matrix.package }}
+      - name: Upload ${{ matrix.package }}
         uses: actions/upload-artifact@v4
         with:
-          name: smartcoaster-bootloader
-          path: target/thumbv6m-none-eabi/release/smartcoaster-bootloader
-      - name: Upload application
-        uses: actions/upload-artifact@v4
-        with:
-          name: smartcoaster-application
-          path: target/thumbv6m-none-eabi/release/smartcoaster-application
+          name: ${{ matrix.package }}
+          path: target/thumbv6m-none-eabi/release/${{ matrix.package }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
       - name: Release
         uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
         with:
-          files: target/thumbv6m-none-eabi/release/Smartcoaster
+          files: |
+            smartcoaster-bootloader/smartcoaster-bootloader
+            smartcoaster-application/smartcoaster-application
           draft: yes
           generate_release_notes: yes
