@@ -26,9 +26,10 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 ### Feature List
 
 * Firmware update via USB - *WIP*
-    * Add bootloader
-    * Modify flash interfaces used by settings to play nicely with bootloader
-    * Add firmware transfer via Serial over USB
+    * ~~Add bootloader~~
+    * ~~Modify flash interfaces used by settings to play nicely with bootloader~~
+    * Add USB interface to bootloader - activates if encoder held during boot
+    * Add firmware transfer via Serial over USB in bootloader DFU mode
     * Basic firmware update web page that uses web serial to transfer firmware
     * Bootloader shows screens to indicate update activity
 * Time to drink reminder mode (flash LED when time since last drink has elapsed)
@@ -57,6 +58,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 * Historical log of consumption
     * ~~Store history~~
     * ~~Read history~~
+    * Move to its own partition object
     * can be viewed as a graph on device (sparkline?)
     * or transferred via USB.
 
