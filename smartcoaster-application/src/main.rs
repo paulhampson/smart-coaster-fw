@@ -113,13 +113,12 @@ const _NVM_PAGE_SIZE: usize = 256;
 
 // Application NVM for settings and activity log is at the end of flash
 const SETTINGS_SIZE: usize = 0x2000;
-const SETTINGS_NVM_FLASH_OFFSET_RANGE: Range<u32> =
-    (FLASH_SIZE - SETTINGS_SIZE) as u32..FLASH_SIZE as u32;
-
 const ACTIVITY_LOG_SIZE: usize = 0x8000;
-const ACTIVITY_LOG_NVM_FLASH_OFFSET_RANGE: Range<u32> = (SETTINGS_NVM_FLASH_OFFSET_RANGE.start
-    - ACTIVITY_LOG_SIZE as u32)
-    ..SETTINGS_NVM_FLASH_OFFSET_RANGE.start;
+const NVM_PARTITION_SIZE: usize = SETTINGS_SIZE + ACTIVITY_LOG_SIZE;
+const NVM_PARTITION_RANGE: Range<u32> = (FLASH_SIZE - NVM_PARTITION_SIZE) as u32..FLASH_SIZE as u32;
+const ACTIVITY_LOG_NVM_FLASH_OFFSET_RANGE: Range<u32> = 0..ACTIVITY_LOG_SIZE as u32;
+const SETTINGS_NVM_FLASH_OFFSET_RANGE: Range<u32> =
+    ACTIVITY_LOG_SIZE as u32..NVM_PARTITION_SIZE as u32;
 
 #[cfg(feature = "pcb_rev1")]
 const LED_COUNT: usize = 12;
@@ -352,6 +351,7 @@ async fn storage_task(storage_resources: StorageResources) {
 
     storage::storage_manager::initialise_storage(
         flash_mutex,
+        NVM_PARTITION_RANGE.clone(),
         SETTINGS_NVM_FLASH_OFFSET_RANGE.clone(),
     )
     .await;
