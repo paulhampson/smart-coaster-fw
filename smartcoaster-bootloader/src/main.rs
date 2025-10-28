@@ -15,31 +15,38 @@
 #![no_std]
 #![no_main]
 
+mod usb;
+
 use core::cell::RefCell;
 
-use cortex_m_rt::{entry, exception};
-use defmt::{error, info};
+use crate::usb::firmware_downloader::FirmwareDownloader;
+use cortex_m_rt::exception;
+use defmt::info;
 #[cfg(feature = "defmt")]
 use defmt_rtt as _;
 use embassy_boot_rp::*;
+use embassy_executor::Spawner;
 use embassy_rp::flash::Flash;
 use embassy_sync::blocking_mutex::Mutex;
-use embassy_time::Duration;
 
 const FLASH_SIZE: usize = 16 * 1024 * 1024;
 
-#[entry]
-fn main() -> ! {
+#[embassy_executor::main]
+async fn main(_spawner: Spawner) -> ! {
     let p = embassy_rp::init(Default::default());
 
     // Uncomment this if you are debugging the bootloader with debugger/RTT attached,
     // as it prevents a hard fault when accessing flash 'too early' after boot.
-
     // for i in 0..10000000 {
     //     cortex_m::asm::nop();
     // }
 
     info!("Bootloader starting");
+
+    info!("Starting USB");
+    let usb = p.USB;
+    let fw_downloader = FirmwareDownloader::new();
+    fw_downloader.start(usb).await;
 
     // let flash = WatchdogFlash::<FLASH_SIZE>::start(p.FLASH, p.WATCHDOG, Duration::from_secs(8));
     let flash = Flash::<_, _, FLASH_SIZE>::new_blocking(p.FLASH);
