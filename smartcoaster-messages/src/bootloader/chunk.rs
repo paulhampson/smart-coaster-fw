@@ -26,3 +26,9 @@ pub struct ChunkResp {
     #[n(1)] pub chunk_data: [u8; CHUNK_SIZE],
     #[n(2)] pub crc32: [u8; 4],
 }
+
+impl ChunkResp {
+    pub fn is_crc_ok(&self) -> bool {
+        crate::bootloader::builder::calculate_crc32(&self.chunk_data) == self.crc32
+    }
+}

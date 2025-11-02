@@ -225,7 +225,7 @@ impl GoodbyeBuilder {
 /// Calculates the CRC32 checksum of the given data using CRC_32_ISO_HDLC.
 ///
 /// Returns the CRC32 as a 4-byte array in little-endian format.
-fn calculate_crc32(data: &[u8]) -> [u8; 4] {
+pub(crate) fn calculate_crc32(data: &[u8]) -> [u8; 4] {
     const CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
     let checksum = CRC.checksum(data);
     checksum.to_le_bytes()
