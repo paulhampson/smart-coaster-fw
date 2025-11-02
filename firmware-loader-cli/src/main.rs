@@ -16,6 +16,7 @@ use smartcoaster_messages::general::builder::GeneralMessagesBuilder;
 use smartcoaster_messages::GeneralMessages;
 use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult, Write};
 use std::time::Duration;
+use log::LevelFilter;
 
 /// Sends a CBOR message with length-prefixed framing over serial
 fn send_message<M>(serial: &mut Box<dyn serialport::SerialPort>, msg: &M) -> IoResult<()>
@@ -65,7 +66,11 @@ where
 }
 
 fn main() -> IoResult<()> {
+    // Parse log level from command-line arguments
+    let log_level = parse_log_level();
+
     env_logger::Builder::from_default_env()
+        .filter_level(log_level)
         .format_timestamp_millis()
         .init();
 
@@ -106,6 +111,7 @@ fn main() -> IoResult<()> {
     // Give device time to initialize
     std::thread::sleep(Duration::from_millis(100));
 
+
     // Build and send Hello message
     log::info!("Creating Hello message...");
     let hello = GeneralMessagesBuilder::new().hello();
@@ -137,4 +143,32 @@ fn main() -> IoResult<()> {
 
     log::info!("Test application completed");
     Ok(())
+}
+
+/// Parse log level from command-line arguments
+/// Supports: --log-level <LEVEL> or RUST_LOG environment variable
+/// Defaults to INFO if neither is provided
+fn parse_log_level() -> LevelFilter {
+    let args: Vec<String> = std::env::args().collect();
+
+    // Check for --log-level argument
+    for i in 0..args.len() {
+        if args[i] == "--log-level" && i + 1 < args.len() {
+            return match args[i + 1].to_uppercase().as_str() {
+                "OFF" => LevelFilter::Off,
+                "ERROR" => LevelFilter::Error,
+                "WARN" => LevelFilter::Warn,
+                "INFO" => LevelFilter::Info,
+                "DEBUG" => LevelFilter::Debug,
+                "TRACE" => LevelFilter::Trace,
+                _ => {
+                    eprintln!("Unknown log level: {}. Using INFO", args[i + 1]);
+                    LevelFilter::Info
+                }
+            };
+        }
+    }
+
+    // Default to INFO
+    LevelFilter::Info
 }

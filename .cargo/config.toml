@@ -1,9 +1,8 @@
+[alias]
+xtask = "run --package xtask --"
+
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
 runner = "probe-rs run --chip RP2040 --speed 10000"
-
-[build]
-target = "thumbv6m-none-eabi"
-# rustflags = ["-Z emit-stack-sizes"]
 
 [env]
 DEFMT_LOG = "info"
