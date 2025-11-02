@@ -20,8 +20,8 @@ jobs:
     strategy:
       matrix:
         package:
-          - smartcoaster-bootloader
-          - smartcoaster-application
+          - bootloader
+          - application
 
     steps:
       - uses: actions/checkout@v4
@@ -36,12 +36,34 @@ jobs:
       - name: Add required target
         run: rustup target add thumbv6m-none-eabi
       - name: Build ${{ matrix.package }}
-        run: cargo build --release --package ${{ matrix.package }}
+        run: cargo xtask build ${{ matrix.package }}
       - name: Upload ${{ matrix.package }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.package }}
-          path: target/thumbv6m-none-eabi/release/${{ matrix.package }}
+          name: smartcoaster-${{ matrix.package }}
+          path: |
+            target/thumbv6m-none-eabi/release/smartcoaster-${{ matrix.package }}
+            target/thumbv6m-none-eabi/release/smartcoaster-${{ matrix.package }}.bin
+
+  build-loader-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Build firmware-loader-cli
+        run: cargo build --release --package firmware-loader-cli
+      - name: Upload firmware-loader-cli
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-loader-cli
+          path: target/release/firmware-loader-cli
 
   release:
     needs: build
@@ -57,6 +79,9 @@ jobs:
         with:
           files: |
             smartcoaster-bootloader/smartcoaster-bootloader
+            smartcoaster-bootloader/smartcoaster-bootloader.bin
             smartcoaster-application/smartcoaster-application
+            smartcoaster-application/smartcoaster-application.bin
+            firmware-loader-cli/firmware-loader-cli
           draft: yes
           generate_release_notes: yes
