@@ -17,6 +17,7 @@ use minicbor::{CborLen, Decode, Encode};
 #[derive(Debug, PartialEq, Encode, Decode, CborLen)]
 pub enum GoodbyeReason {
     #[n(0)] InstallingNewFirmware,
+    #[n(1)] DownloadHashMismatch,
 }
 
 #[derive(Debug, PartialEq, Encode, Decode, CborLen)]

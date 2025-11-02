@@ -12,7 +12,9 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use defmt::{Debug2Format, info, warn, debug};
+use core::cmp::min;
+use ascon_hash::{AsconHash256, Digest};
+use defmt::{Debug2Format, info, warn, debug, trace, error};
 use embassy_boot_rp::State::Boot;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::USB;
@@ -28,6 +30,7 @@ use smartcoaster_messages::general::builder::GeneralMessagesBuilder;
 use smartcoaster_messages::general::hello::SystemMode::Bootloader;
 use static_cell::StaticCell;
 use smartcoaster_messages::bootloader::builder::BootloaderMessagesBuilder;
+use smartcoaster_messages::general::goodbye::GoodbyeReason;
 
 bind_interrupts!(struct UsbIrqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -134,7 +137,8 @@ async fn firmware_download<'d, T: Instance + 'd>(
     let mut buffer = [0u8; 1024];
 
     let mut image_size_bytes = 0;
-    let mut image_hash = AsconHash256Bytes::default();
+    let mut expected_image_hash = AsconHash256Bytes::default();
+    let mut received_image_hash = AsconHash256::new();
     let mut chunk_index = 0;
 
     loop {
@@ -170,9 +174,9 @@ async fn firmware_download<'d, T: Instance + 'd>(
                         debug!("Received message: {:?}", Debug2Format(&message));
                         if let BootloaderMessages::ReadyToDownload(ready_to_download) = message {
                             image_size_bytes = ready_to_download.image_size_bytes;
-                            image_hash = ready_to_download.hash;
+                            expected_image_hash = ready_to_download.hash;
                             info!("Image size: {} bytes", image_size_bytes);
-                            info!("Image hash: {:?}", Debug2Format(&image_hash));
+                            info!("Image hash: {:?}", Debug2Format(&expected_image_hash));
 
                             let resp = BootloaderMessagesBuilder::new().ready_to_download_response().build();
                             send_cbor_message(sender, &resp)
@@ -197,14 +201,32 @@ async fn firmware_download<'d, T: Instance + 'd>(
                         debug!("Received message: {:?}", Debug2Format(&message));
                         if let BootloaderMessages::ChunkResp(chunk_resp) = message {
                             if chunk_resp.chunk_number == chunk_index {
-                                // TODO check CRC
-                                chunk_index += 1;
-                                let req = BootloaderMessagesBuilder::new().chunk_req().chunk_number(chunk_index).build();
-                                send_cbor_message(sender, &req)
-                                    .await
-                                    .expect("Failed to send ChunkReq");
-                                if chunk_index * smartcoaster_messages::bootloader::CHUNK_SIZE as u32 >= image_size_bytes {
-                                    state = FirmwareDownloaderState::DownloadFinished;
+                                if chunk_resp.is_crc_ok() {
+                                    trace!("Chunk {} CRC OK", chunk_index);
+
+                                    // process received data
+                                    let valid_chunk_data_length = min(smartcoaster_messages::bootloader::CHUNK_SIZE,
+                                                                      image_size_bytes as usize - chunk_index as usize * smartcoaster_messages::bootloader::CHUNK_SIZE);
+                                    info!("Valid chunk data length: {}", valid_chunk_data_length);
+                                    received_image_hash.update(&chunk_resp.chunk_data[..valid_chunk_data_length]);
+                                    // TODO write data to flash
+
+                                    chunk_index += 1;
+                                    if chunk_index * smartcoaster_messages::bootloader::CHUNK_SIZE as u32 >= image_size_bytes {
+                                        state = FirmwareDownloaderState::DownloadFinished;
+                                    } else {
+                                        let req = BootloaderMessagesBuilder::new().chunk_req().chunk_number(chunk_index).build();
+                                        send_cbor_message(sender, &req)
+                                            .await
+                                            .expect("Failed to send ChunkReq");
+                                    }
+                                } else {
+                                    warn!("CRC failed on chunk {}", chunk_index);
+                                    // CRC failure - this repeats the request for the chunk
+                                    let req = BootloaderMessagesBuilder::new().chunk_req().chunk_number(chunk_index).build();
+                                    send_cbor_message(sender, &req)
+                                        .await
+                                        .expect("Failed to send ChunkReq");
                                 }
                             } else {
                                 warn!("Got chunk number {} but expected {}", chunk_resp.chunk_number, chunk_index);
@@ -222,7 +244,25 @@ async fn firmware_download<'d, T: Instance + 'd>(
             }
             FirmwareDownloaderState::DownloadFinished => {
                 info!("Download finished");
-                // TODO check final hash
+                let received_hash_output = received_image_hash.finalize();
+                let mut hash_bytes = [0u8; 32];
+                hash_bytes.copy_from_slice(&received_hash_output[..32]);
+                let received_hash = AsconHash256Bytes::from_bytes(hash_bytes);
+                let goodbye_reason = if expected_image_hash.eq(&received_hash) {
+                    info!("Image hash matches");
+                    // TODO mark partition to proceed with update
+                    GoodbyeReason::InstallingNewFirmware
+                } else {
+                    error!("Image hash does not match");
+                    // TODO invalidate partition
+                    GoodbyeReason::DownloadHashMismatch
+                };
+
+                info!("Sending goodbye - reason: {:?}", Debug2Format(&goodbye_reason));
+                let goodbye = BootloaderMessagesBuilder::new().goodbye().reason(goodbye_reason).build();
+                send_cbor_message(sender, &goodbye)
+                    .await
+                    .expect("Failed to send Goodbye");
                 return Ok(());
             }
         }
