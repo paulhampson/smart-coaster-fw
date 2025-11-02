@@ -28,8 +28,11 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 * Firmware update via USB - *WIP*
     * ~~Add bootloader~~
     * ~~Modify flash interfaces used by settings to play nicely with bootloader~~
-    * Add USB interface to bootloader - activates if encoder held during boot
-    * Add firmware transfer via Serial over USB in bootloader DFU mode
+    * ~~Add USB interface to bootloader~~
+        * DFU mode activates if encoder held during boot
+        * DFU mode enterable via menu option
+    * ~~Add firmware transfer via Serial over USB in bootloader DFU mode~~
+    * ~~Firmware update CLI tool~~
     * Basic firmware update web page that uses web serial to transfer firmware
     * Bootloader shows screens to indicate update activity
 * Time to drink reminder mode (flash LED when time since last drink has elapsed)

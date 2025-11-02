@@ -43,14 +43,31 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("Bootloader starting");
 
-    info!("Starting USB");
-    let usb = p.USB;
-    let fw_downloader = FirmwareDownloader::new();
-    fw_downloader.start(usb, spawner).await;
 
-    // let flash = WatchdogFlash::<FLASH_SIZE>::start(p.FLASH, p.WATCHDOG, Duration::from_secs(8));
-    let flash = Flash::<_, _, FLASH_SIZE>::new_blocking(p.FLASH);
+    let usb = p.USB;
+    let flash = p.FLASH;
+
+    let flash = Flash::<_, _, FLASH_SIZE>::new_blocking(flash);
     let flash = Mutex::new(RefCell::new(flash));
+
+    let config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash, &flash);
+    let mut aligned = AlignedBuffer([0; 1]);
+    let mut updater = BlockingFirmwareUpdater::new(config, &mut aligned.0);
+    let mut current_state = updater.get_state().unwrap();
+
+    // TODO remove this forcing into DFU mode - change to be triggered by the button being held down
+    if current_state == State::Boot {
+        current_state = State::DfuDetach;
+    }
+
+    if current_state == State::DfuDetach {
+        info!("Entering DFU mode");
+        let fw_downloader = FirmwareDownloader::new();
+        // this will trigger a reset when finished, but in future it could return if it cleans up the usb task
+        fw_downloader.start(usb, &flash, spawner).await;
+    }
+
+    info!("Running embassy bootloader");
 
     let config = BootLoaderConfig::from_linkerfile_blocking(&flash, &flash, &flash);
     let active_offset = config.active.offset();
