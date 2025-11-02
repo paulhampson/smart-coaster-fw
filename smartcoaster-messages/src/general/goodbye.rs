@@ -12,12 +12,14 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#[derive(Debug, PartialEq)]
+use minicbor::{CborLen, Decode, Encode};
+
+#[derive(Debug, PartialEq, Encode, Decode, CborLen)]
 pub enum GoodbyeReason {
-    InstallingNewFirmware,
+    #[n(0)] InstallingNewFirmware,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Encode, Decode, CborLen)]
 pub struct Goodbye {
-    reason: GoodbyeReason,
+    #[n(0)] pub(crate) reason: GoodbyeReason,
 }

@@ -31,7 +31,15 @@ impl VersionNumber {
     }
 }
 
-#[derive(Debug, PartialEq, Default)]
-pub struct AsconHash256 {
-    hash: [u8; 32],
+#[derive(Debug, PartialEq, Default, Decode, Encode, CborLen)]
+pub struct AsconHash256Bytes {
+    #[n(0)] hash: [u8; 32],
+}
+
+impl AsconHash256Bytes {
+    pub fn from_bytes(hash_bytes: [u8; 32]) -> Self {
+        Self {
+            hash: hash_bytes,
+        }
+    }
 }

@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 minicbor = { version = "2.1.1", default-features = false, features = ["derive"] }
+crc = "3.3.0"

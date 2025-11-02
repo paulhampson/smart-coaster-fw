@@ -14,5 +14,6 @@
 
 pub mod chunk;
 pub mod ready_to_download;
+pub mod builder;
 
-const CHUNK_SIZE: usize = 256;
+pub const CHUNK_SIZE: usize = 256;

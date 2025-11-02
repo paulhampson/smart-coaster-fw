@@ -12,16 +12,17 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use minicbor::{CborLen, Decode, Encode};
 use crate::bootloader::CHUNK_SIZE;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Encode, Decode, CborLen)]
 pub struct ChunkReq {
-    chunk_number: u32,
+    #[n(0)] pub chunk_number: u32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Encode, Decode, CborLen)]
 pub struct ChunkResp {
-    chunk_number: u32,
-    chunk_data: [u8; CHUNK_SIZE],
-    crc32: [u8; 4],
+    #[n(0)] pub chunk_number: u32,
+    #[n(1)] pub chunk_data: [u8; CHUNK_SIZE],
+    #[n(2)] pub crc32: [u8; 4],
 }

@@ -9,3 +9,4 @@ serialport = "4.8.1"
 minicbor = { version = "2.1", default-features = false }
 log = "0.4"
 env_logger = "0.11"
+ascon-hash = "0.3"

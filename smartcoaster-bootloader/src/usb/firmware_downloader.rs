@@ -12,7 +12,8 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use defmt::{Debug2Format, info, warn};
+use defmt::{Debug2Format, info, warn, debug};
+use embassy_boot_rp::State::Boot;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::USB;
 use embassy_rp::{Peri, bind_interrupts};
@@ -21,11 +22,12 @@ use crate::usb::cbor_send_receive::{read_cbor_message, send_cbor_message};
 use embassy_rp::usb::{Driver, Instance, InterruptHandler};
 use embassy_usb::class::cdc_acm::{BufferedReceiver, CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
-use smartcoaster_messages::GeneralMessages;
-use smartcoaster_messages::custom_data_types::VersionNumber;
+use smartcoaster_messages::{BootloaderMessages, GeneralMessages};
+use smartcoaster_messages::custom_data_types::{AsconHash256Bytes, VersionNumber};
 use smartcoaster_messages::general::builder::GeneralMessagesBuilder;
 use smartcoaster_messages::general::hello::SystemMode::Bootloader;
 use static_cell::StaticCell;
+use smartcoaster_messages::bootloader::builder::BootloaderMessagesBuilder;
 
 bind_interrupts!(struct UsbIrqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -131,15 +133,18 @@ async fn firmware_download<'d, T: Instance + 'd>(
 
     let mut buffer = [0u8; 1024];
 
+    let mut image_size_bytes = 0;
+    let mut image_hash = AsconHash256Bytes::default();
+    let mut chunk_index = 0;
+
     loop {
         match state {
             FirmwareDownloaderState::WaitingForHello => {
                 info!("Waiting for Hello message");
                 match read_cbor_message(receiver, &mut buffer).await {
                     Ok(message) => {
-                        info!("Received message: {:?}", Debug2Format(&message));
+                        debug!("Received message: {:?}", Debug2Format(&message));
                         if let GeneralMessages::Hello(_hello) = message {
-                            info!("Hello message received");
                             let hello_resp = GeneralMessagesBuilder::new()
                                 .hello_resp()
                                 .mode(Bootloader)
@@ -150,8 +155,7 @@ async fn firmware_download<'d, T: Instance + 'd>(
                                 .await
                                 .expect("Failed to send HelloResp");
 
-                            // TODO implement further states
-                            // state = FirmwareDownloaderState::WaitingForReadyToDownload;
+                            state = FirmwareDownloaderState::WaitingForReadyToDownload;
                         }
                     }
                     Err(e) => {
@@ -159,9 +163,68 @@ async fn firmware_download<'d, T: Instance + 'd>(
                     }
                 }
             }
-            FirmwareDownloaderState::WaitingForReadyToDownload => {}
-            FirmwareDownloaderState::WaitingForChunk => {}
-            FirmwareDownloaderState::DownloadFinished => {}
+            FirmwareDownloaderState::WaitingForReadyToDownload => {
+                info!("Waiting for ReadyToDownload message");
+                match read_cbor_message(receiver, &mut buffer).await {
+                    Ok(message) => {
+                        debug!("Received message: {:?}", Debug2Format(&message));
+                        if let BootloaderMessages::ReadyToDownload(ready_to_download) = message {
+                            image_size_bytes = ready_to_download.image_size_bytes;
+                            image_hash = ready_to_download.hash;
+                            info!("Image size: {} bytes", image_size_bytes);
+                            info!("Image hash: {:?}", Debug2Format(&image_hash));
+
+                            let resp = BootloaderMessagesBuilder::new().ready_to_download_response().build();
+                            send_cbor_message(sender, &resp)
+                                .await
+                                .expect("Failed to send ReadyToDownloadResponse");
+                            let chunk_req = BootloaderMessagesBuilder::new().chunk_req().chunk_number(chunk_index).build();
+                            send_cbor_message(sender, &chunk_req)
+                                .await
+                                .expect("Failed to send ChunkReq");
+                            state = FirmwareDownloaderState::WaitingForChunk;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to read message: {:?}", Debug2Format(&e));
+                    }
+                }
+            }
+            FirmwareDownloaderState::WaitingForChunk => {
+                info!("Waiting for ChunkResp message");
+                match read_cbor_message(receiver, &mut buffer).await {
+                    Ok(message) => {
+                        debug!("Received message: {:?}", Debug2Format(&message));
+                        if let BootloaderMessages::ChunkResp(chunk_resp) = message {
+                            if chunk_resp.chunk_number == chunk_index {
+                                // TODO check CRC
+                                chunk_index += 1;
+                                let req = BootloaderMessagesBuilder::new().chunk_req().chunk_number(chunk_index).build();
+                                send_cbor_message(sender, &req)
+                                    .await
+                                    .expect("Failed to send ChunkReq");
+                                if chunk_index * smartcoaster_messages::bootloader::CHUNK_SIZE as u32 >= image_size_bytes {
+                                    state = FirmwareDownloaderState::DownloadFinished;
+                                }
+                            } else {
+                                warn!("Got chunk number {} but expected {}", chunk_resp.chunk_number, chunk_index);
+                                let req = BootloaderMessagesBuilder::new().chunk_req().chunk_number(chunk_index).build();
+                                send_cbor_message(sender, &req)
+                                    .await
+                                    .expect("Failed to send ChunkReq");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to read message: {:?}", Debug2Format(&e));
+                    }
+                }
+            }
+            FirmwareDownloaderState::DownloadFinished => {
+                info!("Download finished");
+                // TODO check final hash
+                return Ok(());
+            }
         }
     }
 }

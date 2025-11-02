@@ -34,16 +34,16 @@ pub enum GeneralMessages {
     ),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Decode, Encode, CborLen)]
 pub enum BootloaderMessages {
-    ReadyToDownload(ReadyToDownload),
-    ReadyToDownloadResponse(ReadyToDownloadResponse),
-    ChunkReq(ChunkReq),
-    ChunkResp(ChunkResp),
-    Goodbye(Goodbye),
+    #[n(0)] ReadyToDownload(#[n(0)] ReadyToDownload),
+    #[n(1)] ReadyToDownloadResponse(#[n(0)] ReadyToDownloadResponse),
+    #[n(2)] ChunkReq(#[n(0)] ChunkReq),
+    #[n(3)] ChunkResp(#[n(0)] ChunkResp),
+    #[n(4)] Goodbye(#[n(0)] Goodbye),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Decode, Encode, CborLen)]
 pub enum ApplicationMessages {
-    Goodbye(Goodbye),
+    #[n(0)] Goodbye(#[n(0)] Goodbye),
 }
