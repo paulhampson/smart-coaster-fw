@@ -16,7 +16,9 @@ excludes:
   - \.cargo/.*
   - Cargo.toml
   - rust-toolchain.toml
-  - memory.x
+  - memory.*\.x
+  - \.github
+  - \.gdbinit
 
 # Definition of the licenses used on this project and to what files
 # they should apply.
