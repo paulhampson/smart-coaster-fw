@@ -32,7 +32,7 @@ use embassy_sync::blocking_mutex::Mutex;
 const FLASH_SIZE: usize = 16 * 1024 * 1024;
 
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) -> ! {
+async fn main(spawner: Spawner) -> ! {
     let p = embassy_rp::init(Default::default());
 
     // Uncomment this if you are debugging the bootloader with debugger/RTT attached,
@@ -46,7 +46,7 @@ async fn main(_spawner: Spawner) -> ! {
     info!("Starting USB");
     let usb = p.USB;
     let fw_downloader = FirmwareDownloader::new();
-    fw_downloader.start(usb).await;
+    fw_downloader.start(usb, spawner).await;
 
     // let flash = WatchdogFlash::<FLASH_SIZE>::start(p.FLASH, p.WATCHDOG, Duration::from_secs(8));
     let flash = Flash::<_, _, FLASH_SIZE>::new_blocking(p.FLASH);

@@ -12,5 +12,16 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-mod cbor_send_receive;
-pub mod firmware_downloader;
+use crate::bootloader::CHUNK_SIZE;
+
+#[derive(Debug, PartialEq)]
+pub struct ChunkReq {
+    chunk_number: u32,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ChunkResp {
+    chunk_number: u32,
+    chunk_data: [u8; CHUNK_SIZE],
+    crc32: [u8; 4],
+}

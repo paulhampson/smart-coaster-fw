@@ -12,5 +12,26 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-mod cbor_send_receive;
-pub mod firmware_downloader;
+use minicbor::{CborLen, Decode, Encode};
+
+#[derive(Debug, PartialEq, Default, Encode, Decode, CborLen)]
+pub struct VersionNumber {
+    #[n(0)] major: u16,
+    #[n(1)] minor: u16,
+    #[n(2)] patch: u16,
+}
+
+impl VersionNumber {
+    pub fn new(major: u16, minor: u16, patch: u16) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Default)]
+pub struct AsconHash256 {
+    hash: [u8; 32],
+}

@@ -9,7 +9,7 @@ _page_size = 4k;
 
 /* Embassy bootloader locations and sizes */
 _bootloader_start = _flash_start + _boot2_size;
-_bootloader_size = 24K - _boot2_size; /* ensure page aligned */
+_bootloader_size = 48K - _boot2_size; /* ensure page aligned */
 _bootloader_end = _bootloader_start + _bootloader_size;
 
 _bootloader_state_start = _bootloader_end;

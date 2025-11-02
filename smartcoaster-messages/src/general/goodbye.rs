@@ -12,5 +12,12 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-mod cbor_send_receive;
-pub mod firmware_downloader;
+#[derive(Debug, PartialEq)]
+pub enum GoodbyeReason {
+    InstallingNewFirmware,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Goodbye {
+    reason: GoodbyeReason,
+}

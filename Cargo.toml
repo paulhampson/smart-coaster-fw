@@ -1,5 +1,5 @@
 [workspace]
-members = ["smartcoaster-application", "smartcoaster-bootloader"]
+members = ["firmware-loader-cli", "smartcoaster-application", "smartcoaster-bootloader", "smartcoaster-messages"]
 resolver = "2"
 
 [profile.release]
