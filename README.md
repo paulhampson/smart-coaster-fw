@@ -60,28 +60,32 @@ Steps:
 
 ### Running from CLI
 
+All operations are managed through `xtask`. To get a full list of commands run `cargo xtask help`. A summary of useful
+commands is below.
+
 Flash the bootloader:
 
 ```aiignore
-cargo flash --release --package smartcoaster-bootloader --chip RP2040
+cargo xtask flash bootloader
 ```
 
-Load the application:
+Flash the application:
 
 ```aiignore
-cargo flash --release --package smartcoaster-application --chip RP2040
+cargo xtask flash application
 ```
 
 Attach to the application:
 
 ```aiignore
-probe-rs attach --chip rp2040 target/thumbv6m-none-eabi/release/smartcoaster-application
+cargo xtask attach [bootloader|application]
 ```
 
 Running CLI firmware loader (replace <SERIAL_PORT> with the serial port you're device is connected to):
 
 ```aiignore
-RUST_LOG=firmware_loader_cli=info cargo run --target x86_64-unknown-linux-gnu -p firmware-loader-cli -- <SERIAL_PORT>
+cargo xtask run firmware-loader-cli <SERIAL_PORT>
+cargo xtask run firmware-loader-cli --log-level DEBUG <SERIAL_PORT>
 ```
 
 # Design
