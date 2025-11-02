@@ -81,11 +81,11 @@ Attach to the application:
 cargo xtask attach [bootloader|application]
 ```
 
-Running CLI firmware loader (replace <SERIAL_PORT> with the serial port you're device is connected to):
+Running CLI firmware loader (replace <SERIAL_PORT> with the serial port your device is connected to):
 
 ```aiignore
-cargo xtask run firmware-loader-cli <SERIAL_PORT>
-cargo xtask run firmware-loader-cli --log-level DEBUG <SERIAL_PORT>
+cargo xtask run firmware-loader-cli --port <SERIAL_PORT> <firmware.bin>
+cargo xtask run firmware-loader-cli --log-level DEBUG --port <SERIAL_PORT> <firmware.bin>
 ```
 
 # Design
