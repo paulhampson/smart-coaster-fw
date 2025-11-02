@@ -12,5 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-mod cbor_send_receive;
-pub mod firmware_downloader;
+pub mod chunk;
+pub mod ready_to_download;
+
+const CHUNK_SIZE: usize = 256;

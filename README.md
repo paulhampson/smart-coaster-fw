@@ -78,6 +78,12 @@ Attach to the application:
 probe-rs attach --chip rp2040 target/thumbv6m-none-eabi/release/smartcoaster-application
 ```
 
+Running CLI firmware loader (replace <SERIAL_PORT> with the serial port you're device is connected to):
+
+```aiignore
+RUST_LOG=firmware_loader_cli=info cargo run --target x86_64-unknown-linux-gnu -p firmware-loader-cli -- <SERIAL_PORT>
+```
+
 # Design
 
-See [DESIGN_NOTES.md](DESIGN_NOTES.md)
+See [DESIGN_NOTES.md](docs/DESIGN_NOTES.md)

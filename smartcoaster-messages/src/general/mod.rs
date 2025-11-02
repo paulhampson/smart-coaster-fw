@@ -12,5 +12,6 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-mod cbor_send_receive;
-pub mod firmware_downloader;
+pub mod builder;
+pub mod goodbye;
+pub mod hello;

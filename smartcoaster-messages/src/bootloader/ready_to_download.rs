@@ -12,5 +12,16 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-mod cbor_send_receive;
-pub mod firmware_downloader;
+use crate::custom_data_types::{AsconHash256, VersionNumber};
+
+#[derive(Debug, PartialEq)]
+pub struct ReadyToDownload {
+    image_size_bytes: u32,
+    version: VersionNumber,
+    hash: AsconHash256,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ReadyToDownloadResponse {
+    desired_chunk_size: u32,
+}

@@ -1,0 +1,11 @@
+[package]
+name = "firmware-loader-cli"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+smartcoaster-messages = { path = "../smartcoaster-messages" }
+serialport = "4.8.1"
+minicbor = { version = "2.1", default-features = false }
+log = "0.4"
+env_logger = "0.11"

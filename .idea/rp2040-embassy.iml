@@ -5,6 +5,8 @@
       <sourceFolder url="file://$MODULE_DIR$/smartcoaster-application/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/smartcoaster-application/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/smartcoaster-bootloader/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/firmware-loader-cli/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/smartcoaster-messages/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/smartcoaster-application/target" />
       <excludeFolder url="file://$MODULE_DIR$/smartcoaster-bootloader/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
