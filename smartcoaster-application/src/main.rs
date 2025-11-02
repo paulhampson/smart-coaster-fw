@@ -108,7 +108,7 @@ const CORE1_STACK_SIZE: usize = 16 * 1024;
 const HEAP_SIZE: usize = 16 * 1024;
 
 // Ensure this matches memory.x
-const FLASH_SIZE: usize = 16 * 1024 * 1024;
+const FLASH_SIZE: usize = 16 * 1024 * 1024; // TODO centralise this to make common across bootloader and application
 const _NVM_PAGE_SIZE: usize = 256;
 
 // Application NVM for settings and activity log is at the end of flash
@@ -354,7 +354,7 @@ async fn storage_task(storage_resources: StorageResources) {
         NVM_PARTITION_RANGE.clone(),
         SETTINGS_NVM_FLASH_OFFSET_RANGE.clone(),
     )
-    .await;
+        .await;
 
     storage::settings::accessor::initialise_settings().await;
 

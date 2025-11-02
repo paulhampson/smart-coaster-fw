@@ -12,18 +12,23 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use core::cell::RefCell;
 use core::cmp::min;
 use ascon_hash::{AsconHash256, Digest};
 use defmt::{Debug2Format, info, warn, debug, trace, error};
-use embassy_boot_rp::State::Boot;
+use embassy_boot_rp::{AlignedBuffer, BlockingFirmwareUpdater, FirmwareUpdaterConfig};
 use embassy_executor::Spawner;
-use embassy_rp::peripherals::USB;
+use embassy_rp::peripherals::{USB};
 use embassy_rp::{Peri, bind_interrupts};
 
 use crate::usb::cbor_send_receive::{read_cbor_message, send_cbor_message};
 use embassy_rp::usb::{Driver, Instance, InterruptHandler};
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_usb::class::cdc_acm::{BufferedReceiver, CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
+use embassy_boot_rp::BootLoaderConfig;
+use embedded_storage::nor_flash::NorFlash;
 use smartcoaster_messages::{BootloaderMessages, GeneralMessages};
 use smartcoaster_messages::custom_data_types::{AsconHash256Bytes, VersionNumber};
 use smartcoaster_messages::general::builder::GeneralMessagesBuilder;
@@ -45,15 +50,20 @@ impl FirmwareDownloader {
         Self {}
     }
 
-    pub async fn start(&self, usb_peripheral: Peri<'static, USB>, spawner: Spawner) {
+    pub async fn start<F: NorFlash>(&self, usb_peripheral: Peri<'static, USB>, flash: &Mutex<NoopRawMutex, RefCell<F>>, spawner: Spawner) {
         // Create the driver, from the HAL.
         let driver = Driver::new(usb_peripheral, UsbIrqs);
 
+        let config =
+            FirmwareUpdaterConfig::from_linkerfile_blocking(&flash, &flash);
+        let mut aligned = AlignedBuffer([0; 1]);
+        let mut updater = BlockingFirmwareUpdater::new(config, &mut aligned.0);
+
         let config = {
-            let mut config = embassy_usb::Config::new(0x1209, 0x4004);
+            let mut config = embassy_usb::Config::new(0x1209, 0x4004); // Pending acceptance of USB PID from pid.codes
             config.manufacturer = Some("SmartCoaster");
             config.product = Some("SmartCoaster Bootloader");
-            config.serial_number = Some("12345678");
+            config.serial_number = Some("12345678"); // TODO get this from flash device
             config.max_power = 500;
             config.max_packet_size_0 = MAX_PACKET_SIZE;
             config
@@ -96,7 +106,7 @@ impl FirmwareDownloader {
         let serial_usb_fut = async {
             loop {
                 info!("Connected");
-                let _ = firmware_download(&mut sender, &mut buffered_rx).await;
+                firmware_download(&mut sender, &mut buffered_rx, &mut updater).await;
                 info!("Disconnected");
             }
         };
@@ -128,10 +138,11 @@ enum FirmwareDownloaderState {
     DownloadFinished,
 }
 
-async fn firmware_download<'d, T: Instance + 'd>(
+async fn firmware_download<'d, T: Instance + 'd, DFU: NorFlash, STATE: NorFlash>(
     sender: &mut embassy_usb::class::cdc_acm::Sender<'d, Driver<'d, T>>,
     receiver: &mut BufferedReceiver<'d, Driver<'d, USB>>,
-) -> Result<(), Disconnected> {
+    updater: &mut BlockingFirmwareUpdater<'_, DFU, STATE>,
+) -> ! {
     let mut state = FirmwareDownloaderState::WaitingForHello;
 
     let mut buffer = [0u8; 1024];
@@ -209,7 +220,9 @@ async fn firmware_download<'d, T: Instance + 'd>(
                                                                       image_size_bytes as usize - chunk_index as usize * smartcoaster_messages::bootloader::CHUNK_SIZE);
                                     info!("Valid chunk data length: {}", valid_chunk_data_length);
                                     received_image_hash.update(&chunk_resp.chunk_data[..valid_chunk_data_length]);
-                                    // TODO write data to flash
+                                    updater
+                                        .write_firmware(chunk_index as usize * smartcoaster_messages::bootloader::CHUNK_SIZE, &chunk_resp.chunk_data[..valid_chunk_data_length])
+                                        .expect("Failed to write to DFU partition");
 
                                     chunk_index += 1;
                                     if chunk_index * smartcoaster_messages::bootloader::CHUNK_SIZE as u32 >= image_size_bytes {
@@ -249,12 +262,15 @@ async fn firmware_download<'d, T: Instance + 'd>(
                 hash_bytes.copy_from_slice(&received_hash_output[..32]);
                 let received_hash = AsconHash256Bytes::from_bytes(hash_bytes);
                 let goodbye_reason = if expected_image_hash.eq(&received_hash) {
-                    info!("Image hash matches");
-                    // TODO mark partition to proceed with update
+                    info!("Image hash matches - will swap to new firmware version");
+                    updater.mark_updated().expect("Unable to mark update available");
                     GoodbyeReason::InstallingNewFirmware
                 } else {
-                    error!("Image hash does not match");
-                    // TODO invalidate partition
+                    error!("Image hash does not match - system will boot into existing software version");
+                    // this will clear the DFU partition area
+                    updater.prepare_update().expect("Unable to clear DFU partition");
+                    // this puts the bootloader into a state that says the existing firmware is OK to boot
+                    updater.mark_booted().expect("Unable to mark existing firmware as OK");
                     GoodbyeReason::DownloadHashMismatch
                 };
 
@@ -263,7 +279,9 @@ async fn firmware_download<'d, T: Instance + 'd>(
                 send_cbor_message(sender, &goodbye)
                     .await
                     .expect("Failed to send Goodbye");
-                return Ok(());
+
+                info!("Resetting device");
+                cortex_m::peripheral::SCB::sys_reset();
             }
         }
     }
