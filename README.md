@@ -84,8 +84,8 @@ cargo xtask attach [bootloader|application]
 Running CLI firmware loader (replace <SERIAL_PORT> with the serial port your device is connected to):
 
 ```aiignore
-cargo xtask run firmware-loader-cli --port <SERIAL_PORT> <firmware.bin>
-cargo xtask run firmware-loader-cli --log-level DEBUG --port <SERIAL_PORT> <firmware.bin>
+cargo xtask run firmware-loader-cli --port <SERIAL_PORT> target/thumbv6m-none-eabi/release/smartcoaster-application.bin
+cargo xtask run firmware-loader-cli --log-level DEBUG --port <SERIAL_PORT> target/thumbv6m-none-eabi/release/smartcoaster-application.bin
 ```
 
 # Design
