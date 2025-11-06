@@ -5,7 +5,9 @@ https://github.com/paulhampson/smart-coaster-hw
 
 ## Install via USB
 
-Coming Soon :tm:
+Web Interface - Coming Soon :tm:
+
+To load firmware over USB using the CLI follow the steps in [Running from CLI](#running-from-cli).
 
 ## Install the latest release to hardware via debugger
 
