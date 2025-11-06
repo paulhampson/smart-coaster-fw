@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-smartcoaster-messages = { path = "../smartcoaster-messages" }
+smartcoaster-messages = { path = "../smartcoaster-messages", version = "0.1.0" }
 serialport = "4.8.1"
 minicbor = { version = "2.1", default-features = false }
 log = "0.4"
