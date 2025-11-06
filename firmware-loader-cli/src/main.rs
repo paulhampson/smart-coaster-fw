@@ -22,6 +22,7 @@ use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::time::Duration;
 use smartcoaster_messages::bootloader::builder::BootloaderMessagesBuilder;
 use smartcoaster_messages::custom_data_types::{AsconHash256Bytes, VersionNumber};
+use indicatif::{ProgressBar, ProgressStyle};
 
 
 fn main() -> IoResult<()> {
@@ -32,14 +33,14 @@ fn main() -> IoResult<()> {
         .format_timestamp_millis()
         .init();
 
-    log::info!("Starting SmartCoaster Firmware Loader");
+    println!("Starting SmartCoaster Firmware Loader");
 
     let args: Vec<String> = std::env::args().collect();
 
     // Extract firmware file path (first positional arg after --log-level if present)
     let firmware_file_path = util::extract_firmware_file_path(&args)?;
 
-    log::info!("Available serial ports:");
+    println!("Available serial ports:");
     let ports = serialport::available_ports()
         .map_err(|e| IoError::new(ErrorKind::Other, e.to_string()))?;
 
@@ -49,7 +50,7 @@ fn main() -> IoResult<()> {
     }
 
     for port in &ports {
-        log::info!("  - {}", port.port_name);
+        println!("  - {}", port.port_name);
     }
 
     // Use the first available port or get from the environment
@@ -60,38 +61,41 @@ fn main() -> IoResult<()> {
         .cloned()
         .unwrap_or_else(|| ports[0].port_name.clone());
 
-    log::info!("Connecting to: {}", port_name);
+    log::debug!("Connecting to: {}", port_name);
 
     let mut serial = serialport::new(&port_name, 115200)
         .timeout(Duration::from_secs(5))
         .open()
         .map_err(|e| IoError::new(ErrorKind::ConnectionRefused, e.to_string()))?;
 
-    log::info!("Connected successfully!");
-    log::info!("Baud rate: 115200");
-    log::info!("Timeout: 5s\n");
+    println!("Connected to serial port");
+    log::debug!("Connected successfully!");
+    log::debug!("Baud rate: 115200");
+    log::debug!("Timeout: 5s\n");
 
     // Give the device time to initialize
     std::thread::sleep(Duration::from_millis(100));
 
-    log::info!("Creating Hello message...");
+    println!("Initiating contact with device");
+
+    log::debug!("Creating Hello message...");
     let hello = GeneralMessagesBuilder::new().hello();
     log::debug!("Hello message: {:?}", hello);
 
-    log::info!("Sending Hello message...");
+    log::debug!("Sending Hello message...");
     cbor_messaging::send_message(&mut serial, &hello)?;
 
-    log::info!("Waiting for HelloResp...");
+    log::debug!("Waiting for HelloResp...");
     let mut buffer = [0u8; 1024];
 
     match cbor_messaging::receive_message::<GeneralMessages>(&mut serial, &mut buffer) {
         Ok(response) => {
-            log::info!("Received message: {:?}", response);
+            log::debug!("Received message: {:?}", response);
 
             if let GeneralMessages::HelloResp(hello_resp) = response {
-                log::info!("HelloResp received successfully!");
-                log::info!("  Mode: {:?}", hello_resp.mode);
-                log::info!("  Version: {:?}", hello_resp.version);
+                log::debug!("HelloResp received successfully!");
+                log::debug!("  Mode: {:?}", hello_resp.mode);
+                log::debug!("  Version: {:?}", hello_resp.version);
             } else {
                 log::error!("Expected HelloResp but got different message type");
             }
@@ -102,19 +106,19 @@ fn main() -> IoResult<()> {
     }
 
     // Read and process firmware file
-    log::info!("Reading firmware file: {}", firmware_file_path);
+    log::debug!("Reading firmware file: {}", firmware_file_path);
     let firmware_data = util::read_binary_file(&firmware_file_path)?;
 
     let image_size_bytes = firmware_data.len() as u32;
-    log::info!("Firmware image size: {} bytes", image_size_bytes);
+    log::debug!("Firmware image size: {} bytes", image_size_bytes);
 
-    log::info!("Calculating Ascon-Hash256...");
+    log::debug!("Calculating Ascon-Hash256...");
     let hash_bytes = util::calculate_ascon_hash256(&firmware_data);
     let hash = AsconHash256Bytes::from_bytes(hash_bytes);
-    log::info!("Hash calculated successfully");
+    log::debug!("Hash calculated successfully");
 
     // Create and send ReadyToDownload message
-    log::info!("Creating ReadyToDownload message...");
+    log::debug!("Creating ReadyToDownload message...");
     let ready_to_download = BootloaderMessagesBuilder::new()
         .ready_to_download()
         .image_size_bytes(image_size_bytes)
@@ -124,21 +128,35 @@ fn main() -> IoResult<()> {
 
     log::debug!("ReadyToDownload message: {:?}", ready_to_download);
 
-    log::info!("Sending ReadyToDownload message...");
+    log::debug!("Sending ReadyToDownload message...");
     cbor_messaging::send_message(&mut serial, &ready_to_download)?;
 
-    log::info!("Waiting for ReadyToDownloadResponse...");
+    log::debug!("Waiting for ReadyToDownloadResponse...");
 
     match cbor_messaging::receive_message::<BootloaderMessages>(&mut serial, &mut buffer) {
         Ok(response) => {
-            log::info!("Received message: {:?}", response);
+            log::debug!("Received message: {:?}", response);
 
             if let BootloaderMessages::ReadyToDownloadResponse(resp) = response {
-                log::info!("ReadyToDownloadResponse received successfully!");
-                log::info!("  Desired chunk size: {} bytes", resp.desired_chunk_size);
+                log::debug!("ReadyToDownloadResponse received successfully!");
+                log::debug!("  Desired chunk size: {} bytes", resp.desired_chunk_size);
+
+                // Calculate total number of chunks
+                let chunk_size = smartcoaster_messages::bootloader::CHUNK_SIZE;
+                let total_chunks = (firmware_data.len() + chunk_size - 1) / chunk_size;
+
+                // Create progress bar
+                let progress_bar = ProgressBar::new(total_chunks as u64);
+                progress_bar.set_style(ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} chunks ({eta})")
+                    .unwrap()
+                    .progress_chars("#>-"));
+
+                // Track which chunks have been successfully processed
+                let mut processed_chunks = std::collections::HashSet::new();
 
                 // Now wait for ChunkReq messages and send ChunkResp in reply
-                log::info!("Waiting for ChunkReq messages...");
+                log::debug!("Waiting for ChunkReq messages...");
                 let mut request_buffer = [0u8; 1024];
                 let chunk_size = smartcoaster_messages::bootloader::CHUNK_SIZE;
 
@@ -147,7 +165,7 @@ fn main() -> IoResult<()> {
                         Ok(chunk_message) => {
                             match chunk_message {
                                 BootloaderMessages::ChunkReq(req) => {
-                                    log::info!("Received ChunkReq for chunk number: {}", req.chunk_number);
+                                    log::debug!("Received ChunkReq for chunk number: {}", req.chunk_number);
 
                                     // Calculate byte offset
                                     let byte_offset = (req.chunk_number as usize) * chunk_size;
@@ -174,15 +192,22 @@ fn main() -> IoResult<()> {
                                         .chunk_data(chunk_data)
                                         .build();
 
-                                    log::info!("Sending ChunkResp for chunk {}", req.chunk_number);
+                                    log::debug!("Sending ChunkResp for chunk {}", req.chunk_number);
                                     cbor_messaging::send_message(&mut serial, &chunk_resp)?;
+
+                                    // Only update the progress bar if this is a new chunk (not a retry)
+                                    if processed_chunks.insert(req.chunk_number) {
+                                        progress_bar.inc(1);
+                                    } else {
+                                        log::debug!("Chunk {} was already processed (retry)", req.chunk_number);
+                                    }
                                 }
                                 BootloaderMessages::Goodbye(_) => {
-                                    log::info!("Received Goodbye message, exiting chunk loop");
+                                    log::debug!("Received Goodbye message, exiting chunk loop");
                                     break;
                                 }
                                 _ => {
-                                    log::info!("Received unexpected message: {:?}", chunk_message);
+                                    log::error!("Received unexpected message: {:?}", chunk_message);
                                     break;
                                 }
                             }
@@ -202,7 +227,7 @@ fn main() -> IoResult<()> {
         }
     }
 
-    log::info!("Firmware transfer completed - please wait for device to load firmware and boot");
+    println!("Firmware transfer completed - please wait for device to load firmware and boot");
     Ok(())
 }
 

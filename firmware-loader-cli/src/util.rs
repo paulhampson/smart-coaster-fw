@@ -24,7 +24,7 @@ pub(crate) fn read_binary_file(path: &str) -> IoResult<Vec<u8>> {
     let mut contents = Vec::new();
     file.read_to_end(&mut contents)?;
 
-    log::info!("Read {} bytes from {}", contents.len(), path);
+    log::trace!("Read {} bytes from {}", contents.len(), path);
     Ok(contents)
 }
 
