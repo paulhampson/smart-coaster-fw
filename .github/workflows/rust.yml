@@ -25,8 +25,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Install ARM tools
-        run: sudo apt-get update && sudo apt-get install -y arm-none-eabi-binutils
+      - name: Install Arm GNU Toolchain (arm-none-eabi-gcc)
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '14.3.Rel1'
       - name: Cache
         uses: actions/cache@v4
         with:
@@ -47,11 +49,25 @@ jobs:
             target/thumbv6m-none-eabi/release/smartcoaster-${{ matrix.package }}
             target/thumbv6m-none-eabi/release/smartcoaster-${{ matrix.package }}.bin
 
-  build-loader-cli:
-    runs-on: ubuntu-latest
+  build-loader-cli-multi:
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        include:
+          - os: ubuntu-latest
+            artifact_name: firmware-loader-cli
+            asset_name: firmware-loader-cli-linux
+          - os: windows-latest
+            artifact_name: firmware-loader-cli.exe
+            asset_name: firmware-loader-cli-windows.exe
+          - os: macos-latest
+            artifact_name: firmware-loader-cli
+            asset_name: firmware-loader-cli-macos
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install system dependencies
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - name: Cache
         uses: actions/cache@v4
@@ -63,11 +79,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Build firmware-loader-cli
         run: cargo build --release --package firmware-loader-cli
-      - name: Upload firmware-loader-cli
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-loader-cli
-          path: target/release/firmware-loader-cli
+          name: ${{ matrix.asset_name }}
+          path: target/release/${{ matrix.artifact_name }}
 
   release:
     needs: build
@@ -86,6 +102,8 @@ jobs:
             smartcoaster-bootloader/smartcoaster-bootloader.bin
             smartcoaster-application/smartcoaster-application
             smartcoaster-application/smartcoaster-application.bin
-            firmware-loader-cli/firmware-loader-cli
+            firmware-loader-cli-linux/firmware-loader-cli
+            firmware-loader-cli-windows.exe/firmware-loader-cli-windows.exe
+            firmware-loader-cli-macos/firmware-loader-cli-macos
           draft: yes
           generate_release_notes: yes
