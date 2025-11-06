@@ -25,6 +25,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Install ARM tools
+        run: sudo apt-get update && sudo apt-get install -y arm-none-eabi-binutils
       - name: Cache
         uses: actions/cache@v4
         with:
@@ -49,6 +51,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - name: Cache
         uses: actions/cache@v4
         with:
