@@ -97,7 +97,7 @@ jobs:
       - name: Rename artifacts
         run: |
           mv smartcoaster-application/smartcoaster-application smartcoaster-application/smartcoaster-application.elf
-          mv smartcoaster-bootloader/smartcoaster-bootloader smartcoaster-application/smartcoaster-bootloader.elf
+          mv smartcoaster-bootloader/smartcoaster-bootloader smartcoaster-bootloader/smartcoaster-bootloader.elf
           mv firmware-loader-cli-linux/firmware-loader-cli firmware-loader-cli-linux/firmware-loader-cli-linux
           mv firmware-loader-cli-macos/firmware-loader-cli firmware-loader-cli-macos/firmware-loader-cli-macos
       - name: Release
