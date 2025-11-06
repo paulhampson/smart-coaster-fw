@@ -59,7 +59,7 @@ jobs:
             asset_name: firmware-loader-cli-linux
           - os: windows-latest
             artifact_name: firmware-loader-cli.exe
-            asset_name: firmware-loader-cli-windows.exe
+            asset_name: firmware-loader-cli-windows
           - os: macos-latest
             artifact_name: firmware-loader-cli
             asset_name: firmware-loader-cli-macos
