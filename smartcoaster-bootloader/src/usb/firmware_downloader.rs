@@ -27,7 +27,6 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_usb::class::cdc_acm::{BufferedReceiver, CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
-use embassy_boot_rp::BootLoaderConfig;
 use embedded_storage::nor_flash::NorFlash;
 use smartcoaster_messages::{BootloaderMessages, GeneralMessages};
 use smartcoaster_messages::custom_data_types::{AsconHash256Bytes, VersionNumber};
@@ -107,7 +106,6 @@ impl FirmwareDownloader {
             loop {
                 info!("Connected");
                 firmware_download(&mut sender, &mut buffered_rx, &mut updater).await;
-                info!("Disconnected");
             }
         };
 

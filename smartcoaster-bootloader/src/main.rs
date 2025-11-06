@@ -18,7 +18,6 @@
 mod usb;
 
 use core::cell::RefCell;
-
 use crate::usb::firmware_downloader::FirmwareDownloader;
 use cortex_m_rt::exception;
 use defmt::info;
@@ -27,7 +26,9 @@ use defmt_rtt as _;
 use embassy_boot_rp::*;
 use embassy_executor::Spawner;
 use embassy_rp::flash::Flash;
+use embassy_rp::gpio::{Input, Pull};
 use embassy_sync::blocking_mutex::Mutex;
+use embassy_time::{Duration, Timer};
 
 const FLASH_SIZE: usize = 16 * 1024 * 1024;
 
@@ -55,9 +56,29 @@ async fn main(spawner: Spawner) -> ! {
     let mut updater = BlockingFirmwareUpdater::new(config, &mut aligned.0);
     let mut current_state = updater.get_state().unwrap();
 
-    // TODO remove this forcing into DFU mode - change to be triggered by the button being held down
     if current_state == State::Boot {
-        current_state = State::DfuDetach;
+        let saved_state = updater.get_state().unwrap();
+
+        // check if button is pushed - if so and it's still held after 2 sec, enter DFU mode
+        let push_btn_pin = p.PIN_25;
+        let push_btn_input = Input::new(push_btn_pin, Pull::Up);
+        if push_btn_input.is_low() {
+            info!("Button pressed - checking for hold");
+            const CHECK_PERIOD: Duration = Duration::from_millis(50);
+            const HOLD_TIME: Duration = Duration::from_millis(2000);
+            for _ in 0..(HOLD_TIME.as_millis() / CHECK_PERIOD.as_millis()) {
+                Timer::after(CHECK_PERIOD).await;
+                if push_btn_input.is_high() { // released, carry on
+                    current_state = saved_state;
+                    info!("Button released early - continuing");
+                    break;
+                } else {
+                    // held, enter DFU mode
+                    info!("Button held - entering DFU mode");
+                    current_state = State::DfuDetach;
+                }
+            }
+        }
     }
 
     if current_state == State::DfuDetach {
