@@ -87,7 +87,7 @@ use crate::storage::storage_manager::BlockingFlash;
 use core::ptr::addr_of_mut;
 use cortex_m_rt::entry;
 use ds323x::Ds323x;
-use embassy_boot::{AlignedBuffer, BlockingFirmwareUpdater, FirmwareUpdaterConfig};
+use embassy_boot_rp::{AlignedBuffer, BlockingFirmwareUpdater, FirmwareUpdaterConfig};
 use embassy_rp::interrupt::{InterruptExt, Priority};
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
