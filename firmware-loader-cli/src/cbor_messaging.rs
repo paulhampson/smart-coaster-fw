@@ -15,7 +15,7 @@ where
     serial.write_all(&length_bytes)?;
     serial.write_all(&buffer[..encoded_len])?;
 
-    log::info!("Sent message of {} bytes", encoded_len);
+    log::trace!("Sent message of {} bytes", encoded_len);
     Ok(())
 }
 

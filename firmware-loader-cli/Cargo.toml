@@ -1,6 +1,6 @@
 [package]
 name = "firmware-loader-cli"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 
 [dependencies]
@@ -10,3 +10,4 @@ minicbor = { version = "2.1", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 ascon-hash = "0.3"
+indicatif = "0.17"
