@@ -86,7 +86,7 @@ jobs:
           path: target/release/${{ matrix.artifact_name }}
 
   release:
-    needs: build
+    needs: [ build, build-loader-cli-multi ]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
 
@@ -103,7 +103,7 @@ jobs:
             smartcoaster-application/smartcoaster-application
             smartcoaster-application/smartcoaster-application.bin
             firmware-loader-cli-linux/firmware-loader-cli
-            firmware-loader-cli-windows.exe/firmware-loader-cli-windows.exe
-            firmware-loader-cli-macos/firmware-loader-cli-macos
+            firmware-loader-cli-windows/firmware-loader-cli.exe
+            firmware-loader-cli-macos/firmware-loader-cli
           draft: yes
           generate_release_notes: yes
