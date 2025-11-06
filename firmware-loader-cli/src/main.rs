@@ -202,7 +202,7 @@ fn main() -> IoResult<()> {
         }
     }
 
-    log::info!("Test application completed");
+    log::info!("Firmware transfer completed - please wait for device to load firmware and boot");
     Ok(())
 }
 
