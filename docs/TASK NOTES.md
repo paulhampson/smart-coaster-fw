@@ -25,17 +25,18 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 
 ### Feature List
 
-* Firmware update via USB - *WIP*
+* Firmware update via USB
     * ~~Add bootloader~~
     * ~~Modify flash interfaces used by settings to play nicely with bootloader~~
     * ~~Add USB interface to bootloader~~
-        * DFU mode activates if encoder held during boot
-        * DFU mode enterable via menu option
+        * ~~DFU mode activates if encoder held during boot~~
+        * ? DFU mode enterable via menu option
     * ~~Add firmware transfer via Serial over USB in bootloader DFU mode~~
     * ~~Firmware update CLI tool~~
     * Basic firmware update web page that uses web serial to transfer firmware
+        * Pull latest update directly from github
     * Bootloader shows screens to indicate update activity
-* Time to drink reminder mode (flash LED when time since last drink has elapsed)
+* Time to drink reminder mode (flash LED when time since the last drink has elapsed)
 * Monitoring functionality
     * ~~Monitor drink in background if in settings menu~~
     * ~~Daily/hourly target is settable~~
@@ -70,7 +71,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * Daylight savings
     * Time display format
 * Visual alarm
-* Pomodoro mode
+* ? Pomodoro mode
 * ~~Screen off after period of inactivity to save OLED~~
 
 ### Application logic ideas
