@@ -96,20 +96,20 @@ jobs:
         uses: actions/download-artifact@v4
       - name: Rename artifacts
         run: |
-          mv smartcoaster-application/smartcoaster-application smartcoaster-application.elf
-          mv smartcoaster-bootloader/smartcoaster-bootloader smartcoaster-bootloader.elf
-          mv firmware-loader-cli-linux/firmware-loader-cli firmware-loader-cli-linux
-          mv firmware-loader-cli-macos/firmware-loader-cli firmware-loader-cli-macos
+          mv smartcoaster-application/smartcoaster-application smartcoaster-application/smartcoaster-application.elf
+          mv smartcoaster-bootloader/smartcoaster-bootloader smartcoaster-application/smartcoaster-bootloader.elf
+          mv firmware-loader-cli-linux/firmware-loader-cli firmware-loader-cli-linux/firmware-loader-cli-linux
+          mv firmware-loader-cli-macos/firmware-loader-cli firmware-loader-cli-macos/firmware-loader-cli-macos
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            smartcoaster-bootloader.elf
+            smartcoaster-bootloader/smartcoaster-bootloader.elf
             smartcoaster-bootloader/smartcoaster-bootloader.bin
-            smartcoaster-application.elf
+            smartcoaster-application/smartcoaster-application.elf
             smartcoaster-application/smartcoaster-application.bin
-            firmware-loader-cli-linux
+            firmware-loader-cli-linux/firmware-loader-cli-linux
             firmware-loader-cli-windows/firmware-loader-cli.exe
-            firmware-loader-cli-macos
+            firmware-loader-cli-macos/firmware-loader-cli-macos
           draft: yes
           generate_release_notes: yes
