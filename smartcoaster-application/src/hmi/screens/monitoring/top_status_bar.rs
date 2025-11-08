@@ -39,7 +39,7 @@ impl TopStatusBar {
         }
     }
 
-    fn decide_font(&self) -> &MonoFont {
+    fn decide_font(&self) -> &MonoFont<'_> {
         match self.bounds.size.height {
             0..=6 => &FONT_4X6,
             7..=9 => &FONT_5X7,
@@ -68,7 +68,7 @@ impl Drawable for TopStatusBar {
     type Color = BinaryColor;
     type Output = ();
 
-    fn draw<D: DrawTarget<Color = BinaryColor>>(&self, display: &mut D) -> Result<(), D::Error> {
+    fn draw<D: DrawTarget<Color=BinaryColor>>(&self, display: &mut D) -> Result<(), D::Error> {
         let text_char_style = MonoTextStyleBuilder::new()
             .font(self.decide_font())
             .text_color(BinaryColor::On)
@@ -91,14 +91,14 @@ impl Drawable for TopStatusBar {
             self.datetime.month(),
             self.datetime.day()
         )
-        .unwrap();
+            .unwrap();
         Text::with_text_style(
             string_buffer.as_str(),
             Point::zero(),
             text_char_style,
             left_text_style,
         )
-        .draw(display)?;
+            .draw(display)?;
 
         string_buffer.clear();
         write!(
@@ -107,14 +107,14 @@ impl Drawable for TopStatusBar {
             self.datetime.hour(),
             self.datetime.minute()
         )
-        .unwrap();
+            .unwrap();
         Text::with_text_style(
             string_buffer.as_str(),
             Point::new(self.bounds.size.width as i32, 0),
             text_char_style,
             right_text_style,
         )
-        .draw(display)?;
+            .draw(display)?;
 
         Ok(())
     }

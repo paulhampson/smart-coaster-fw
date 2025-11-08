@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use defmt::trace;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, Instance};
 use embassy_usb::class::cdc_acm::BufferedReceiver;
@@ -43,6 +44,7 @@ pub async fn read_cbor_message<'d, 'b, M>(
 where
     M: Decode<'b, ()>,
 {
+    trace!("Reading framing length prefix");
     // Read the 2-byte length prefix
     let mut length_bytes = [0u8; 2];
     rx.read_exact(&mut length_bytes)
@@ -62,10 +64,12 @@ where
         return Err(ReceiveError::MessageTooLarge);
     }
 
+    trace!("Reading {} bytes for the message", message_len);
     rx.read_exact(&mut buffer[..message_len])
         .await
         .map_err(|_| ReceiveError::ReadError)?;
 
+    trace!("Decoding message");
     // Decode the CBOR message
     minicbor::decode::<M>(&buffer[..message_len]).map_err(|_| ReceiveError::DecodeError)
 }

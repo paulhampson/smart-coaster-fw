@@ -13,8 +13,6 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-extern crate alloc;
-
 use crate::bootloader::chunk::{ChunkReq, ChunkResp};
 use crate::bootloader::ready_to_download::{ReadyToDownload, ReadyToDownloadResponse};
 use crate::general::goodbye::Goodbye;
@@ -109,7 +107,7 @@ where
     length_bytes.copy_from_slice(&buffer[..PREFIX_BYTE_COUNT]);
     let message_len = u16::from_be_bytes(length_bytes) as usize;
 
-    if message_len > PREFIX_BYTE_COUNT + buffer.len() {
+    if buffer.len() < message_len + PREFIX_BYTE_COUNT {
         return Err(FrameError::BufferTooSmall(message_len));
     }
 
