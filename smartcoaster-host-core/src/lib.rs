@@ -14,6 +14,9 @@
 
 mod util;
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_bindings;
+
 use std::io::BufRead;
 use circular_buffer::CircularBuffer;
 use smartcoaster_messages::bootloader::builder::BootloaderMessagesBuilder;
@@ -46,6 +49,7 @@ pub struct Progress {
     pub current_chunk: u32,
 }
 
+#[derive(Debug)]
 enum HostSessionState {
     Start,
     WaitingHelloResp,
@@ -54,8 +58,8 @@ enum HostSessionState {
     Done,
 }
 
-pub struct SmartcoasterHostFirmwareLoader<'a, const BUFFER_SIZE: usize> {
-    firmware_bytes: &'a [u8],
+pub struct SmartcoasterHostFirmwareLoader<const BUFFER_SIZE: usize> {
+    firmware_bytes: Vec<u8>,
     session_state: HostSessionState,
     tx_message_buffer: [u8; BUFFER_SIZE],
     tx_valid_bytes_size: usize,
@@ -64,8 +68,8 @@ pub struct SmartcoasterHostFirmwareLoader<'a, const BUFFER_SIZE: usize> {
     chunk_size: usize,
 }
 
-impl<'a, const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<'a, BUFFER_SIZE> {
-    pub fn new(firmware_bytes: &'a [u8]) -> Self {
+impl<const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<BUFFER_SIZE> {
+    pub fn new(firmware_bytes: Vec<u8>) -> Self {
         Self {
             firmware_bytes,
             session_state: HostSessionState::Start,
@@ -80,12 +84,15 @@ impl<'a, const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<'a, BUFFER_SIZ
         }
     }
 
-    pub fn session_handler<'d>(mut session: SmartcoasterHostFirmwareLoader<'a, BUFFER_SIZE>, incoming_bytes: &'d [u8]) -> Result<SmartcoasterHostFirmwareLoader<'a, BUFFER_SIZE>, SessionHandlerError> {
+    pub fn session_handler(mut session: SmartcoasterHostFirmwareLoader<BUFFER_SIZE>, incoming_bytes: &[u8]) -> Result<SmartcoasterHostFirmwareLoader<BUFFER_SIZE>, SessionHandlerError> {
         if incoming_bytes.len() + session.rx_message_buffer.len() > session.rx_message_buffer.capacity() {
             return Err(SessionHandlerError::RxBufferNotEnoughSpace);
         }
+        log::trace!("Called with {} new bytes, {} bytes in buffer", incoming_bytes.len(), session.rx_message_buffer.len());
         session.rx_message_buffer.extend_from_slice(incoming_bytes);
         session.rx_message_buffer.make_contiguous();
+
+        log::trace!("Session state: {:?}", session.session_state);
 
         match session.session_state {
             HostSessionState::Start => {
@@ -118,7 +125,7 @@ impl<'a, const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<'a, BUFFER_SIZ
                         log::trace!("Firmware image size: {} bytes", image_size_bytes);
 
                         log::trace!("Calculating Ascon-Hash256...");
-                        let hash_bytes = util::calculate_ascon_hash256(session.firmware_bytes);
+                        let hash_bytes = util::calculate_ascon_hash256(session.firmware_bytes.as_slice());
                         let hash = AsconHash256Bytes::from_bytes(hash_bytes);
                         log::trace!("Hash calculated successfully");
 
@@ -214,7 +221,7 @@ impl<'a, const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<'a, BUFFER_SIZ
                         log::trace!("Generating ChunkResp for chunk {}", chunk_req.chunk_number);
                         session.tx_valid_bytes_size =
                             smartcoaster_messages::frame_message(&chunk_resp, &mut session.tx_message_buffer)?;
-
+                        log::trace!("ChunkResp for chunk is {} bytes", session.tx_valid_bytes_size);
                         session.download_progress.current_chunk = chunk_req.chunk_number;
                     }
                     BootloaderMessages::Goodbye(_) => {
@@ -232,15 +239,18 @@ impl<'a, const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<'a, BUFFER_SIZ
                 return Err(SessionHandlerError::SessionEnded);
             }
         }
+        log::trace!("Session actions completed");
         Ok(session)
     }
 
-    pub fn get_bytes_to_send<'d>(session: &'d mut SmartcoasterHostFirmwareLoader<BUFFER_SIZE>) -> Option<&'d [u8]> {
+    pub fn get_bytes_to_send(session: &mut SmartcoasterHostFirmwareLoader<BUFFER_SIZE>) -> Option<&[u8]> {
         if session.tx_valid_bytes_size > 0 {
+            log::trace!("Returning {} bytes to send", session.tx_valid_bytes_size);
             let message_size = session.tx_valid_bytes_size;
             session.tx_valid_bytes_size = 0;
             return Some(&session.tx_message_buffer[..message_size]);
         }
+        log::trace!("Nothing to send");
         None
     }
 

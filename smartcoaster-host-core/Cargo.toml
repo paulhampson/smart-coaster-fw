@@ -2,9 +2,20 @@
 name = "smartcoaster-host-core"
 version = "0.1.0"
 edition = "2024"
+description = "Implements state machines for managing the host side of smartcoaster interactions"
+license = "GPL-3"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 smartcoaster-messages = { version = "0.1.0", path = "../smartcoaster-messages" }
 circular-buffer = "1.2.0"
 log = "0.4.28"
 ascon-hash = "0.3"
+
+wasm-bindgen = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-logger = "0.2"
+console_error_panic_hook = "0.1.7"

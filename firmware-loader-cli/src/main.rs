@@ -81,7 +81,7 @@ fn main() -> IoResult<()> {
 
     // Create the firmware loader session
     const BUFFER_SIZE: usize = 4096;
-    let mut session: SmartcoasterHostFirmwareLoader<BUFFER_SIZE> = SmartcoasterHostFirmwareLoader::new(&firmware_data);
+    let mut session: SmartcoasterHostFirmwareLoader<BUFFER_SIZE> = SmartcoasterHostFirmwareLoader::new(firmware_data);
 
     let mut rx_buffer = [0u8; BUFFER_SIZE];
     let mut tx_pending = false;

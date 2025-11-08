@@ -21,6 +21,7 @@ enum BuildTarget {
     Bootloader,
     Application,
     FirmwareLoaderCli,
+    HostCore,
     Both,
 }
 
@@ -31,6 +32,8 @@ enum Command_ {
     Run(BuildTarget, Vec<String>),
     Help,
     Attach(BuildTarget),
+    Wasm { release: bool, output: PathBuf },
+    WasmWatch,
 }
 
 fn main() {
@@ -113,6 +116,30 @@ fn parse_command(args: &[String]) -> Result<Command_, String> {
                 }
             }
         }
+        "wasm" => {
+            let mut release = false;
+            let mut output = PathBuf::from("web-interface/pkg");
+
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--release" | "-r" => release = true,
+                    "--output" | "-o" => {
+                        if i + 1 < args.len() {
+                            output = PathBuf::from(&args[i + 1]);
+                            i += 1;
+                        } else {
+                            return Err("--output requires a path argument".to_string());
+                        }
+                    }
+                    _ => return Err(format!("Unknown wasm flag: {}", args[i])),
+                }
+                i += 1;
+            }
+
+            Ok(Command_::Wasm { release, output })
+        }
+        "wasm-watch" => Ok(Command_::WasmWatch),
         "help" => Ok(Command_::Help),
         _ => Err(format!("Unknown command: {}", args[0])),
     }
@@ -123,6 +150,7 @@ fn parse_build_target(target: &str) -> Result<BuildTarget, String> {
         "bootloader" => Ok(BuildTarget::Bootloader),
         "application" => Ok(BuildTarget::Application),
         "firmware-loader-cli" => Ok(BuildTarget::FirmwareLoaderCli),
+        "host-core" => Ok(BuildTarget::HostCore),
         "both" => Ok(BuildTarget::Both),
         _ => Err(format!("Unknown target: {}", target)),
     }
@@ -134,6 +162,8 @@ fn execute_command(cmd: Command_) -> Result<(), String> {
         Command_::Flash(target) => flash(&target),
         Command_::Run(target, extra_args) => run(&target, extra_args),
         Command_::Attach(target) => attach(&target),
+        Command_::Wasm { release, output } => build_wasm(release, &output),
+        Command_::WasmWatch => watch_wasm(),
         Command_::Help => {
             print_usage();
             Ok(())
@@ -159,6 +189,11 @@ fn build(target: &BuildTarget) -> Result<(), String> {
             println!("Building firmware-loader-cli...");
             run_cargo_build("firmware-loader-cli", "x86_64-unknown-linux-gnu")?;
             println!("✓ Firmware-loader-cli built successfully");
+        }
+        BuildTarget::HostCore => {
+            println!("Building host-core...");
+            run_cargo_build("smartcoaster-host-core", "x86_64-unknown-linux-gnu")?;
+            println!("✓ Host-core built successfully");
         }
         BuildTarget::Both => {
             println!("Building bootloader...");
@@ -189,6 +224,10 @@ fn flash(target: &BuildTarget) -> Result<(), String> {
         BuildTarget::FirmwareLoaderCli => {
             println!("Error: Cannot flash firmware-loader-cli (it's a host tool, not firmware)");
             return Err("firmware-loader-cli cannot be flashed".to_string());
+        }
+        BuildTarget::HostCore => {
+            println!("Error: Cannot flash host-core (it's a library, not firmware)");
+            return Err("host-core cannot be flashed".to_string());
         }
         BuildTarget::Both => {
             println!("Building and flashing bootloader...");
@@ -225,6 +264,10 @@ fn run(target: &BuildTarget, extra_args: Vec<String>) -> Result<(), String> {
             run_cargo_run("firmware-loader-cli", "x86_64-unknown-linux-gnu", &extra_args)?;
             println!("✓ Firmware-loader-cli run completed");
         }
+        BuildTarget::HostCore => {
+            println!("Error: Cannot run host-core (it's a library, not an executable)");
+            return Err("host-core cannot be run directly".to_string());
+        }
         BuildTarget::Both => {
             unreachable!("Both target should have been rejected in parse_command")
         }
@@ -246,6 +289,9 @@ fn attach(target: &BuildTarget) -> Result<(), String> {
         }
         BuildTarget::FirmwareLoaderCli => {
             unreachable!("FirmwareLoaderCli should have been rejected in parse_command")
+        }
+        BuildTarget::HostCore => {
+            unreachable!("HostCore should have been rejected in parse_command")
         }
         BuildTarget::Both => {
             unreachable!("Both target should have been rejected in parse_command")
@@ -433,6 +479,103 @@ fn run_probe_rs_attach(package: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn build_wasm(release: bool, output: &PathBuf) -> Result<(), String> {
+    println!("🔨 Building WASM package for smartcoaster-host-core...");
+
+    ensure_wasm_pack_installed()?;
+
+    let smartcoaster_host_core = find_crate_dir("smartcoaster-host-core")?;
+
+    let mut cmd = Command::new("wasm-pack");
+    cmd.arg("build")
+        .arg(&smartcoaster_host_core)
+        .arg("--target")
+        .arg("web")
+        .arg("--out-dir")
+        .arg(output);
+
+    if release {
+        cmd.arg("--release");
+        println!("📦 Building in release mode (optimized)...");
+    } else {
+        println!("📦 Building in dev mode (faster compilation)...");
+    }
+
+    let status = cmd.status()
+        .map_err(|e| format!("Failed to build WASM package: {}", e))?;
+
+    if !status.success() {
+        return Err("WASM build failed".to_string());
+    }
+
+    println!("✓ WASM package built successfully at: {}", output.display());
+    println!("\n📝 Next steps:");
+    println!("  1. Serve the web interface: python3 -m http.server --directory web-interface");
+    println!("  2. Open http://localhost:8000 in your browser");
+
+    Ok(())
+}
+
+fn watch_wasm() -> Result<(), String> {
+    println!("👀 Watching smartcoaster-host-core for changes...");
+
+    ensure_wasm_pack_installed()?;
+
+    let smartcoaster_host_core = find_crate_dir("smartcoaster-host-core")?;
+
+    let status = Command::new("wasm-pack")
+        .arg("build")
+        .arg(&smartcoaster_host_core)
+        .arg("--target")
+        .arg("web")
+        .arg("--watch")
+        .status()
+        .map_err(|e| format!("Failed to watch WASM package: {}", e))?;
+
+    if !status.success() {
+        return Err("WASM watch failed".to_string());
+    }
+
+    Ok(())
+}
+
+fn ensure_wasm_pack_installed() -> Result<(), String> {
+    let output = Command::new("wasm-pack")
+        .arg("--version")
+        .output();
+
+    if output.is_err() {
+        return Err(
+            "wasm-pack is not installed. Install it with:\n\
+                cargo install wasm-pack\n".to_string()
+        );
+    }
+
+    Ok(())
+}
+
+
+fn find_crate_dir(crate_name: &str) -> Result<PathBuf, String> {
+    let manifest_path = std::env::var("CARGO_MANIFEST_DIR")
+        .unwrap_or_else(|_| ".".to_string());
+
+    let root = PathBuf::from(&manifest_path)
+        .parent()
+        .unwrap_or(&PathBuf::from("."))
+        .to_path_buf();
+
+    let crate_path = root.join(crate_name);
+
+    if !crate_path.exists() {
+        return Err(format!(
+            "Crate directory not found: {}",
+            crate_path.display()
+        ));
+    }
+
+    Ok(crate_path)
+}
+
 fn print_usage() {
     eprintln!(
         "Usage: cargo xtask <COMMAND> [TARGET]\n\
@@ -465,6 +608,12 @@ fn print_usage() {
          \tcargo xtask attach                                   # Attach to application with probe-rs\n\
          \tcargo xtask attach bootloader                        # Attach to bootloader with probe-rs\n\
          \tcargo xtask attach application                       # Attach to application with probe-rs\n\
+         \nWASM/WEB EXAMPLES:\n\
+         \tcargo xtask wasm                                     # Build WASM (dev mode)\n\
+         \tcargo xtask wasm --release                           # Build WASM (release/optimized)\n\
+         \tcargo xtask wasm -o ./dist                           # Build WASM to custom directory\n\
+         \tcargo xtask wasm-watch                               # Watch WASM sources and rebuild\n\
+         \n\
          \tcargo xtask help                                     # Show this help message"
     );
 }
