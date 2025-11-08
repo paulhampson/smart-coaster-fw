@@ -4,10 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-smartcoaster-messages = { path = "../smartcoaster-messages", version = "0.1.0" }
 serialport = "4.8.1"
-minicbor = { version = "2.1", default-features = false }
 log = "0.4"
 env_logger = "0.11"
-ascon-hash = "0.3"
 indicatif = "0.17"
+smartcoaster-host-core = { path = "../smartcoaster-host-core", version = "0.1.0" }

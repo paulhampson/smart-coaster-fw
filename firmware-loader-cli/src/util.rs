@@ -12,86 +12,45 @@
 // You should have received a copy of the GNU General Public License along with
 // this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::fs::File;
 use log::LevelFilter;
-use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
+use std::fs;
+use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 
-/// Calculates the Ascon-Hash256 of the given data
-pub(crate) fn calculate_ascon_hash256(data: &[u8]) -> [u8; 32] {
-    use ascon_hash::digest::Digest;
-    use ascon_hash::AsconHash256;
-
-    let mut hasher = AsconHash256::new();
-    hasher.update(data);
-    let result = hasher.finalize();
-
-    let mut hash_bytes = [0u8; 32];
-    hash_bytes.copy_from_slice(&result[..32]);
-    hash_bytes
-}
-
-/// Reads a binary file and returns its contents as a Vec<u8>
-pub(crate) fn read_binary_file(path: &str) -> IoResult<Vec<u8>> {
-    let mut file = File::open(path)
-        .map_err(|e| IoError::new(ErrorKind::NotFound, format!("Failed to open file: {}", e)))?;
-
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents)?;
-
-    log::trace!("Read {} bytes from {}", contents.len(), path);
-    Ok(contents)
-}
-
-/// Extract the firmware file path from command-line arguments
-/// Skips --log-level and its value, and --port and its value
-pub(crate) fn extract_firmware_file_path(args: &[String]) -> IoResult<String> {
-    let mut i = 1; // Skip program name
-
-    while i < args.len() {
-        match args[i].as_str() {
-            "--log-level" => {
-                i += 2; // Skip flag and value
-            }
-            "--port" => {
-                i += 2; // Skip flag and value
-            }
-            _ => {
-                // First non-flag argument is the firmware file path
-                return Ok(args[i].clone());
-            }
-        }
-    }
-
-    Err(IoError::new(
-        ErrorKind::InvalidInput,
-        "No firmware file path provided. Usage: firmware-loader-cli [--log-level LEVEL] [--port PORT] <firmware.bin>",
-    ))
-}
-
-/// Parse log level from command-line arguments
-/// Supports: --log-level <LEVEL> or RUST_LOG environment variable
-/// Defaults to INFO if neither is provided
 pub(crate) fn parse_log_level() -> LevelFilter {
-    let args: Vec<String> = std::env::args().collect();
+    std::env::args()
+        .position(|arg| arg == "--log-level")
+        .and_then(|i| std::env::args().nth(i + 1))
+        .as_deref()
+        .map(|level_str| match level_str.to_uppercase().as_str() {
+            "TRACE" => LevelFilter::Trace,
+            "DEBUG" => LevelFilter::Debug,
+            "INFO" => LevelFilter::Info,
+            "WARN" => LevelFilter::Warn,
+            "ERROR" => LevelFilter::Error,
+            _ => LevelFilter::Info,
+        })
+        .unwrap_or(LevelFilter::Info)
+}
 
-    // Check for --log-level argument
-    for i in 0..args.len() {
-        if args[i] == "--log-level" && i + 1 < args.len() {
-            return match args[i + 1].to_uppercase().as_str() {
-                "OFF" => LevelFilter::Off,
-                "ERROR" => LevelFilter::Error,
-                "WARN" => LevelFilter::Warn,
-                "INFO" => LevelFilter::Info,
-                "DEBUG" => LevelFilter::Debug,
-                "TRACE" => LevelFilter::Trace,
-                _ => {
-                    eprintln!("Unknown log level: {}. Using INFO", args[i + 1]);
-                    LevelFilter::Info
+pub(crate) fn extract_firmware_file_path(args: &[String]) -> IoResult<String> {
+    // Find the last argument that doesn't start with '--'
+    args.iter()
+        .rfind(|arg| !arg.starts_with("--"))
+        .and_then(|arg| {
+            // Make sure it's not a value for another flag
+            let prev_idx = args.iter().position(|a| a == arg)?;
+            if prev_idx > 0 {
+                let prev = &args[prev_idx - 1];
+                if prev == "--log-level" || prev == "--port" {
+                    return Some(arg.clone());
                 }
-            };
-        }
-    }
+            }
+            Some(arg.clone())
+        })
+        .ok_or_else(|| IoError::new(ErrorKind::InvalidInput, "No firmware file path provided"))
+}
 
-    // Default to INFO
-    LevelFilter::Info
+pub(crate) fn read_binary_file(path: &str) -> IoResult<Vec<u8>> {
+    fs::read(path)
+        .map_err(|e| IoError::new(ErrorKind::Other, format!("Failed to read firmware file: {}", e)))
 }
