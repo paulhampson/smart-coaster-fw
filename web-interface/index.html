@@ -75,9 +75,8 @@
 </div>
 
 <div>
-    <button id="connect-btn">Connect to Device</button>
+    <button id="connect-btn">Connect and Upload to Device</button>
     <button id="disconnect-btn" disabled>Disconnect</button>
-    <button id="upload-btn" disabled>Start Upload</button>
 </div>
 
 <div id="status">Status: Ready</div>
@@ -106,6 +105,9 @@
     const READ_TIMEOUT = 5000;
 
     const log = (msg, level = 'info') => {
+        if (level === 'info' || level === 'debug') {
+            return;
+        }
         const logDiv = document.getElementById('log');
         const timestamp = new Date().toLocaleTimeString('en-US', {hour12: false});
         const className = level;
@@ -139,6 +141,12 @@
 
     document.getElementById('connect-btn').addEventListener('click', async () => {
         try {
+            // Check if firmware is loaded
+            if (!firmwareData) {
+                log('Error: Load firmware file first', 'error');
+                return;
+            }
+
             if (!navigator.serial) {
                 throw new Error('Web Serial API not supported. Please use Chrome/Edge/Opera.');
             }
@@ -152,7 +160,7 @@
 
             document.getElementById('connect-btn').disabled = true;
             document.getElementById('disconnect-btn').disabled = false;
-            document.getElementById('upload-btn').disabled = false;
+            document.getElementById('firmware-file').disabled = true;
 
             reader = port.readable.getReader();
             writer = port.writable.getWriter();
@@ -160,7 +168,10 @@
             // Give device time to initialize
             await new Promise(resolve => setTimeout(resolve, 100));
 
-            log('Ready for upload', 'info');
+            log('Starting firmware upload immediately...', 'info');
+
+            // Start upload automatically
+            await startUpload();
         } catch (err) {
             log(`Connection error: ${err.message}`, 'error');
             setStatus('Connection Failed');
@@ -175,95 +186,7 @@
     });
 
     document.getElementById('disconnect-btn').addEventListener('click', async () => {
-        try {
-            isConnected = false;
-            isUploading = false;
-
-            if (reader) {
-                await reader.cancel();
-                reader = null;
-            }
-            if (writer) {
-                await writer.close();
-                writer = null;
-            }
-            if (port) {
-                await port.close();
-                port = null;
-            }
-
-            log('Device disconnected', 'success');
-            setStatus('Disconnected');
-
-            document.getElementById('connect-btn').disabled = false;
-            document.getElementById('disconnect-btn').disabled = true;
-            document.getElementById('upload-btn').disabled = true;
-        } catch (err) {
-            log(`Disconnection error: ${err.message}`, 'error');
-        }
-    });
-
-    document.getElementById('upload-btn').addEventListener('click', async () => {
-        if (!firmwareData) {
-            log('Error: Load firmware first', 'error');
-            return;
-        }
-
-        if (!isConnected || !reader || !writer) {
-            log('Error: Connect to device first', 'error');
-            return;
-        }
-
-        try {
-            // Initialize Rust logging
-            await init();
-            init_logging();  // Add this line to enable Rust logs
-            log('Rust logging initialized', 'debug');
-
-            isUploading = true;
-            txPending = false;
-            lastChunk = 0;
-
-            document.getElementById('upload-btn').disabled = true;
-            document.getElementById('connect-btn').disabled = true;
-            document.getElementById('disconnect-btn').disabled = true;
-            document.getElementById('progress').value = 0;
-            document.getElementById('progress-text').textContent = '';
-
-            log('Initializing firmware loader session...', 'info');
-            setStatus('Initializing...');
-
-
-            // Create loader instance
-            loader = new WasmFirmwareLoader(new Uint8Array(firmwareData));
-            loader.init_session();
-
-            log(`Firmware size: ${(firmwareData.byteLength / 1024).toFixed(2)} KB`, 'info');
-
-            // Initialize session by sending zero-length buffer (triggers hello message)
-            await processSessionHandler(new Uint8Array(0));
-
-            log('Waiting for device response...', 'info');
-            setStatus('Uploading...');
-
-            // Main communication loop
-            await runUploadLoop();
-
-            if (loader.is_session_ended()) {
-                log('✓ Firmware transfer completed', 'success');
-                setStatus('Complete');
-                log('Please wait for device to load firmware and boot', 'info');
-            }
-        } catch (err) {
-            console.error('Full error:', err);
-            log(`Upload failed: ${err.message}`, 'error');
-            setStatus('Upload Failed');
-        } finally {
-            isUploading = false;
-            document.getElementById('upload-btn').disabled = false;
-            document.getElementById('connect-btn').disabled = false;
-            document.getElementById('disconnect-btn').disabled = false;
-        }
+        await disconnectDevice();
     });
 
     async function processSessionHandler(incomingBytes) {
@@ -346,7 +269,7 @@
 
                     // Check if session has ended
                     if (loader.is_session_ended()) {
-                        log('Session ended - exiting upload loop', 'success');
+                        log('Session ended - exiting upload loop', 'debug');
                         isUploading = false;
                         break;
                     }
@@ -367,8 +290,99 @@
         log('Upload loop completed', 'info');
     }
 
+    async function disconnectDevice() {
+        try {
+            isConnected = false;
+            isUploading = false;
+
+            if (reader) {
+                await reader.cancel();
+                reader = null;
+            }
+            if (writer) {
+                await writer.close();
+                writer = null;
+            }
+            if (port) {
+                await port.close();
+                port = null;
+            }
+
+            log('Device disconnected', 'success');
+            setStatus('Disconnected');
+
+            document.getElementById('connect-btn').disabled = false;
+            document.getElementById('disconnect-btn').disabled = true;
+            document.getElementById('firmware-file').disabled = false;
+        } catch (err) {
+            log(`Disconnection error: ${err.message}`, 'error');
+        }
+    }
+
+    async function startUpload() {
+        if (!firmwareData) {
+            log('Error: Load firmware first', 'error');
+            return;
+        }
+
+        if (!isConnected || !reader || !writer) {
+            log('Error: Connect to device first', 'error');
+            return;
+        }
+
+        try {
+            // Initialize Rust logging
+            await init();
+            init_logging();  // Add this line to enable Rust logs
+            log('Rust logging initialized', 'debug');
+
+            isUploading = true;
+            txPending = false;
+            lastChunk = 0;
+
+            document.getElementById('progress').value = 0;
+            document.getElementById('progress-text').textContent = '';
+
+            log('Initializing firmware loader session...', 'info');
+            setStatus('Initializing...');
+
+            // Create loader instance
+            loader = new WasmFirmwareLoader(new Uint8Array(firmwareData));
+            loader.init_session();
+
+            log(`Firmware size: ${(firmwareData.byteLength / 1024).toFixed(2)} KB`, 'info');
+
+            // Initialize session by sending zero-length buffer (triggers hello message)
+            await processSessionHandler(new Uint8Array(0));
+
+            log('Transferring firmware to device...', 'success');
+            log('Waiting for device response...', 'info');
+            setStatus('Uploading...');
+
+            // Main communication loop
+            await runUploadLoop();
+
+            if (loader.is_session_ended()) {
+                log('Firmware transfer completed', 'success');
+                setStatus('Complete');
+                log('Please wait for device to load firmware and boot', 'info');
+
+                // Auto-disconnect after successful transfer
+                log('Disconnecting from device...', 'info');
+                await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay for device to finalize
+                await disconnectDevice();
+            }
+        } catch (err) {
+            console.error('Full error:', err);
+            log(`Upload failed: ${err.message}`, 'error');
+            setStatus('Upload Failed');
+        } finally {
+            isUploading = false;
+        }
+    }
+
     // Initialize on page load
-    log('SmartCoaster WASM Loader Ready', 'success');
+    log('SmartCoaster Firmware Loader Ready', 'success');
 </script>
 </body>
 </html>
