@@ -69,7 +69,8 @@
 <h1>SmartCoaster Firmware Loader</h1>
 
 <div>
-    <label for="firmware-file">Select Firmware File:</label>
+    <button id="download-latest-btn">Load Latest Release</button>
+    <label for="firmware-file">or Select Local Firmware File:</label>
     <input type="file" id="firmware-file" accept=".bin"/>
     <span id="firmware-size"></span>
 </div>
@@ -136,6 +137,32 @@
             log(`Loaded firmware: ${sizeKb} KB`, 'success');
         } catch (err) {
             log(`Error loading firmware: ${err.message}`, 'error');
+        }
+    });
+
+    document.getElementById('download-latest-btn').addEventListener('click', async () => {
+        try {
+            setStatus('Downloading latest release...');
+            log('Fetching latest release from GitHub...', 'info');
+
+            const response = await fetch('https://github.com/paulhampson/smart-coaster-fw/releases/latest/download/smartcoaster-application.bin');
+
+            if (!response.ok) {
+                throw new Error(`GitHub download failed: ${response.statusText}`);
+            }
+
+            firmwareData = await response.arrayBuffer();
+            const sizeKb = (firmwareData.byteLength / 1024).toFixed(2);
+            document.getElementById('firmware-size').textContent = ` (${sizeKb} KB)`;
+
+            log(`Downloaded latest firmware from github: ${sizeKb} KB`, 'success');
+            setStatus('Ready');
+
+            // Update the file input to show a file was loaded
+            document.getElementById('firmware-file').value = '';
+        } catch (err) {
+            log(`Error downloading firmware: ${err.message}`, 'error');
+            setStatus('Download Failed');
         }
     });
 
