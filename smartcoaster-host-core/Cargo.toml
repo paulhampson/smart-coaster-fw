@@ -1,0 +1,10 @@
+[package]
+name = "smartcoaster-host-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+smartcoaster-messages = { version = "0.1.0", path = "../smartcoaster-messages" }
+circular-buffer = "1.2.0"
+log = "0.4.28"
+ascon-hash = "0.3"

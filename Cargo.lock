@@ -278,6 +278,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "circular-buffer"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14c638459986b83c2b885179bd4ea6a2cbb05697b001501a56adb3a3d230803b"
+
+[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1046,13 +1052,11 @@ dependencies = [
 name = "firmware-loader-cli"
 version = "0.1.0"
 dependencies = [
- "ascon-hash",
  "env_logger",
  "indicatif",
  "log",
- "minicbor",
  "serialport",
- "smartcoaster-messages",
+ "smartcoaster-host-core",
 ]
 
 [[package]]
@@ -1600,9 +1604,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.27"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
+checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
 name = "mach2"
@@ -2414,6 +2418,16 @@ dependencies = [
  "portable-atomic",
  "smartcoaster-messages",
  "static_cell",
+]
+
+[[package]]
+name = "smartcoaster-host-core"
+version = "0.1.0"
+dependencies = [
+ "ascon-hash",
+ "circular-buffer",
+ "log",
+ "smartcoaster-messages",
 ]
 
 [[package]]
