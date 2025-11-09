@@ -5,9 +5,12 @@ https://github.com/paulhampson/smart-coaster-hw
 
 ## Install via USB
 
-Web Interface - Coming Soon :tm:
+For devices with the bootloader installed the firmware can be loaded using
+the [Web Interface](https://paulhampson.github.io/smart-coaster-fw/).
 
-To load firmware over USB using the CLI follow the steps in [Running from CLI](#running-from-cli).
+To enter firmware update mode, press and hold the encoder button for more than 2 seconds when powering on the device.
+
+To load firmware using the CLI follow the steps in [Running from CLI](#running-from-cli).
 
 ## Install the latest release to hardware via debugger
 
@@ -89,6 +92,9 @@ Running CLI firmware loader (replace <SERIAL_PORT> with the serial port your dev
 cargo xtask run firmware-loader-cli --port <SERIAL_PORT> target/thumbv6m-none-eabi/release/smartcoaster-application.bin
 cargo xtask run firmware-loader-cli --log-level DEBUG --port <SERIAL_PORT> target/thumbv6m-none-eabi/release/smartcoaster-application.bin
 ```
+
+Standalone firmware loader can be obtained
+from the [latest release](https://github.com/paulhampson/smart-coaster-fw/releases/latest/).
 
 # Design
 
