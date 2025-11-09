@@ -1,6 +1,6 @@
 [package]
 name = "firmware-loader-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [dependencies]
@@ -8,4 +8,4 @@ serialport = "4.8.1"
 log = "0.4"
 env_logger = "0.11"
 indicatif = "0.17"
-smartcoaster-host-core = { path = "../smartcoaster-host-core", version = "0.1.0" }
+smartcoaster-host-core = { path = "../smartcoaster-host-core", version = "0.2.0" }

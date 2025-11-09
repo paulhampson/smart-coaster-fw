@@ -1,6 +1,6 @@
 [package]
 name = "smartcoaster-host-core"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Implements state machines for managing the host side of smartcoaster interactions"
 license = "GPL-3"
@@ -9,7 +9,7 @@ license = "GPL-3"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-smartcoaster-messages = { version = "0.1.0", path = "../smartcoaster-messages" }
+smartcoaster-messages = { version = "0.2.0", path = "../smartcoaster-messages" }
 circular-buffer = "1.2.0"
 log = "0.4.28"
 ascon-hash = "0.3"
