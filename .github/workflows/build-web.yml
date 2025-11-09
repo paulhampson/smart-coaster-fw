@@ -1,0 +1,47 @@
+name: Build Web Loader
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "smartcoaster-messages/**"
+      - "smartcoaster-host-core/**"
+      - "web-interface/**"
+      - "xtask/**"
+  create:
+    tags:
+      - "web-interface-v*.*.*"
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: rustwasm/setup-toolchain@v1
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.org/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM using xtask
+        run: cargo xtask wasm --release --output $GITHUB_WORKSPACE/web-interface/pkg
+
+      - name: Create pages output directory
+        run: mkdir -p pages-build
+
+      - name: Copy web-interface content to pages-build
+        run: cp -r web-interface/* pages-build/
+
+      - name: Deploy to pages-live branch
+        if: startsWith(github.ref, 'refs/tags/web-interface-v')
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./pages-build
+          destination_dir: ./
+          publish_branch: pages-live
+          force_orphan: true
