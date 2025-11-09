@@ -11,6 +11,8 @@ on:
   create:
     tags:
       - "web-interface-v*.*.*"
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build-wasm:
