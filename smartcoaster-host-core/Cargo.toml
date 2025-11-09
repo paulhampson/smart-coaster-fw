@@ -1,6 +1,6 @@
 [package]
 name = "smartcoaster-host-core"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Implements state machines for managing the host side of smartcoaster interactions"
 license = "GPL-3"

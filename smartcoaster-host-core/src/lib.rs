@@ -112,6 +112,7 @@ impl<const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<BUFFER_SIZE> {
                     }
                     Err(e) => return Err(SessionHandlerError::FramingError(e)),
                 };
+                log::trace!("Consumed {} bytes from rx buffer",consumed_bytes_count);
                 session.rx_message_buffer.consume(consumed_bytes_count);
 
                 match message {
@@ -161,6 +162,7 @@ impl<const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<BUFFER_SIZE> {
                     }
                     Err(e) => return Err(SessionHandlerError::FramingError(e)),
                 };
+                log::trace!("Consumed {} bytes from rx buffer", consumed_bytes_count);
                 session.rx_message_buffer.consume(consumed_bytes_count);
 
                 match message {
@@ -187,6 +189,7 @@ impl<const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<BUFFER_SIZE> {
                     }
                     Err(e) => return Err(SessionHandlerError::FramingError(e)),
                 };
+                log::trace!("Consumed {} bytes from rx buffer", consumed_bytes_count);
                 session.rx_message_buffer.consume(consumed_bytes_count);
 
                 match message {
@@ -240,6 +243,14 @@ impl<const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<BUFFER_SIZE> {
             }
         }
         log::trace!("Session actions completed");
+
+        if session.rx_message_buffer.len() > 0 {
+            log::trace!("{} more bytes in rx buffer, calling session_handler again", session.rx_message_buffer.len());
+            let empty_buffer = [0u8; 0];
+            let updated_session = SmartcoasterHostFirmwareLoader::session_handler(session, &empty_buffer)?;
+            return Ok(updated_session);
+        }
+
         Ok(session)
     }
 
