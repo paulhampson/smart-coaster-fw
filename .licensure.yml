@@ -56,3 +56,11 @@ comments:
       type: line
       comment_char: "//"
       trailing_lines: 1
+  - columns: 80
+    extensions:
+      - html
+    commenter:
+      type: block
+      start_block_char: "<!--\n"
+      end_block_char: "\n-->"
+      trailing_lines: 2
