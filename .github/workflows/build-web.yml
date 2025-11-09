@@ -24,7 +24,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: rustwasm/setup-toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
         run: curl https://rustwasm.org/wasm-pack/installer/init.sh -sSf | sh
