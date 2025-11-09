@@ -112,8 +112,26 @@ jobs:
             target
           key: ${{ runner.os }}-wasm-pack-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Check wasm-pack version
+        id: check_version
+        run: |
+          if command -v wasm-pack &> /dev/null; then
+            INSTALLED_VERSION=$(wasm-pack --version | awk '{print $2}')
+            echo "installed_version=$INSTALLED_VERSION" >> $GITHUB_OUTPUT
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get latest wasm-pack version
+        id: latest_version
+        run: |
+          LATEST=$(cargo search wasm-pack --limit 1 | head -1 | awk '{print $3}' | tr -d '"')
+          echo "latest_version=$LATEST" >> $GITHUB_OUTPUT
+
       - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
+        if: steps.check_version.outputs.exists == 'false' || steps.check_version.outputs.installed_version != steps.latest_version.outputs.latest_version
+        run: cargo install wasm-pack --force
 
       - name: Build WASM using xtask
         run: cargo xtask wasm --release --output $GITHUB_WORKSPACE/web-interface/pkg
