@@ -186,7 +186,7 @@ jobs:
   release:
     needs: [ build, build-loader-cli-multi ]
     runs-on: ubuntu-latest
-    if: github.ref_type == 'tag'
+    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Download all artifacts
