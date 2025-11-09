@@ -154,9 +154,6 @@ jobs:
           name: web-interface-build
           path: web-interface-build.zip
 
-      - name: Remove .gitignore from pkg folder
-        run: rm -f pages-build/pkg/.gitignore
-
   page-release:
     needs: [ build-wasm ]
     runs-on: ubuntu-latest
@@ -172,6 +169,9 @@ jobs:
         run: |
           unzip web-interface-build.zip
 
+      - name: Remove .gitignore from pkg folder
+        run: rm -f pages-build/pkg/.gitignore
+        
       - name: Deploy to pages-live branch
         uses: peaceiris/actions-gh-pages@v3
         with:
