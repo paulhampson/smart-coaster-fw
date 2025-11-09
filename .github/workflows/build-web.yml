@@ -40,6 +40,15 @@ jobs:
       - name: Copy web-interface content to pages-build
         run: cp -r web-interface/* pages-build/
 
+      - name: Create web-interface artifact zip
+        run: zip -r web-interface-build.zip pages-build/
+
+      - name: Upload web-interface artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-interface-build
+          path: web-interface-build.zip
+
       - name: Deploy to pages-live branch
         if: startsWith(github.ref, 'refs/tags/web-interface-v')
         uses: peaceiris/actions-gh-pages@v3
@@ -48,4 +57,3 @@ jobs:
           publish_dir: ./pages-build
           destination_dir: ./
           publish_branch: pages-live
-          force_orphan: true
