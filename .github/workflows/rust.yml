@@ -113,7 +113,7 @@ jobs:
           key: ${{ runner.os }}-wasm-pack-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack --force
+        run: cargo install wasm-pack --locked
 
       - name: Build WASM using xtask
         run: cargo xtask wasm --release --output $GITHUB_WORKSPACE/web-interface/pkg
