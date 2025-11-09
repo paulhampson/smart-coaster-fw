@@ -12,6 +12,7 @@
       <excludeFolder url="file://$MODULE_DIR$/smartcoaster-application/target" />
       <excludeFolder url="file://$MODULE_DIR$/smartcoaster-bootloader/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
+      <excludeFolder url="file://$MODULE_DIR$/web-interface/firmware" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

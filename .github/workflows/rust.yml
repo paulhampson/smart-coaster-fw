@@ -5,6 +5,10 @@ on:
     branches: [ "main" ]
     tags:
       - v*.*.*
+      - web-interface-v*.*.*
+  create:
+    tags:
+      - "web-interface-v*.*.*"
   pull_request:
     branches: [ "main" ]
 
@@ -84,6 +88,58 @@ jobs:
         with:
           name: ${{ matrix.asset_name }}
           path: target/release/${{ matrix.artifact_name }}
+
+  build-wasm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Build WASM using xtask
+        run: cargo xtask wasm --release --output $GITHUB_WORKSPACE/web-interface/pkg
+
+      - name: Create pages output directory
+        run: mkdir -p pages-build
+
+      - name: Copy web-interface content to pages-build
+        run: cp -rv web-interface/* pages-build/
+
+      - name: Download latest application release
+        run: |
+          mkdir -p pages-build/firmware
+          curl -L https://github.com/${{ github.repository }}/releases/latest/download/smartcoaster-application.bin \
+            -o pages-build/firmware/smartcoaster-application.bin
+
+      - name: Create web-interface artifact zip
+        run: zip -r web-interface-build.zip pages-build/
+
+      - name: Upload web-interface artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-interface-build
+          path: web-interface-build.zip
+
+      - name: Remove .gitignore from pkg folder
+        run: rm -f pages-build/pkg/.gitignore
+
+      - name: Deploy to pages-live branch
+        if: startsWith(github.ref, 'refs/tags/web-interface-v')
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./pages-build
+          destination_dir: ./
+          publish_branch: pages-live
 
   release:
     needs: [ build, build-loader-cli-multi ]

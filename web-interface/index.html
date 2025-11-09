@@ -124,7 +124,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
 <div id="log"></div>
 
 <footer>
-    <p>SmartCoaster Web Interface v0.1.2 | <a href="https://github.com/paulhampson/smart-coaster-fw" target="_blank">GitHub Repository</a></p>
+    <p>SmartCoaster Web Interface v0.1.3 | <a href="https://github.com/paulhampson/smart-coaster-fw" target="_blank">GitHub Repository</a></p>
 </footer>
 
 <script type="module">
@@ -183,10 +183,10 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
             setStatus('Downloading latest release...');
             log('Fetching latest release from GitHub...', 'info');
 
-            const response = await fetch('https://github.com/paulhampson/smart-coaster-fw/releases/latest/download/smartcoaster-application.bin');
+            const response = await fetch('firmware/smartcoaster-application.bin');
 
             if (!response.ok) {
-                throw new Error(`GitHub download failed: ${response.statusText}`);
+                throw new Error(`Download failed: ${response.statusText}`);
             }
 
             firmwareData = await response.arrayBuffer();
