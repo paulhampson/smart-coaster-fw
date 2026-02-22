@@ -15,7 +15,8 @@
 use crate::application::application_state::CalibrationStateSubstates;
 use crate::application::messaging::ApplicationData;
 use crate::hmi::messaging::UiActionChannelPublisher;
-use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
+use smartcoaster_shared_utils::screen_text::draw_message_screen;
+use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use core::fmt::Write;
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::pixelcolor::BinaryColor;
@@ -54,7 +55,7 @@ impl UiInputHandler for CalibrationScreens {
 impl UiDrawer for CalibrationScreens {
     fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        D: DrawTarget<Color = BinaryColor>,
+        D: DrawTarget<Color=BinaryColor>,
     {
         match self.state {
             CalibrationStateSubstates::Tare => {
@@ -68,7 +69,7 @@ impl UiDrawer for CalibrationScreens {
                     "Put {}g on device, then press button.",
                     calibration_mass_grams
                 )
-                .expect("String too long");
+                    .expect("String too long");
                 draw_message_screen(display, &message_string)
             }
             CalibrationStateSubstates::CalibrationDone => {

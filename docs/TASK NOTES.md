@@ -33,9 +33,9 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
         * ? DFU mode enterable via menu option
     * ~~Add firmware transfer via Serial over USB in bootloader DFU mode~~
     * ~~Firmware update CLI tool~~
-    * Basic firmware update web page that uses web serial to transfer firmware
-        * Pull latest update directly from github
-    * Bootloader shows screens to indicate update activity
+    * ~~Basic firmware update web page that uses web serial to transfer firmware~~
+    * Include the latest build in the web deployment
+    * *WIP* - Bootloader shows screens to indicate update activity
 * Time to drink reminder mode (flash LED when time since the last drink has elapsed)
 * Monitoring functionality
     * ~~Monitor drink in background if in settings menu~~
@@ -70,7 +70,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
 * Timezones
     * Daylight savings
     * Time display format
-* Visual alarm
+* ? Visual alarm
 * ? Pomodoro mode
 * ~~Screen off after period of inactivity to save OLED~~
 

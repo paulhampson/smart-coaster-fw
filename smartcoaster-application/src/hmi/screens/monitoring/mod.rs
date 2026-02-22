@@ -31,8 +31,9 @@ use crate::hmi::screens::monitoring::monitoring_screen_4::MonitoringScreen4;
 use crate::hmi::screens::monitoring::monitoring_screen_debug::MonitoringScreenDebug;
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
-use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
+use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use smartcoaster_shared_utils::screen_text::draw_message_screen;
 use chrono::NaiveDateTime;
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::{AnchorX, AnchorY, Point};
@@ -55,7 +56,7 @@ struct MonitoringData {
 
 trait MonitoringScreenContent<D>
 where
-    D: DrawTarget<Color = BinaryColor>,
+    D: DrawTarget<Color=BinaryColor>,
 {
     fn draw_content(
         &self,
@@ -74,7 +75,7 @@ static SCREEN_LAYOUT_DEBUG: MonitoringScreenDebug = MonitoringScreenDebug {};
 const MAX_SCREENS: u8 = 5;
 fn get_screen_layout<D>(index: &u8) -> &dyn MonitoringScreenContent<D>
 where
-    D: DrawTarget<Color = BinaryColor>,
+    D: DrawTarget<Color=BinaryColor>,
 {
     match index {
         0 => &SCREEN_LAYOUT_1,
@@ -220,7 +221,7 @@ where
 impl<'a, SA> MonitoringScreen<'a, SA> {
     fn draw_waiting_content<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        D: DrawTarget<Color = BinaryColor>,
+        D: DrawTarget<Color=BinaryColor>,
     {
         let message_height = 20;
         let content_height = display.bounding_box().size.height - message_height;
@@ -251,7 +252,7 @@ impl<'a, SA> MonitoringScreen<'a, SA> {
 
     fn draw_error<D>(&self, display: &mut D, message: &str) -> Result<(), D::Error>
     where
-        D: DrawTarget<Color = BinaryColor>,
+        D: DrawTarget<Color=BinaryColor>,
     {
         let left_icon_area_width = display.bounding_box().size.width / 3;
         let mut left_icon_display = display.cropped(
@@ -284,7 +285,7 @@ impl<'a, SA> MonitoringScreen<'a, SA> {
 impl<'a, SA> UiDrawer for MonitoringScreen<'a, SA> {
     fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        D: DrawTarget<Color = BinaryColor>,
+        D: DrawTarget<Color=BinaryColor>,
     {
         let status_bar_height = 10;
         let mut status_bar_display_area = display.cropped(

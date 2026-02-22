@@ -17,7 +17,8 @@ use crate::application::messaging::ApplicationData;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
 use crate::hmi::screens::UiInput;
 use crate::hmi::screens::UiInputHandler;
-use crate::hmi::screens::{add_newlines_to_string, UiDrawer};
+use crate::hmi::screens::{UiDrawer};
+use smartcoaster_shared_utils::screen_text::add_newlines_to_string;
 use core::fmt::Write;
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::Point;
@@ -72,7 +73,7 @@ impl UiInputHandler for HeapStatusScreen {
 impl UiDrawer for HeapStatusScreen {
     fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        D: DrawTarget<Color = BinaryColor>,
+        D: DrawTarget<Color=BinaryColor>,
     {
         let text_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X10)
@@ -89,7 +90,7 @@ impl UiDrawer for HeapStatusScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)?;
+            .draw(display)?;
 
         count_string.clear();
         write!(&mut count_string, "Heap Free: {} bytes", self.heap_free).unwrap();
@@ -99,7 +100,7 @@ impl UiDrawer for HeapStatusScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)?;
+            .draw(display)?;
 
         count_string.clear();
 
@@ -113,7 +114,7 @@ impl UiDrawer for HeapStatusScreen {
             text_style,
             Baseline::Top,
         )
-        .draw(display)?;
+            .draw(display)?;
         Ok(())
     }
 }

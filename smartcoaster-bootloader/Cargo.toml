@@ -26,12 +26,19 @@ portable-atomic = { version = "1.5", features = ["critical-section"] }
 minicbor = { version = "2.1", default-features = false }
 ascon-hash = { version = "0.3.1", default-features = false }
 smartcoaster-messages = { path = "../smartcoaster-messages", version = "0.2.0" }
+smartcoaster-shared-utils = { path = "../smartcoaster-shared-utils" }
 
 embedded-io-async = "0.6.1"
 
+embedded-graphics = "0.8.1"
+sh1106 = "0.5.0"
+assign-resources = "0.5.0"
+heapless = "0.8.0"
+
 
 [features]
-default = ["defmt"]
+default = ["defmt", "pcb_rev1"]
+pcb_rev1 = []
 defmt = [
     "dep:defmt",
     "dep:defmt-rtt",

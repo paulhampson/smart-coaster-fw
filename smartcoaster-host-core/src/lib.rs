@@ -169,7 +169,7 @@ impl<const BUFFER_SIZE: usize> SmartcoasterHostFirmwareLoader<BUFFER_SIZE> {
                     smartcoaster_messages::BootloaderMessages::ReadyToDownloadResponse(ready_to_download_resp) => {
                         log::trace!("Received ready to download response: {:?}", ready_to_download_resp);
                         session.chunk_size = ready_to_download_resp.desired_chunk_size as usize;
-                        session.download_progress.max_chunks = (session.firmware_bytes.len() - 1) as u32 / ready_to_download_resp.desired_chunk_size;
+                        session.download_progress.max_chunks = (session.firmware_bytes.len() - 1 + (ready_to_download_resp.desired_chunk_size as usize - 1)) as u32 / ready_to_download_resp.desired_chunk_size;
                         session.session_state = HostSessionState::ChunkTransfer;
                         session.tx_valid_bytes_size = 0;
                     }

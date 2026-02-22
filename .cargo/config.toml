@@ -5,7 +5,7 @@ xtask = "run --package xtask --"
 runner = "probe-rs run --chip RP2040 --speed 10000"
 
 [env]
-DEFMT_LOG = "info,smartcoaster_bootloader::usb=trace"
+DEFMT_LOG = "info"
 # levels -> trace, debug, info, warn, error
 # Module based logging:
 # "Smartcoaster=trace"
@@ -16,3 +16,4 @@ DEFMT_LOG = "info,smartcoaster_bootloader::usb=trace"
 # "Smartcoaster::weight::weight=trace"
 # "Smartcoaster::hmi::display=trace"
 # "Smartcoaster::hmi::inputs=trace"
+# "smartcoaster_bootloader::usb=trace"

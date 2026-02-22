@@ -14,7 +14,8 @@
 
 use crate::application::application_state::ApplicationState;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
-use crate::hmi::screens::{add_newlines_to_string, UiDrawer, UiInput, UiInputHandler};
+use smartcoaster_shared_utils::screen_text::add_newlines_to_string;
+use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use core::cmp::PartialEq;
 use core::fmt::Write;
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_6X13_BOLD, FONT_8X13};
@@ -104,7 +105,7 @@ impl UiInputHandler for ConfirmationScreen {
 impl UiDrawer for ConfirmationScreen {
     fn draw<D>(&self, display: &mut D) -> Result<(), D::Error>
     where
-        D: DrawTarget<Color = BinaryColor>,
+        D: DrawTarget<Color=BinaryColor>,
     {
         let active_element_style = MonoTextStyleBuilder::new()
             .font(&FONT_8X13)
@@ -137,7 +138,7 @@ impl UiDrawer for ConfirmationScreen {
             label_char_style,
             label_text_style,
         )
-        .draw(display)?;
+            .draw(display)?;
 
         next_point = display.bounding_box().center();
 
@@ -157,7 +158,7 @@ impl UiDrawer for ConfirmationScreen {
                 .baseline(Baseline::Middle)
                 .build(),
         )
-        .draw(display)?;
+            .draw(display)?;
 
         next_point.x = 0;
         next_point.y = display.bounding_box().size.height as i32;
@@ -177,7 +178,7 @@ impl UiDrawer for ConfirmationScreen {
                 .baseline(Baseline::Bottom)
                 .build(),
         )
-        .draw(display)?;
+            .draw(display)?;
 
         next_point.x = display.bounding_box().size.width as i32;
         let char_style_to_use = if self.current_element == Element::Cancel {
@@ -196,7 +197,7 @@ impl UiDrawer for ConfirmationScreen {
                 .baseline(Baseline::Bottom)
                 .build(),
         )
-        .draw(display)?;
+            .draw(display)?;
         Ok(())
     }
 }

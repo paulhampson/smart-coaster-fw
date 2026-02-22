@@ -29,9 +29,10 @@ use crate::hmi::screens::settings_screens::set_date_time::SetDateTimeScreen;
 use crate::hmi::screens::settings_screens::set_number::SetNumberScreen;
 use crate::hmi::screens::settings_screens::set_time::SetTimeScreen;
 use crate::hmi::screens::settings_screens::test_mode::TestModeScreen;
-use crate::hmi::screens::{draw_message_screen, UiDrawer, UiInput, UiInputHandler};
+use crate::hmi::screens::{UiDrawer, UiInput, UiInputHandler};
 use crate::rtc::accessor::RtcAccessor;
 use crate::storage::settings::{SettingValue, SettingsAccessor, SettingsAccessorId};
+use smartcoaster_shared_utils::screen_text::draw_message_screen;
 use chrono::{NaiveDateTime, NaiveTime};
 use defmt::{debug, error, trace, warn, Debug2Format};
 use embassy_futures::select::{select3, Either3};
@@ -84,6 +85,7 @@ where
         settings: &'a SA,
     ) -> Self {
         let _ = display.init().map_err(|_| error!("Failed to init display"));
+        display.clear();
         let _ = display
             .flush()
             .map_err(|_| error!("Failed to flush display"));
@@ -401,7 +403,7 @@ where
                 update_ticker.next(),
                 self.rtc_accessor.wait_for_next_second(),
             )
-            .await;
+                .await;
             match wait_result {
                 Either3::First(w) => match w {
                     WaitResult::Lagged(count) => {
@@ -424,7 +426,7 @@ where
                                                 self.route_ui_input(
                                                     UiInput::EncoderCounterClockwise,
                                                 )
-                                                .await
+                                                    .await
                                             }
                                             Direction::None => {}
                                         }

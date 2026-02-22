@@ -35,6 +35,7 @@ use smartcoaster_messages::general::hello::SystemMode::Bootloader;
 use static_cell::StaticCell;
 use smartcoaster_messages::bootloader::builder::BootloaderMessagesBuilder;
 use smartcoaster_messages::general::goodbye::GoodbyeReason;
+use crate::status_messaging::{BootloaderStatusChannelPublisher, BootloaderStatusMessage, TransferProgress};
 
 bind_interrupts!(struct UsbIrqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -42,11 +43,19 @@ bind_interrupts!(struct UsbIrqs {
 
 const MAX_PACKET_SIZE: u8 = 64;
 
-pub struct FirmwareDownloader {}
+// Accepted USB PID from pid.codes
+const USB_VID: u16 = 0x1209;
+const USB_PID: u16 = 0x4004;
+
+pub struct FirmwareDownloader {
+    status_publisher: BootloaderStatusChannelPublisher<'static>,
+}
 
 impl FirmwareDownloader {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(status_publisher: BootloaderStatusChannelPublisher<'static>) -> Self {
+        Self {
+            status_publisher
+        }
     }
 
     pub async fn start<F: NorFlash>(&self, usb_peripheral: Peri<'static, USB>, flash: &Mutex<NoopRawMutex, RefCell<F>>, spawner: Spawner) {
@@ -59,7 +68,7 @@ impl FirmwareDownloader {
         let mut updater = BlockingFirmwareUpdater::new(config, &mut aligned.0);
 
         let config = {
-            let mut config = embassy_usb::Config::new(0x1209, 0x4004); // Pending acceptance of USB PID from pid.codes
+            let mut config = embassy_usb::Config::new(USB_VID, USB_PID);
             config.manufacturer = Some("SmartCoaster");
             config.product = Some("SmartCoaster Bootloader");
             config.serial_number = Some("12345678"); // TODO get this from flash device
@@ -101,12 +110,10 @@ impl FirmwareDownloader {
         let rx_buf = RX_BUF.init([0u8; 1024]); // TODO need to get max message size
         let mut buffered_rx = receiver.into_buffered(rx_buf);
 
-        // Do stuff with the class!
+        // Do stuff with the class! We don't handle disconnection as it powers off the device anyway.
         let serial_usb_fut = async {
-            loop {
-                info!("Connected");
-                firmware_download(&mut sender, &mut buffered_rx, &mut updater).await;
-            }
+            info!("Connected");
+            firmware_download(&mut sender, &mut buffered_rx, &mut updater, &self.status_publisher).await;
         };
 
         serial_usb_fut.await;
@@ -116,17 +123,6 @@ impl FirmwareDownloader {
 #[embassy_executor::task]
 async fn usb_task(mut usb: embassy_usb::UsbDevice<'static, Driver<'static, USB>>) {
     usb.run().await;
-}
-
-struct Disconnected {}
-
-impl From<EndpointError> for Disconnected {
-    fn from(val: EndpointError) -> Self {
-        match val {
-            EndpointError::BufferOverflow => panic!("Buffer overflow"),
-            EndpointError::Disabled => Disconnected {},
-        }
-    }
 }
 
 enum FirmwareDownloaderState {
@@ -140,7 +136,8 @@ async fn firmware_download<'d, T: Instance + 'd, DFU: NorFlash, STATE: NorFlash>
     sender: &mut embassy_usb::class::cdc_acm::Sender<'d, Driver<'d, T>>,
     receiver: &mut BufferedReceiver<'d, Driver<'d, USB>>,
     updater: &mut BlockingFirmwareUpdater<'_, DFU, STATE>,
-) -> ! {
+    status_publisher: &BootloaderStatusChannelPublisher<'static>,
+) -> () {
     let mut state = FirmwareDownloaderState::WaitingForHello;
 
     let mut buffer = [0u8; 1024];
@@ -213,6 +210,14 @@ async fn firmware_download<'d, T: Instance + 'd, DFU: NorFlash, STATE: NorFlash>
                                 if chunk_resp.is_crc_ok() {
                                     trace!("Chunk {} CRC OK", chunk_index);
 
+
+                                    // update status
+                                    let expected_chunks = (image_size_bytes as usize + (smartcoaster_messages::bootloader::CHUNK_SIZE - 1)) / smartcoaster_messages::bootloader::CHUNK_SIZE;
+                                    status_publisher.publish_immediate(BootloaderStatusMessage::TransferringFirmware(TransferProgress {
+                                        transferred_chunks: chunk_index as usize + 1,
+                                        total_chunks: expected_chunks,
+                                    }));
+
                                     // process received data
                                     let valid_chunk_data_length = min(smartcoaster_messages::bootloader::CHUNK_SIZE,
                                                                       image_size_bytes as usize - chunk_index as usize * smartcoaster_messages::bootloader::CHUNK_SIZE);
@@ -261,6 +266,7 @@ async fn firmware_download<'d, T: Instance + 'd, DFU: NorFlash, STATE: NorFlash>
                 let received_hash = AsconHash256Bytes::from_bytes(hash_bytes);
                 let goodbye_reason = if expected_image_hash.eq(&received_hash) {
                     info!("Image hash matches - will swap to new firmware version");
+                    status_publisher.publish_immediate(BootloaderStatusMessage::FirmwareInstalling);
                     updater.mark_updated().expect("Unable to mark update available");
                     GoodbyeReason::InstallingNewFirmware
                 } else {
@@ -278,8 +284,7 @@ async fn firmware_download<'d, T: Instance + 'd, DFU: NorFlash, STATE: NorFlash>
                     .await
                     .expect("Failed to send Goodbye");
 
-                info!("Resetting device");
-                cortex_m::peripheral::SCB::sys_reset();
+                return;
             }
         }
     }

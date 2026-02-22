@@ -48,6 +48,8 @@ chrono = { version = "0.4.41", default-features = false, features = ["serde"] }
 embedded-icon = { version = "0.0.1", features = ["32px", "48px", "24px", "iconoir", "mdi"] }
 embassy-boot = "0.6.1"
 
+smartcoaster-shared-utils = { path = "../smartcoaster-shared-utils" }
+
 
 [build-dependencies]
 built = { version = "0.8", features = ["git2"] }

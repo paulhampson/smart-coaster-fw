@@ -14,9 +14,12 @@
 
 use crate::application::application_state::ApplicationState;
 use crate::hmi::messaging::{UiActionChannelPublisher, UiRequestMessage};
-use crate::hmi::screens::{
-    draw_message_screen, draw_message_screen_no_reformat, UiDrawer, UiInput, UiInputHandler,
+use smartcoaster_shared_utils::screen_text::{
+    draw_message_screen, draw_message_screen_no_reformat,
     DEFAULT_FONT_WIDTH, DEFAULT_TEXT_STYLE,
+};
+use crate::hmi::screens::{
+    UiDrawer, UiInput, UiInputHandler,
 };
 use core::cmp::min;
 use core::fmt::Write;
