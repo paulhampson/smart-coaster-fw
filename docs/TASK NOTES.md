@@ -35,7 +35,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Firmware update CLI tool~~
     * ~~Basic firmware update web page that uses web serial to transfer firmware~~
     * Include the latest build in the web deployment
-    * *WIP* - Bootloader shows screens to indicate update activity
+    * ~~Bootloader shows screens to indicate update activity~~
 * Time to drink reminder mode (flash LED when time since the last drink has elapsed)
 * Monitoring functionality
     * ~~Monitor drink in background if in settings menu~~
