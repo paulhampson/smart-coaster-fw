@@ -153,8 +153,15 @@ jobs:
       - name: Download latest application release
         run: |
           mkdir -p pages-build/firmware
-          curl -L https://github.com/${{ github.repository }}/releases/latest/download/smartcoaster-application.bin \
-            -o pages-build/firmware/smartcoaster-application.bin
+          # Determine the latest release tag by following the redirect
+          LATEST_URL=$(curl -Ls -o /dev/null -w %{url_effective} https://github.com/${{ github.repository }}/releases/latest)
+          TAG=${LATEST_URL##*/}
+          echo "Latest release tag: $TAG"
+          # Download the firmware asset and save it with the tag in the name
+          curl -L "https://github.com/${{ github.repository }}/releases/download/$TAG/smartcoaster-application.bin" \
+            -o "pages-build/firmware/smartcoaster-application-$TAG.bin"
+          # Write the tag to a VERSION file for the web UI to read
+          echo "$TAG" > pages-build/firmware/VERSION
 
       - name: Create web-interface artifact zip
         run: zip -r web-interface-build.zip pages-build/
