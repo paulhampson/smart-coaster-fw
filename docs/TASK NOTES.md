@@ -34,7 +34,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
     * ~~Add firmware transfer via Serial over USB in bootloader DFU mode~~
     * ~~Firmware update CLI tool~~
     * ~~Basic firmware update web page that uses web serial to transfer firmware~~
-    * Include the latest build in the web deployment
+    * ~~Include the latest build in the web deployment~~
     * ~~Bootloader shows screens to indicate update activity~~
 * Time to drink reminder mode (flash LED when time since the last drink has elapsed)
 * Monitoring functionality
@@ -55,7 +55,7 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
         * ~~Show required drink amount to get back on target~~
         * Show visual representation of target 'flight path'
         * Rate history as bar graph over last N hours
-        * Progress bar to a daily target alongside 'drink X ml to stay on target'
+        * *WIP* - Progress bar to a daily target alongside 'drink X ml to stay on target'
     * Build custom screens based on standard 'widgets' (3x2 grid?)
     * Behaviours when vessel is missing
         * Time based 'aggressiveness' - no cup for long period = more vigorous LEDs
