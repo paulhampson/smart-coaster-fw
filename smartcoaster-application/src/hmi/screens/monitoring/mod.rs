@@ -16,6 +16,7 @@ mod monitoring_screen_1;
 mod monitoring_screen_2;
 mod monitoring_screen_3;
 mod monitoring_screen_4;
+mod monitoring_screen_5;
 mod monitoring_screen_debug;
 mod top_status_bar;
 
@@ -28,6 +29,7 @@ use crate::hmi::screens::monitoring::monitoring_screen_1::MonitoringScreen1;
 use crate::hmi::screens::monitoring::monitoring_screen_2::MonitoringScreen2;
 use crate::hmi::screens::monitoring::monitoring_screen_3::MonitoringScreen3;
 use crate::hmi::screens::monitoring::monitoring_screen_4::MonitoringScreen4;
+use crate::hmi::screens::monitoring::monitoring_screen_5::MonitoringScreen5;
 use crate::hmi::screens::monitoring::monitoring_screen_debug::MonitoringScreenDebug;
 use crate::hmi::screens::monitoring::top_status_bar::TopStatusBar;
 use crate::hmi::screens::settings_menu::monitoring_options::MonitoringTargetPeriodOptions;
@@ -70,6 +72,7 @@ static SCREEN_LAYOUT_1: MonitoringScreen1 = MonitoringScreen1 {};
 static SCREEN_LAYOUT_2: MonitoringScreen2 = MonitoringScreen2 {};
 static SCREEN_LAYOUT_3: MonitoringScreen3 = MonitoringScreen3 {};
 static SCREEN_LAYOUT_4: MonitoringScreen4 = MonitoringScreen4 {};
+static SCREEN_LAYOUT_5: MonitoringScreen5 = MonitoringScreen5 {};
 static SCREEN_LAYOUT_DEBUG: MonitoringScreenDebug = MonitoringScreenDebug {};
 
 const MAX_SCREENS: u8 = 5;
@@ -82,7 +85,8 @@ where
         1 => &SCREEN_LAYOUT_2,
         2 => &SCREEN_LAYOUT_3,
         3 => &SCREEN_LAYOUT_4,
-        4 => &SCREEN_LAYOUT_DEBUG,
+        4 => &SCREEN_LAYOUT_5,
+        5 => &SCREEN_LAYOUT_DEBUG,
         _ => &SCREEN_LAYOUT_1,
     }
 }

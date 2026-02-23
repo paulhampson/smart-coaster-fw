@@ -55,8 +55,9 @@ This is a scratch pad of notes to track ideas. Don't take it too seriously.
         * ~~Show required drink amount to get back on target~~
         * Show visual representation of target 'flight path'
         * Rate history as bar graph over last N hours
-        * *WIP* - Progress bar to a daily target alongside 'drink X ml to stay on target'
-    * Build custom screens based on standard 'widgets' (3x2 grid?)
+        * ~~Progress bar to a daily target alongside 'drink X ml to stay on target'~~
+        * Cup status icon in the top bar with date/time
+    * ? Build custom screens based on standard 'widgets' (3x2 grid?)
     * Behaviours when vessel is missing
         * Time based 'aggressiveness' - no cup for long period = more vigorous LEDs
 * Historical log of consumption
