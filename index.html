@@ -97,13 +97,13 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
             text-decoration: underline;
         }
     </style>
-    </style>
 </head>
 <body>
 <h1>SmartCoaster Firmware Loader</h1>
 
 <div>
     <button id="download-latest-btn">Load Latest Release</button>
+    <span id="latest-version" class="info" style="margin-left: 10px;"></span>
     <label for="firmware-file">or Select Local Firmware File:</label>
     <input type="file" id="firmware-file" accept=".bin"/>
     <span id="firmware-size"></span>
@@ -124,7 +124,8 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
 <div id="log"></div>
 
 <footer>
-    <p>SmartCoaster Web Interface v0.1.3 | <a href="https://github.com/paulhampson/smart-coaster-fw" target="_blank">GitHub Repository</a></p>
+    <p>SmartCoaster Web Interface v2026.1.1 | <a href="https://github.com/paulhampson/smart-coaster-fw"
+                                                     target="_blank">GitHub Repository</a></p>
 </footer>
 
 <script type="module">
@@ -132,6 +133,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
 
     let loader = null;
     let firmwareData = null;
+    let firmwareVersion = null;
     let port = null;
     let reader = null;
     let writer = null;
@@ -181,9 +183,13 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
     document.getElementById('download-latest-btn').addEventListener('click', async () => {
         try {
             setStatus('Downloading latest release...');
-            log('Fetching latest release from GitHub...', 'info');
+            const targetVersion = firmwareVersion ? firmwareVersion : 'latest';
+            log(`Fetching ${targetVersion} release binary...`, 'info');
 
-            const response = await fetch('firmware/smartcoaster-application.bin');
+            const url = firmwareVersion
+                ? `firmware/smartcoaster-application-${firmwareVersion}.bin`
+                : 'firmware/smartcoaster-application.bin';
+            const response = await fetch(url);
 
             if (!response.ok) {
                 throw new Error(`Download failed: ${response.statusText}`);
@@ -193,7 +199,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
             const sizeKb = (firmwareData.byteLength / 1024).toFixed(2);
             document.getElementById('firmware-size').textContent = ` (${sizeKb} KB)`;
 
-            log(`Downloaded latest firmware from github: ${sizeKb} KB`, 'success');
+            log(`Downloaded ${targetVersion}: ${sizeKb} KB`, 'success');
             setStatus('Ready');
 
             // Update the file input to show a file was loaded
@@ -446,7 +452,28 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
         }
     }
 
+    async function loadFirmwareVersion() {
+        try {
+            const resp = await fetch('firmware/VERSION');
+            if (!resp.ok) {
+                throw new Error(`VERSION file not found`);
+            }
+            const text = (await resp.text()).trim();
+            if (text) {
+                firmwareVersion = text;
+                const versionSpan = document.getElementById('latest-version');
+                versionSpan.textContent = `Latest: ${firmwareVersion}`;
+                document.title = `SmartCoaster Firmware Loader - ${firmwareVersion}`;
+                log(`Detected latest firmware version: ${firmwareVersion}`, 'success');
+            }
+        } catch (e) {
+            // VERSION file may not exist in dev or older builds; ignore gracefully
+            log(`Firmware VERSION not available; falling back to default name`, 'debug');
+        }
+    }
+
     // Initialize on page load
+    await loadFirmwareVersion();
     log('SmartCoaster Firmware Loader Ready', 'success');
 </script>
 </body>
