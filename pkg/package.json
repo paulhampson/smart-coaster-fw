@@ -2,7 +2,7 @@
   "name": "smartcoaster-host-core",
   "type": "module",
   "description": "Implements state machines for managing the host side of smartcoaster interactions",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "GPL-3",
   "files": [
     "smartcoaster_host_core_bg.wasm",
