@@ -139,6 +139,17 @@ jobs:
       - name: Copy web-interface content to pages-build
         run: cp -rv web-interface/* pages-build/
 
+      - name: Inject version into index.html
+        run: |
+          VERSION="dev"
+          if [[ $GITHUB_REF == refs/tags/web-interface-v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/web-interface-}
+          elif [[ $GITHUB_REF == refs/heads/* ]]; then
+            VERSION=${GITHUB_REF#refs/heads/}
+          fi
+          echo "Injecting version: $VERSION"
+          sed -i "s/BUILD_VERSION/$VERSION/g" pages-build/index.html
+
       - name: Download latest application release
         run: |
           mkdir -p pages-build/firmware
@@ -171,7 +182,7 @@ jobs:
 
       - name: Remove .gitignore from pkg folder
         run: rm -f pages-build/pkg/.gitignore
-        
+
       - name: Deploy to pages-live branch
         uses: peaceiris/actions-gh-pages@v3
         with:
